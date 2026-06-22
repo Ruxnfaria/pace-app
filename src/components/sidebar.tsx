@@ -18,7 +18,7 @@ import {
 
 const menuItems = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-  { name: 'ARIA — Chat', href: '/dashboard/aria', icon: MessageSquare },
+  { name: 'Mentoria Pace', href: '/dashboard/aria', icon: MessageSquare },
   { name: 'Treinos', href: '/dashboard/workouts', icon: Dumbbell },
   { name: 'Nutrição', href: '/dashboard/nutrition', icon: Apple },
   { name: 'Evolução', href: '/dashboard/progress', icon: TrendingUp },

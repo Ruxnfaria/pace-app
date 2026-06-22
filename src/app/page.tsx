@@ -11,7 +11,7 @@ export default function LandingPage() {
       {/* Elemento Visual de Fundo */}
       <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-72 h-72 bg-[#7c3aed]/10 blur-[120px] rounded-full pointer-events-none" />
 
-      <div className="max-w-md space-y-6 relative z-10">
+          <div className="max-w-md space-y-6 relative z-10">
         {/* Logo */}
         <motion.div 
           initial={{ opacity: 0, scale: 0.9 }}
@@ -23,13 +23,13 @@ export default function LandingPage() {
           <span className="text-3xl font-black tracking-tight">PACE</span>
         </motion.div>
 
-        {/* Textos */}
+        {/* Textos Humanizados de Alta Conversão */}
         <div className="space-y-2">
           <h1 className="text-2xl font-black tracking-tight sm:text-3xl uppercase">
-            Ecossistema Fitness Inteligente
+            Assessoria Fitness de Elite
           </h1>
           <p className="text-xs text-zinc-400 leading-relaxed max-w-sm mx-auto">
-            Treinos adaptativos, planejamentos macronutricionais e mentoria de alta performance guiados por inteligência artificial 24h.
+            Treinos de alta performance, planejamentos macronutricionais e acompanhamento exclusivo direto com o nosso time de especialistas.
           </p>
         </div>
 
