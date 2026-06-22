@@ -8,7 +8,8 @@ const openai = new OpenAI({
 
 export async function POST(req: Request) {
   try {
-    const { message } = await req.json();
+    // Agora recebemos a mensagem E qual especialista foi escolhido (padrão: 'zanetti')
+    const { message, expert = 'zanetti' } = await req.json();
     const supabase = await createClient();
 
     // 1. Valida se o usuário está autenticado
@@ -31,26 +32,47 @@ export async function POST(req: Request) {
       content: message,
     });
 
-    // 4. Constrói o System Prompt customizado baseado nas métricas reais dele
-    const systemPrompt = `Você é a ARIA (Adaptive Running Intelligence Assistant), uma personal trainer e nutricionista de elite do Pace App.
-Seu objetivo é dar respostas altamente personalizadas e profissionais.
-
-Dados atuais do usuário:
+    // Dados contextuais formatados para injetar no prompt
+    const userContext = `
+Dados atuais do cliente/paciente:
 - Nome: ${profile?.name || 'Atleta'}
-- Objetivo: ${profile?.goal || 'Não definido'}
-- Nível: ${profile?.fitness_level || 'Não definido'}
-- Peso: ${profile?.weight ? `${profile.weight}kg` : 'Não informado'}
+- Objetivo Atual: ${profile?.goal || 'Não definido'}
+- Nível de Condicionamento: ${profile?.fitness_level || 'Não definido'}
+- Peso Corporal: ${profile?.weight ? `${profile.weight}kg` : 'Não informado'}
 - Altura: ${profile?.height ? `${profile.height}cm` : 'Não informada'}
 - Idade: ${profile?.age ? `${profile.age} anos` : 'Não informada'}
-- Dias disponíveis na semana: ${profile?.available_days || 3} dias
+- Dias Disponíveis na Semana: ${profile?.available_days || 3} dias
+`;
 
-Regras de comportamento:
-1. Seja extremamente motivadora, direta ao ponto e use termos de performance de forma simples.
-2. Use emojis com bastante moderação.
-3. Chame o usuário pelo primeiro nome esporadicamente para criar conexão.
-4. Ao passar treinos, dietas ou listas de suplementação, estruture tudo de forma muito limpa usando tópicos organizados.`;
+    let systemPrompt = '';
 
-    // 5. Aciona a OpenAI
+    // 4. Seleção dinâmica do Especialista Humano
+    if (expert === 'fontes') {
+      systemPrompt = `Você é o Dr. Gabriel Fontes, Nutricionista Esportivo de elite e especialista em performance metabólica da assessoria Pace App. Seu objetivo é guiar o paciente com estratégias de alimentação e suplementação de alta performance.
+
+Regras absolutas de comportamento:
+1. Responda estritamente como um nutricionista clínico humano. NUNCA diga ou dê a entender que você é uma inteligência artificial, robô, assistente virtual ou modelo de linguagem. Você é o profissional real de carne e osso contratado pela assessoria.
+2. Seja cirúrgico, técnico e passe autoridade médica. Use termos como síntese proteica, déficit calórico e densidade nutricional de forma clara.
+3. Chame o paciente pelo nome esporadicamente para gerar conexão.
+4. Ao montar planos alimentares, divisão de macros ou listas de suplementos, use listas em tópicos ou tabelas extremamente limpas.
+5. Se o paciente pedir uma lista de compras para o mercado, calcule e some as porções com base na dieta dele para a semana inteira (ex: multiplicar gramas diárias por 7) e organize por categorias (Proteínas, Carboidratos, Gorduras, Vegetais).
+
+${userContext}`;
+    } else {
+      // Padrão: Coach Lucas Zanetti
+      systemPrompt = `Você é o Coach Lucas Zanetti, treinador de alta performance, especialista em cinesiologia e musculação da assessoria esportiva Pace App. Seu objetivo é montar e ajustar os protocolos de treinamento físico do atleta.
+
+Regras absolutas de comportamento:
+1. Responda estritamente como um treinador humano de elite. NUNCA mencione que você é uma inteligência artificial, robô ou software. Você é o head coach focado em colocar o atleta no topo do shape.
+2. Seja altamente motivador, enérgico, direto e use linguagem de vestiário de alta performance (foco, consistência, intensidade, progressão de carga).
+3. Chame o atleta pelo primeiro nome esporadicamente para cobrar disciplina.
+4. Ao prescrever treinos, divisões musculares (ABC, ABCD), séries, repetições e tempos de descanso, estruture tudo de forma limpa usando tópicos organizados.
+5. Foque sempre na progressão de carga e na execução perfeita dos movimentos.
+
+${userContext}`;
+    }
+
+    // 5. Aciona a OpenAI com o modelo mais inteligente
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o',
       messages: [
@@ -60,9 +82,9 @@ Regras de comportamento:
       temperature: 0.7,
     });
 
-    const reply = completion.choices[0].message?.content || 'Não consegui processar a resposta.';
+    const reply = completion.choices[0].message?.content || 'Não consegui processar a resposta do especialista.';
 
-    // 6. Salva a resposta da ARIA para manter a memória do chat ativa
+    // 6. Salva a resposta do especialista mantendo o histórico ativo
     await supabase.from('chat_messages').insert({
       user_id: user.id,
       role: 'assistant',
@@ -72,7 +94,7 @@ Regras de comportamento:
     return NextResponse.json({ reply });
 
   } catch (error: any) {
-    console.error('Erro na API da ARIA:', error);
+    console.error('Erro na API do Time Pace:', error);
     return NextResponse.json({ error: error.message || 'Erro interno do servidor' }, { status: 500 });
   }
 }

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { Dumbbell, Calendar, CheckCircle2, Loader2, X, Info, Sparkles } from 'lucide-react';
+import { Dumbbell, CheckCircle2, Loader2, X, Info, Sparkles, Play } from 'lucide-react';
 
 interface Exercise {
   name: string;
@@ -10,6 +10,7 @@ interface Exercise {
   reps: string;
   rest: string;
   tip: string;
+  gif_url?: string; // Campo opcional preparado para receber o link do GIF do exercício
 }
 
 interface Workout {
@@ -39,7 +40,6 @@ export default function WorkoutsPage() {
         .order('created_at', { ascending: false });
 
       if (data) {
-        // Trata o campo JSONB vindo do banco
         setWorkouts(data.map(w => ({
           id: w.id,
           name: w.name,
@@ -56,15 +56,15 @@ export default function WorkoutsPage() {
     loadWorkouts();
   }, []);
 
-  // Chama a API para gerar os treinos usando IA
+  // Chama a API para gerar os treinos com a inteligência do Coach Lucas Zanetti
   async function generatePlan() {
     setGenerating(true);
     try {
       const response = await fetch('/api/workouts/generate', { method: 'POST' });
       if (response.ok) {
-        await loadWorkouts(); // Recarrega a lista com os novos treinos
+        await loadWorkouts();
       } else {
-        alert('Erro ao gerar treinos. Verifique suas chaves de API.');
+        alert('Erro ao conectar com a assessoria. Verifique as chaves de API.');
       }
     } catch (err) {
       console.error(err);
@@ -78,13 +78,11 @@ export default function WorkoutsPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    // 1. Atualiza o status do treino
     await supabase
       .from('workouts')
       .update({ completed: true, completed_at: new Date().toISOString(), xp_earned: 100 })
       .eq('id', workoutId);
 
-    // 2. Busca o XP atual do usuário para somar +100
     const { data: profile } = await supabase
       .from('profiles')
       .select('xp')
@@ -105,11 +103,11 @@ export default function WorkoutsPage() {
   return (
     <div className="p-6 lg:p-10 space-y-8">
       
-      {/* HEADER E BOTÃO DE GERAR COM IA */}
+      {/* HEADER E SOLICITAÇÃO AO COACH */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="space-y-1">
           <h1 className="text-2xl lg:text-3xl font-black tracking-tight">MÓDULO DE TREINOS</h1>
-          <p className="text-xs lg:text-sm text-zinc-500">Gerencie e execute suas planilhas de força e performance.</p>
+          <p className="text-xs lg:text-sm text-zinc-500">Acesse suas planilhas de força e performance estruturadas pelo Coach Lucas Zanetti.</p>
         </div>
         
         <button
@@ -119,11 +117,11 @@ export default function WorkoutsPage() {
         >
           {generating ? (
             <>
-              <Loader2 className="w-4 h-4 animate-spin" /> Montando Rotina...
+              <Loader2 className="w-4 h-4 animate-spin" /> Coach Zanetti Montando Treino...
             </>
           ) : (
             <>
-              <Sparkles className="w-4 h-4 fill-white" /> Gerar Plano Semanal com IA
+              <Sparkles className="w-4 h-4 fill-white" /> Solicitar Cronograma ao Coach Zanetti
             </>
           )}
         </button>
@@ -139,8 +137,8 @@ export default function WorkoutsPage() {
           <div className="p-3 bg-[#1f1f1f] w-fit mx-auto rounded-xl text-zinc-500">
             <Dumbbell className="w-6 h-6" />
           </div>
-          <h3 className="text-sm font-bold">Nenhum treino montado</h3>
-          <p className="text-xs text-zinc-500 max-w-xs mx-auto">Clique no botão superior para que a IA analise seu biotipo, nível e monte sua divisão semanal premium.</p>
+          <h3 className="text-sm font-bold text-zinc-200">Nenhum treino montado</h3>
+          <p className="text-xs text-zinc-500 max-w-xs mx-auto">Clique no botão superior para que o Coach Lucas Zanetti monte sua divisão semanal de alta performance.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -170,15 +168,15 @@ export default function WorkoutsPage() {
               </div>
 
               <div className="pt-3 border-t border-[#1f1f1f] flex justify-between items-center text-[11px] text-zinc-400 font-medium">
-                <span className="flex items-center gap-1">⏱️ Meta: ~50 min</span>
-                <span className="text-[#7c3aed] font-bold group-hover:underline">Ver ficha →</span>
+                <span className="flex items-center gap-1">⏱️ Estimativa: ~50 min</span>
+                <span className="text-[#7c3aed] font-bold flex items-center gap-1">Ver ficha <Play className="w-2.5 h-2.5 fill-[#7c3aed]" /></span>
               </div>
             </div>
           ))}
         </div>
       )}
 
-      {/* MODAL DETALHADO DO TREINO SELECIONADO */}
+      {/* MODAL DETALHADO COM OS GIFS DEMONSTRATIVOS */}
       {selectedWorkout && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-[#111111] border border-[#1f1f1f] rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl flex flex-col max-h-[85vh]">
@@ -194,30 +192,63 @@ export default function WorkoutsPage() {
               </button>
             </div>
 
-            {/* Ficha de Exercícios */}
-            <div className="flex-1 overflow-y-auto p-5 space-y-4 custom-scrollbar">
+            {/* Ficha de Exercícios + Player de Mídia */}
+            <div className="flex-1 overflow-y-auto p-5 space-y-6 custom-scrollbar bg-[#070707]">
               {selectedWorkout.exercises.map((ex, i) => (
-                <div key={i} className="p-4 rounded-xl bg-[#0a0a0a] border border-[#1f1f1f] space-y-2">
+                <div key={i} className="p-4 rounded-xl bg-[#111111] border border-[#1f1f1f] space-y-3 shadow-inner">
+                  
+                  {/* Título e Séries */}
                   <div className="flex justify-between items-center">
-                    <h4 className="text-xs font-bold text-white">{i + 1}. {ex.name}</h4>
-                    <span className="text-[11px] text-purple-400 font-bold bg-[#7c3aed]/5 px-2 py-0.5 rounded border border-[#7c3aed]/10">
+                    <h4 className="text-xs font-bold text-white uppercase tracking-tight">{i + 1}. {ex.name}</h4>
+                    <span className="text-[11px] text-purple-400 font-black bg-[#7c3aed]/10 px-2.5 py-1 rounded border border-[#7c3aed]/20 shadow-sm">
                       {ex.sets}x {ex.reps}
                     </span>
                   </div>
-                  <div className="flex gap-4 text-[10px] text-zinc-500 font-medium">
+
+                  {/* PLAYER DO GIF DEMONSTRATIVO */}
+                  <div className="relative w-full h-44 bg-zinc-950 rounded-xl overflow-hidden border border-zinc-900 flex items-center justify-center group">
+                    {ex.gif_url ? (
+                      <img 
+                        src={ex.gif_url} 
+                        alt={`Execução de ${ex.name}`} 
+                        className="w-full h-full object-cover"
+                        loading="lazy"
+                      />
+                    ) : (
+                      // Fallback visual premium com animação enquanto não há URL real injetada
+                      <div className="flex flex-col items-center justify-center space-y-2 text-zinc-600">
+                        <div className="p-3 bg-zinc-900/50 rounded-full border border-zinc-800/80 animate-bounce">
+                          <Dumbbell className="w-5 h-5 text-[#7c3aed]" />
+                        </div>
+                        <span className="text-[10px] uppercase font-black tracking-widest text-zinc-500">Execução em Loop</span>
+                      </div>
+                    )}
+                    <div className="absolute top-2 left-2 bg-black/60 backdrop-blur-md border border-zinc-800 px-2 py-0.5 rounded text-[9px] font-bold text-zinc-400 uppercase tracking-wider">
+                      Vídeo de Apoio
+                    </div>
+                  </div>
+
+                  {/* Detalhes Técnicos */}
+                  <div className="flex gap-4 text-[10px] text-zinc-500 font-bold px-1">
                     <span>⏱️ Descanso: {ex.rest}</span>
                   </div>
-                  <div className="bg-[#111111] p-2.5 rounded-lg border border-zinc-900 flex items-start gap-2">
-                    <Info className="w-3.5 h-3.5 text-zinc-500 mt-0.5 shrink-0" />
-                    <p className="text-[10px] text-zinc-400 leading-relaxed"><span className="font-semibold text-zinc-300">Execução:</span> {ex.tip}</p>
+
+                  {/* Dica do Coach Zanetti */}
+                  <div className="bg-[#0a0a0a] p-3 rounded-lg border border-zinc-900 flex items-start gap-2.5">
+                    <Info className="w-4 h-4 text-[#7c3aed] mt-0.5 shrink-0" />
+                    <p className="text-[10px] text-zinc-400 leading-relaxed">
+                      <span className="font-bold text-zinc-200 uppercase text-[9px] tracking-wider block mb-0.5">Instrução do Coach Zanetti:</span> 
+                      {ex.tip}
+                    </p>
                   </div>
+
                 </div>
               ))}
             </div>
 
             {/* Rodapé do Modal */}
             <div className="p-4 border-t border-[#1f1f1f] bg-[#0a0a0a] flex justify-between items-center">
-              <span className="text-[11px] text-zinc-500 font-bold">+100 XP por conclusão</span>
+              <span className="text-[11px] text-zinc-500 font-bold tracking-tight">+100 XP por treino concluído</span>
               {!selectedWorkout.completed ? (
                 <button
                   onClick={() => completeWorkout(selectedWorkout.id)}

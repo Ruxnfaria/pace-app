@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { Apple, Plus, Loader2, X, Sparkles, Utensils, Check } from 'lucide-react';
+import { Apple, Plus, Loader2, X, Sparkles, Utensils, Check, ShoppingCart, CheckSquare, Square } from 'lucide-react';
 
 interface MealLog {
   id: string;
@@ -19,7 +19,11 @@ export default function NutritionPage() {
   const [meals, setMeals] = useState<MealLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
+  const [shopListOpen, setShopListOpen] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
+
+  // Estado para os itens checados da lista de compras
+  const [checkedItems, setCheckedItems] = useState<Record<string, boolean>>({});
 
   // Campos do formulário de refeição
   const [mealDescription, setMealDescription] = useState('');
@@ -28,11 +32,11 @@ export default function NutritionPage() {
   const [carbs, setCarbs] = useState('');
   const [fat, setFat] = useState('');
 
-  // Metas fixas baseadas no padrão Whoop/Nike (podem ser calculadas via IA depois)
+  // Metas de alta performance estruturadas pelo Dr. Gabriel Fontes
   const metaCalorias = 2200;
-  const metaProteina = 160; // em gramas
-  const metaCarbo = 240; // em gramas
-  const metaGordura = 70; // em gramas
+  const metaProteina = 160; 
+  const metaCarbo = 240; 
+  const metaGordura = 70; 
 
   async function loadNutritionLogs() {
     setLoading(true);
@@ -63,7 +67,7 @@ export default function NutritionPage() {
     loadNutritionLogs();
   }, []);
 
-  // Aciona a IA para analisar a descrição do prato
+  // Aciona o sistema do Dr. Gabriel Fontes para analisar os macros do prato
   async function analyzeMealWithAI() {
     if (!mealDescription.trim()) return;
     setAnalyzing(true);
@@ -83,7 +87,7 @@ export default function NutritionPage() {
         setCarbs(data.data.carbs.toString());
         setFat(data.data.fat.toString());
       } else {
-        alert('Não consegui analisar o prato. Preencha os macros manualmente se preferir.');
+        alert('O sistema do Dr. Fontes não conseguiu processar. Digite os macros manualmente.');
       }
     } catch (err) {
       console.error(err);
@@ -107,7 +111,6 @@ export default function NutritionPage() {
       fat: parseFloat(fat) || 0,
     });
 
-    // Reseta campos e recarrega
     setMealDescription('');
     setCalories('');
     setProtein('');
@@ -117,11 +120,49 @@ export default function NutritionPage() {
     loadNutritionLogs();
   }
 
+  const toggleCheckItem = (id: string) => {
+    setCheckedItems(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+
   // Cálculos de totais consumidos hoje
   const totalCalorias = meals.reduce((sum, m) => sum + m.calories, 0);
   const totalProteina = meals.reduce((sum, m) => sum + m.protein, 0);
   const totalCarbo = meals.reduce((sum, m) => sum + m.carbs, 0);
   const totalGordura = meals.reduce((sum, m) => sum + m.fat, 0);
+
+  // MÁGICA: Cálculos matemáticos de conversão para a lista de compras da semana inteira (7 dias)
+  const kgFrangoSemana = ((metaProteina * 0.5 * 7) / 30 * 100 / 1000).toFixed(1); // 50% das proteinas vindas de fontes como frango
+  const kgPatinhoSemana = ((metaProteina * 0.3 * 7) / 26 * 100 / 1000).toFixed(1); // 30% vindo de carne vermelha magra
+  const duziaOvosSemana = Math.ceil((metaProteina * 0.2 * 7) / 6 / 12); // 20% vindo de ovos inteiros
+  const kgArrozSemana = ((metaCarbo * 0.6 * 7) / 28 * 100 / 1000).toFixed(1); // 60% dos carbos vindos de arroz integral/branco
+  const kgBatataSemana = ((metaCarbo * 0.4 * 7) / 20 * 100 / 1000).toFixed(1); // 40% vindo de batata doce
+
+  const shoppingListCategories = [
+    {
+      title: "🍗 Fontes de Proteína (Semanal)",
+      items: [
+        { id: 'p1', name: `Peito de Frango Filé`, qty: `${kgFrangoSemana} kg` },
+        { id: 'p2', name: `Carne Moída (Patinho/Coxão Mole)`, qty: `${kgPatinhoSemana} kg` },
+        { id: 'p3', name: `Ovos Inteiros Grandes`, qty: `${duziaOvosSemana} Dúzia(s)` },
+      ]
+    },
+    {
+      title: "🍠 Fontes de Carboidratos (Semanal)",
+      items: [
+        { id: 'c1', name: `Arroz (Integral ou Branco)`, qty: `${kgArrozSemana} kg` },
+        { id: 'c2', name: `Batata Doce ou Mandioca`, qty: `${kgBatataSemana} kg` },
+        { id: 'c3', name: `Aveia em Flocos`, qty: `1 Pacote (400g)` },
+      ]
+    },
+    {
+      title: "🥦 Micronutrientes e Fibras",
+      items: [
+        { id: 'v1', name: `Folhas Verdes (Alface/Rúcula)`, qty: `3 Maços` },
+        { id: 'v2', name: `Brócolis ou Couve-Flor`, qty: `1.5 kg` },
+        { id: 'v3', name: `Limão ou Banana`, qty: `1 KG` },
+      ]
+    }
+  ];
 
   return (
     <div className="p-6 lg:p-10 space-y-8">
@@ -130,22 +171,31 @@ export default function NutritionPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="space-y-1">
           <h1 className="text-2xl lg:text-3xl font-black tracking-tight">MÓDULO DE NUTRIÇÃO</h1>
-          <p className="text-xs lg:text-sm text-zinc-500">Controle de ingestão calórica e distribuição de macronutrientes.</p>
+          <p className="text-xs lg:text-sm text-zinc-500">Planejamento e controle metabólico supervisionado pelo Dr. Gabriel Fontes.</p>
         </div>
         
-        <button
-          onClick={() => setModalOpen(true)}
-          className="flex items-center justify-center gap-2 py-3 px-5 rounded-xl bg-[#7c3aed] text-white text-xs font-black hover:bg-[#6d28d9] transition-all shadow-lg"
-        >
-          <Plus className="w-4 h-4" /> Registrar Refeição
-        </button>
+        <div className="flex gap-2 w-full sm:w-auto">
+          <button
+            onClick={() => setShopListOpen(true)}
+            className="flex-1 sm:flex-none flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-300 text-xs font-black hover:bg-zinc-800 transition-all shadow-lg"
+          >
+            <ShoppingCart className="w-4 h-4 text-[#7c3aed]" /> Lista de Compras
+          </button>
+
+          <button
+            onClick={() => setModalOpen(true)}
+            className="flex-1 sm:flex-none flex items-center justify-center gap-2 py-3 px-5 rounded-xl bg-[#7c3aed] text-white text-xs font-black hover:bg-[#6d28d9] transition-all shadow-lg"
+          >
+            <Plus className="w-4 h-4" /> Registrar Refeição
+          </button>
+        </div>
       </div>
 
       {/* METAS E RESUMO DE MACROS */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
         
         {/* CARD PRINCIPAL: CALORIAS */}
-        <div className="lg:col-span-1 p-5 rounded-2xl bg-[#111111] border border-[#1f1f1f] flex flex-col justify-between h-40">
+        <div className="p-5 rounded-2xl bg-[#111111] border border-[#1f1f1f] flex flex-col justify-between h-40">
           <span className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Balanço Calórico</span>
           <div>
             <h3 className="text-3xl font-black">{totalCalorias} <span className="text-xs font-bold text-zinc-500">/ {metaCalorias} kcal</span></h3>
@@ -229,73 +279,7 @@ export default function NutritionPage() {
         )}
       </div>
 
-      {/* MODAL REGISTRAR REFEIÇÃO */}
+      {/* MODAL REGISTRAR REFEIÇÃO (HUMANIZADO DR. FONTES) */}
       {modalOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <form onSubmit={handleSaveMeal} className="bg-[#111111] border border-[#1f1f1f] rounded-2xl w-full max-w-md overflow-hidden shadow-2xl p-6 space-y-4">
-            
-            <div className="flex justify-between items-center border-b border-[#1f1f1f] pb-3">
-              <h2 className="text-sm font-black tracking-wider uppercase text-white">Registrar Alimento</h2>
-              <button type="button" onClick={() => setModalOpen(false)} className="p-1 rounded-lg hover:bg-zinc-800 text-zinc-500 hover:text-white transition-colors">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Input Descrição com IA */}
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">O que você comeu?</label>
-              <div className="relative">
-                <input
-                  type="text"
-                  required
-                  placeholder="ex: 200g de arroz integral e 150g de patinho grelhado"
-                  value={mealDescription}
-                  onChange={(e) => setMealDescription(e.target.value)}
-                  className="w-full pl-3 pr-28 py-3 rounded-xl bg-[#0a0a0a] border border-[#1f1f1f] text-white placeholder-zinc-700 focus:outline-none focus:border-[#7c3aed] text-xs"
-                />
-                <button
-                  type="button"
-                  disabled={analyzing || !mealDescription.trim()}
-                  onClick={analyzeMealWithAI}
-                  className="absolute right-1.5 top-1.5 px-3 py-1.5 rounded-lg bg-[#7c3aed] text-white text-[10px] font-bold hover:bg-[#6d28d9] transition-all disabled:opacity-30 flex items-center gap-1"
-                >
-                  {analyzing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3 fill-white" />} Analisar com IA
-                </button>
-              </div>
-            </div>
-
-            {/* Inputs de Macros Editáveis */}
-            <div className="grid grid-cols-2 gap-3 pt-2">
-              <div className="space-y-1">
-                <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Calorias (kcal)</label>
-                <input type="number" required placeholder="0" value={calories} onChange={(e) => setCalories(e.target.value)} className="w-full px-3 py-2.5 rounded-xl bg-[#0a0a0a] border border-[#1f1f1f] text-white focus:outline-none focus:border-[#7c3aed] text-xs" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Proteínas (g)</label>
-                <input type="number" required placeholder="0" value={protein} onChange={(e) => setProtein(e.target.value)} className="w-full px-3 py-2.5 rounded-xl bg-[#0a0a0a] border border-[#1f1f1f] text-white focus:outline-none focus:border-[#7c3aed] text-xs" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Carbos (g)</label>
-                <input type="number" required placeholder="0" value={carbs} onChange={(e) => setCarbs(e.target.value)} className="w-full px-3 py-2.5 rounded-xl bg-[#0a0a0a] border border-[#1f1f1f] text-white focus:outline-none focus:border-[#7c3aed] text-xs" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Gorduras (g)</label>
-                <input type="number" required placeholder="0" value={fat} onChange={(e) => setFat(e.target.value)} className="w-full px-3 py-2.5 rounded-xl bg-[#0a0a0a] border border-[#1f1f1f] text-white focus:outline-none focus:border-[#7c3aed] text-xs" />
-              </div>
-            </div>
-
-            {/* Botão de Envio */}
-            <button
-              type="submit"
-              className="w-full py-3 rounded-xl bg-white text-black font-black text-xs hover:opacity-95 transition-all mt-2"
-            >
-              Salvar Refeição
-            </button>
-
-          </form>
-        </div>
-      )}
-
-    </div>
-  );
-}
+          <form onSubmit
