@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { Bot, User, Send, Sparkles, Zap } from 'lucide-react';
+import { User, Send, Sparkles, Zap } from 'lucide-react';
 
 interface Message {
   id?: string;
@@ -78,17 +78,17 @@ export default function AriaChatPage() {
   return (
     <div className="flex flex-col h-[calc(100vh-5rem)] lg:h-screen bg-[#0a0a0a]">
       
-      {/* HEADER DO CHAT */}
+      {/* HEADER DO CHAT HUMANIZADO */}
       <div className="p-4 lg:p-6 border-b border-[#1f1f1f] bg-[#111111]/50 backdrop-blur-md flex items-center gap-3">
         <div className="p-2.5 rounded-xl bg-[#7c3aed]/10 text-[#7c3aed] border border-[#7c3aed]/20">
-          <Bot className="w-5 h-5" />
+          <Zap className="w-5 h-5 text-[#7c3aed] fill-[#7c3aed]" />
         </div>
         <div>
           <div className="flex items-center gap-1.5">
-            <h1 className="text-sm font-black text-white tracking-wide uppercase">ARIA</h1>
+            <h1 className="text-sm font-black text-white tracking-wide uppercase">MENTORIA PACE</h1>
             <span className="flex h-2 w-2 rounded-full bg-[#22c55e] animate-pulse" />
           </div>
-          <p className="text-[10px] text-zinc-500 font-medium">Adaptive Running Intelligence Assistant</p>
+          <p className="text-[10px] text-zinc-500 font-medium">Suporte exclusivo com Coach Lucas Zanetti e Dr. Gabriel Fontes</p>
         </div>
       </div>
 
@@ -100,8 +100,8 @@ export default function AriaChatPage() {
               <Sparkles className="w-6 h-6 animate-spin" style={{ animationDuration: '3s' }} />
             </div>
             <div className="space-y-1">
-              <h3 className="text-sm font-bold">Sua Coach de IA está pronta</h3>
-              <p className="text-xs text-zinc-500">Peça um treino, tire dúvidas sobre macros da sua dieta ou peça estratégias de quebra de platô.</p>
+              <h3 className="text-sm font-bold">Sua Mentoria de Elite está ativa</h3>
+              <p className="text-xs text-zinc-500">Solicite ajustes no seu treino ao Coach Zanetti, tire dúvidas sobre sua dieta com o Dr. Gabriel Fontes ou alinhe suas estratégias semanais.</p>
             </div>
           </div>
         )}
@@ -109,8 +109,8 @@ export default function AriaChatPage() {
         {messages.map((msg, index) => (
           <div key={index} className={`flex items-start gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             {msg.role === 'assistant' && (
-              <div className="p-2 rounded-xl bg-[#1f1f1f] border border-[#1f1f1f] text-zinc-400 shrink-0">
-                <Bot className="w-4 h-4" />
+              <div className="p-2 rounded-xl bg-[#1f1f1f] border border-[#1f1f1f] text-[#7c3aed] shrink-0">
+                <Zap className="w-4 h-4 fill-[#7c3aed]" />
               </div>
             )}
             <div className={`p-4 rounded-2xl text-xs max-w-[85%] lg:max-w-[70%] leading-relaxed shadow-md ${
@@ -130,8 +130,8 @@ export default function AriaChatPage() {
 
         {loading && (
           <div className="flex items-start gap-3 justify-start">
-            <div className="p-2 rounded-xl bg-[#1f1f1f] border border-[#1f1f1f] text-zinc-400 shrink-0">
-              <Bot className="w-4 h-4" />
+            <div className="p-2 rounded-xl bg-[#1f1f1f] border border-[#1f1f1f] text-[#7c3aed] shrink-0">
+              <Zap className="w-4 h-4 fill-[#7c3aed]" />
             </div>
             <div className="p-4 rounded-2xl bg-[#111111] border border-[#1f1f1f] rounded-tl-none flex items-center gap-1">
               <span className="w-1.5 h-1.5 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
@@ -146,10 +146,10 @@ export default function AriaChatPage() {
       {/* CHIPS DE SUGESTÃO RÁPIDA */}
       <div className="px-4 lg:px-6 py-2 overflow-x-auto flex gap-2 border-t border-[#1f1f1f]/30 bg-[#0a0a0a]">
         {[
-          "Crie meu treino de hoje",
-          "Quantas calorias devo comer?",
-          "Me motive!",
-          "Como perco gordura rápido?"
+          "Ajuste meu treino de hoje",
+          "Dúvida sobre os macros da dieta",
+          "Estratégia para quebra de platô",
+          "Como acelerar a recuperação muscular"
         ].map((chip) => (
           <button
             key={chip}
@@ -169,7 +169,7 @@ export default function AriaChatPage() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSendMessage(input)}
-            placeholder="Pergunte qualquer coisa para a ARIA..."
+            placeholder="Envie sua mensagem para a mesa de especialistas..."
             className="w-full pl-4 pr-14 py-3.5 rounded-xl bg-[#111111] border border-[#1f1f1f] text-white placeholder-zinc-600 focus:outline-none focus:border-[#7c3aed] text-xs transition-colors shadow-inner"
           />
           <button

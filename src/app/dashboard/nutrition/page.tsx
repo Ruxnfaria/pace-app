@@ -130,12 +130,12 @@ export default function NutritionPage() {
   const totalCarbo = meals.reduce((sum, m) => sum + m.carbs, 0);
   const totalGordura = meals.reduce((sum, m) => sum + m.fat, 0);
 
-  // MÁGICA: Cálculos matemáticos de conversão para a lista de compras da semana inteira (7 dias)
-  const kgFrangoSemana = ((metaProteina * 0.5 * 7) / 30 * 100 / 1000).toFixed(1); // 50% das proteinas vindas de fontes como frango
-  const kgPatinhoSemana = ((metaProteina * 0.3 * 7) / 26 * 100 / 1000).toFixed(1); // 30% vindo de carne vermelha magra
-  const duziaOvosSemana = Math.ceil((metaProteina * 0.2 * 7) / 6 / 12); // 20% vindo de ovos inteiros
-  const kgArrozSemana = ((metaCarbo * 0.6 * 7) / 28 * 100 / 1000).toFixed(1); // 60% dos carbos vindos de arroz integral/branco
-  const kgBatataSemana = ((metaCarbo * 0.4 * 7) / 20 * 100 / 1000).toFixed(1); // 40% vindo de batata doce
+  // Cálculos matemáticos de conversão para a lista de compras da semana inteira (7 dias)
+  const kgFrangoSemana = ((metaProteina * 0.5 * 7) / 30 * 100 / 1000).toFixed(1); 
+  const kgPatinhoSemana = ((metaProteina * 0.3 * 7) / 26 * 100 / 1000).toFixed(1); 
+  const duziaOvosSemana = Math.ceil((metaProteina * 0.2 * 7) / 6 / 12); 
+  const kgArrozSemana = ((metaCarbo * 0.6 * 7) / 28 * 100 / 1000).toFixed(1); 
+  const kgBatataSemana = ((metaCarbo * 0.4 * 7) / 20 * 100 / 1000).toFixed(1); 
 
   const shoppingListCategories = [
     {
@@ -279,7 +279,134 @@ export default function NutritionPage() {
         )}
       </div>
 
-      {/* MODAL REGISTRAR REFEIÇÃO (HUMANIZADO DR. FONTES) */}
+      {/* MODAL REGISTRAR REFEIÇÃO */}
       {modalOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <form onSubmit
+          <form onSubmit={handleSaveMeal} className="bg-[#111111] border border-[#1f1f1f] rounded-2xl w-full max-w-md overflow-hidden shadow-2xl p-6 space-y-4">
+            
+            <div className="flex justify-between items-center border-b border-[#1f1f1f] pb-3">
+              <h2 className="text-sm font-black tracking-wider uppercase text-white">Análise do Dr. Fontes</h2>
+              <button type="button" onClick={() => setModalOpen(false)} className="p-1 rounded-lg hover:bg-zinc-800 text-zinc-500 hover:text-white transition-colors">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">O que foi consumido?</label>
+              <div className="relative">
+                <input
+                  type="text"
+                  required
+                  placeholder="ex: 200g de peito de frango e 150g de arroz"
+                  value={mealDescription}
+                  onChange={(e) => setMealDescription(e.target.value)}
+                  className="w-full pl-3 pr-32 py-3 rounded-xl bg-[#0a0a0a] border border-[#1f1f1f] text-white placeholder-zinc-700 focus:outline-none focus:border-[#7c3aed] text-xs"
+                />
+                <button
+                  type="button"
+                  disabled={analyzing || !mealDescription.trim()}
+                  onClick={analyzeMealWithAI}
+                  className="absolute right-1.5 top-1.5 px-2.5 py-1.5 rounded-lg bg-[#7c3aed] text-white text-[10px] font-bold hover:bg-[#6d28d9] transition-all disabled:opacity-30 flex items-center gap-1"
+                >
+                  {analyzing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3 fill-white" />} Consultar Dr. Fontes
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              <div className="space-y-1">
+                <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Calorias (kcal)</label>
+                <input type="number" required placeholder="0" value={calories} onChange={(e) => setCalories(e.target.value)} className="w-full px-3 py-2.5 rounded-xl bg-[#0a0a0a] border border-[#1f1f1f] text-white focus:outline-none focus:border-[#7c3aed] text-xs" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Proteínas (g)</label>
+                <input type="number" required placeholder="0" value={protein} onChange={(e) => setProtein(e.target.value)} className="w-full px-3 py-2.5 rounded-xl bg-[#0a0a0a] border border-[#1f1f1f] text-white focus:outline-none focus:border-[#7c3aed] text-xs" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Carbos (g)</label>
+                <input type="number" required placeholder="0" value={carbs} onChange={(e) => setCarbs(e.target.value)} className="w-full px-3 py-2.5 rounded-xl bg-[#0a0a0a] border border-[#1f1f1f] text-white focus:outline-none focus:border-[#7c3aed] text-xs" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Gorduras (g)</label>
+                <input type="number" required placeholder="0" value={fat} onChange={(e) => setFat(e.target.value)} className="w-full px-3 py-2.5 rounded-xl bg-[#0a0a0a] border border-[#1f1f1f] text-white focus:outline-none focus:border-[#7c3aed] text-xs" />
+              </div>
+            </div>
+
+            <button type="submit" className="w-full py-3 rounded-xl bg-white text-black font-black text-xs hover:opacity-95 transition-all mt-2">
+              Salvar na Dieta
+            </button>
+          </form>
+        </div>
+      )}
+
+      {/* PANEL DA LISTA DE COMPRAS INTELIGENTE */}
+      {shopListOpen && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-[#111111] border border-[#1f1f1f] rounded-2xl w-full max-w-md overflow-hidden shadow-2xl flex flex-col max-h-[80vh]">
+            
+            <div className="p-5 border-b border-[#1f1f1f] flex justify-between items-center bg-[#0d0d0d]">
+              <div className="flex items-center gap-2">
+                <ShoppingCart className="w-5 h-5 text-[#7c3aed]" />
+                <h2 className="text-sm font-black tracking-wider uppercase text-white">Lista de Mercado do Dr. Fontes</h2>
+              </div>
+              <button onClick={() => setShopListOpen(false)} className="p-1 rounded-lg hover:bg-zinc-800 text-zinc-500 hover:text-white transition-colors">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 overflow-y-auto space-y-6 custom-scrollbar bg-[#070707] flex-1">
+              <p className="text-[11px] text-zinc-500 leading-relaxed bg-[#111111] p-3 rounded-xl border border-zinc-900">
+                📌 Esta lista foi calculada automaticamente somando as quantidades ideais para suprir as suas metas de <strong>{metaProteina}g de Proteína</strong> e <strong>{metaCarbo}g de Carboidrato</strong> pelos próximos 7 dias.
+              </p>
+
+              {shoppingListCategories.map((cat, idx) => (
+                <div key={idx} className="space-y-2">
+                  <h3 className="text-xs font-black text-zinc-400 uppercase tracking-wide px-1">{cat.title}</h3>
+                  <div className="space-y-1">
+                    {cat.items.map((item) => {
+                      const isChecked = !!checkedItems[item.id];
+                      return (
+                        <div 
+                          key={item.id} 
+                          onClick={() => toggleCheckItem(item.id)}
+                          className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
+                            isChecked 
+                              ? 'border-zinc-800/50 bg-zinc-950/40 opacity-40 line-through text-zinc-600' 
+                              : 'border-[#1f1f1f] bg-[#111111] text-zinc-200 hover:border-zinc-800'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            {isChecked ? (
+                              <CheckSquare className="w-4 h-4 text-[#7c3aed]" />
+                            ) : (
+                              <Square className="w-4 h-4 text-zinc-700" />
+                            )}
+                            <span className="text-xs font-medium">{item.name}</span>
+                          </div>
+                          <span className={`text-xs font-black px-2 py-0.5 rounded ${isChecked ? 'bg-zinc-900 text-zinc-700' : 'bg-zinc-900 text-purple-400'}`}>
+                            {item.qty}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="p-4 border-t border-[#1f1f1f] bg-[#0d0d0d] text-center">
+              <button 
+                onClick={() => setShopListOpen(false)}
+                className="w-full py-2.5 rounded-xl bg-gradient-to-r from-[#7c3aed] to-purple-600 text-white text-xs font-black hover:opacity-90 transition-all"
+              >
+                Voltar ao Painel
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
