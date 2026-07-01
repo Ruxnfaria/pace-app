@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { Dumbbell, CheckCircle2, Loader2, X, Info, Sparkles, Play } from 'lucide-react';
+import { Dumbbell, X, Info, Sparkles, Play, Calendar, Trash2, Zap, Flame, Activity, AlertTriangle } from 'lucide-react';
+import Link from 'next/link';
 
 interface Exercise {
   name: string;
@@ -10,43 +11,139 @@ interface Exercise {
   reps: string;
   rest: string;
   tip: string;
-  gif_url?: string; // Campo opcional preparado para receber o link do GIF do exercício
+  gif_url?: string;
 }
 
 interface Workout {
   id: string;
-  name: string;
-  muscle_group: string;
-  exercises: Exercise[];
-  completed: boolean;
+  title: string;
+  exercises: Exercise[] | string;
+  isRawText: boolean;
+  created_at: string;
+}
+
+function RenderAnimatedFallback({ exerciseName }: { exerciseName: string }) {
+  const name = exerciseName.toLowerCase();
+  const clean = name.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  
+  if (clean.includes('rosca') || clean.includes('biceps') || clean.includes('braco')) {
+    return (
+      <div className="flex flex-col items-center justify-center w-full h-full bg-gradient-to-br from-purple-950/40 to-zinc-950 p-4">
+        <Dumbbell className="w-8 h-8 text-[#7c3aed] animate-bounce" />
+        <span className="text-[8px] font-black tracking-widest text-purple-400 uppercase mt-2">BÍCEPS ACTIVE</span>
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-col items-center justify-center w-full h-full bg-gradient-to-br from-zinc-900 to-black p-4">
+      <Activity className="w-7 h-7 text-zinc-500 animate-pulse" />
+      <span className="text-[8px] font-black tracking-widest text-zinc-400 uppercase mt-2">PACE PLAY</span>
+    </div>
+  );
+}
+
+function ExerciseGif({ name, index }: { name: string; index: number }) {
+  const [gifUrl, setGifUrl] = useState<string>('');
+  const [errorMsg, setErrorMsg] = useState<string>('');
+  const [loading, setLoading] = useState<boolean>(true);
+
+  useEffect(() => {
+    const delayTimer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/exercise?name=${encodeURIComponent(name)}`);
+        const data = await res.json();
+
+        if (data.gifUrl) {
+          setGifUrl(data.gifUrl);
+        } else if (data.error) {
+          setErrorMsg(data.error);
+        }
+      } catch {
+        setErrorMsg('Erro de Conexão');
+      } finally {
+        setLoading(false);
+      }
+    }, index * 400);
+
+    return () => clearTimeout(delayTimer);
+  }, [name, index]);
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center w-full h-full bg-zinc-950/40 p-4">
+        <Activity className="w-5 h-5 text-purple-500 animate-spin mb-1" />
+        <span className="text-[7px] text-zinc-500 font-mono tracking-widest">AGUARDANDO FLUXO...</span>
+      </div>
+    );
+  }
+
+  if (errorMsg) {
+    return (
+      <div className="flex flex-col items-center justify-center w-full h-full bg-gradient-to-br from-red-950/50 to-zinc-950 p-2 text-center border border-red-900/30">
+        <AlertTriangle className="w-4 h-4 text-red-500 mb-1 mx-auto" />
+        <span className="text-[7px] font-black tracking-widest text-red-400 uppercase">ERRO</span>
+        <span className="text-[8px] text-zinc-400 mt-0.5 font-mono line-clamp-2 px-1">{errorMsg}</span>
+      </div>
+    );
+  }
+
+  if (!gifUrl) {
+    return <RenderAnimatedFallback exerciseName={name} />;
+  }
+
+  return (
+    <img 
+      src={gifUrl} 
+      alt={name} 
+      className="w-full h-full object-cover"
+      onError={() => setGifUrl('')}
+    />
+  );
 }
 
 export default function WorkoutsPage() {
   const supabase = createClient();
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [loading, setLoading] = useState(true);
-  const [generating, setGenerating] = useState(false);
   const [selectedWorkout, setSelectedWorkout] = useState<Workout | null>(null);
 
-  // Carrega os treinos do usuário salvos no Supabase
   async function loadWorkouts() {
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
       const { data } = await supabase
         .from('workouts')
-        .select('*')
+        .select('id, title, exercises, created_at')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
       if (data) {
-        setWorkouts(data.map(w => ({
-          id: w.id,
-          name: w.name,
-          muscle_group: w.muscle_group || 'Geral',
-          exercises: typeof w.exercises === 'string' ? JSON.parse(w.exercises) : (w.exercises as Exercise[] || []),
-          completed: w.completed
-        })));
+        const formatted = data.map((w: any) => {
+          let parsedExercises: any = [];
+          let isRawText = false;
+
+          try {
+            const trimmed = w.exercises.trim();
+            if (trimmed.startsWith('[')) {
+              parsedExercises = JSON.parse(trimmed);
+            } else {
+              parsedExercises = w.exercises;
+              isRawText = true;
+            }
+          } catch (e) {
+            parsedExercises = w.exercises;
+            isRawText = true;
+          }
+
+          return {
+            id: w.id,
+            title: w.title,
+            exercises: parsedExercises,
+            isRawText,
+            created_at: w.created_at
+          };
+        });
+        setWorkouts(formatted);
       }
     }
     setLoading(false);
@@ -56,215 +153,103 @@ export default function WorkoutsPage() {
     loadWorkouts();
   }, []);
 
-  // Chama a API para gerar os treinos com a inteligência do Coach Lucas Zanetti
-  async function generatePlan() {
-    setGenerating(true);
-    try {
-      const response = await fetch('/api/workouts/generate', { method: 'POST' });
-      if (response.ok) {
-        await loadWorkouts();
-      } else {
-        alert('Erro ao conectar com a assessoria. Verifique as chaves de API.');
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setGenerating(false);
+  async function handleDeleteWorkout(id: string, e: React.MouseEvent) {
+    e.stopPropagation();
+    if (confirm('Tem certeza que deseja excluir este treino permanentemente?')) {
+      const { error } = await supabase.from('workouts').delete().eq('id', id);
+      if (!error) setWorkouts(prev => prev.filter(w => w.id !== id));
     }
   }
 
-  // Marca o treino como concluído no Supabase e soma XP
-  async function completeWorkout(workoutId: string) {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
-    await supabase
-      .from('workouts')
-      .update({ completed: true, completed_at: new Date().toISOString(), xp_earned: 100 })
-      .eq('id', workoutId);
-
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('xp')
-      .eq('user_id', user.id)
-      .single();
-
-    const currentXp = profile?.xp || 0;
-
-    await supabase
-      .from('profiles')
-      .update({ xp: currentXp + 100 })
-      .eq('user_id', user.id);
-
-    setSelectedWorkout(null);
-    loadWorkouts();
-  }
+  const isWorkoutArray = selectedWorkout && !selectedWorkout.isRawText && Array.isArray(selectedWorkout.exercises) && selectedWorkout.exercises.length > 0;
 
   return (
     <div className="p-6 lg:p-10 space-y-8">
-      
-      {/* HEADER E SOLICITAÇÃO AO COACH */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="space-y-1">
           <h1 className="text-2xl lg:text-3xl font-black tracking-tight">MÓDULO DE TREINOS</h1>
-          <p className="text-xs lg:text-sm text-zinc-500">Acesse suas planilhas de força e performance estruturadas pelo Coach Lucas Zanetti.</p>
+          <p className="text-xs lg:text-sm text-zinc-500">Acesse suas planilhas de performance estruturadas pelo Coach Lucas Zanetti.</p>
         </div>
-        
-        <button
-          onClick={generatePlan}
-          disabled={generating || loading}
-          className="flex items-center justify-center gap-2 py-3 px-5 rounded-xl bg-[#7c3aed] text-white text-xs font-black hover:bg-[#6d28d9] transition-all disabled:opacity-40 shadow-lg shadow-purple-500/10"
-        >
-          {generating ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin" /> Coach Zanetti Montando Treino...
-            </>
-          ) : (
-            <>
-              <Sparkles className="w-4 h-4 fill-white" /> Solicitar Cronograma ao Coach Zanetti
-            </>
-          )}
-        </button>
+        <Link href="/dashboard/aria" className="flex items-center justify-center gap-2 py-3 px-5 rounded-xl bg-[#7c3aed] text-white text-xs font-black hover:bg-[#6d28d9] transition-all shadow-lg">
+          <Sparkles className="w-4 h-4 fill-white" /> Ajustar Treino na Mentoria
+        </Link>
       </div>
 
-      {/* LISTAGEM DE CARDS */}
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 animate-pulse">
           {[1, 2, 3].map(i => <div key={i} className="h-40 bg-[#111111] rounded-2xl border border-[#1f1f1f]" />)}
         </div>
-      ) : workouts.length === 0 ? (
-        <div className="p-12 text-center rounded-2xl border border-[#1f1f1f] bg-[#111111]/30 max-w-xl mx-auto space-y-3">
-          <div className="p-3 bg-[#1f1f1f] w-fit mx-auto rounded-xl text-zinc-500">
-            <Dumbbell className="w-6 h-6" />
-          </div>
-          <h3 className="text-sm font-bold text-zinc-200">Nenhum treino montado</h3>
-          <p className="text-xs text-zinc-500 max-w-xs mx-auto">Clique no botão superior para que o Coach Lucas Zanetti monte sua divisão semanal de alta performance.</p>
-        </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {workouts.map((workout) => (
-            <div 
-              key={workout.id}
-              onClick={() => setSelectedWorkout(workout)}
-              className={`p-5 rounded-2xl bg-[#111111] border transition-all cursor-pointer flex flex-col justify-between h-44 ${
-                workout.completed 
-                  ? 'border-green-500/20 bg-gradient-to-br from-[#111111] to-green-500/5' 
-                  : 'border-[#1f1f1f] hover:border-zinc-700'
-              }`}
-            >
+            <div key={workout.id} onClick={() => setSelectedWorkout(workout)} className="p-5 rounded-2xl bg-[#111111] border border-[#1f1f1f] hover:border-zinc-700 transition-all cursor-pointer flex flex-col justify-between h-44 relative group/card">
+              <button onClick={(e) => handleDeleteWorkout(workout.id, e)} className="absolute top-4 right-4 p-2 rounded-xl bg-zinc-900/80 border border-zinc-800 text-zinc-500 hover:text-red-500 hover:border-red-500/30 opacity-0 group-hover/card:opacity-100 transition-all duration-200">
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
               <div className="space-y-2">
-                <div className="flex justify-between items-start">
-                  <span className="text-[10px] font-black uppercase bg-[#1f1f1f] px-2.5 py-1 rounded-full text-zinc-400 tracking-wider">
-                    {workout.muscle_group}
-                  </span>
-                  {workout.completed && (
-                    <span className="flex items-center gap-1 text-[10px] font-bold text-[#22c55e] bg-green-500/10 px-2 py-0.5 rounded-full border border-green-500/20">
-                      <CheckCircle2 className="w-3 h-3" /> Concluído
-                    </span>
-                  )}
-                </div>
-                <h3 className="text-base font-bold tracking-tight text-white line-clamp-1">{workout.name}</h3>
-                <p className="text-xs text-zinc-500">{workout.exercises.length} exercícios prescritos</p>
+                <span className="text-[10px] font-black uppercase bg-[#1f1f1f] px-2.5 py-1 rounded-full text-zinc-400 tracking-wider flex items-center gap-1 w-fit">
+                  <Calendar className="w-3 h-3" /> {new Date(workout.created_at).toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' })}
+                </span>
+                <h3 className="text-base font-bold tracking-tight text-white line-clamp-1 pr-6">{workout.title}</h3>
+                <p className="text-xs text-zinc-500"> Ficha de treino ativa </p>
               </div>
-
               <div className="pt-3 border-t border-[#1f1f1f] flex justify-between items-center text-[11px] text-zinc-400 font-medium">
-                <span className="flex items-center gap-1">⏱️ Estimativa: ~50 min</span>
-                <span className="text-[#7c3aed] font-bold flex items-center gap-1">Ver ficha <Play className="w-2.5 h-2.5 fill-[#7c3aed]" /></span>
+                <span>⏱️ Prescrição Ativa</span>
+                <span className="text-[#7c3aed] font-bold flex items-center gap-1">Ver ficha de elite <Play className="w-2.5 h-2.5 fill-[#7c3aed]" /></span>
               </div>
             </div>
           ))}
         </div>
       )}
 
-      {/* MODAL DETALHADO COM OS GIFS DEMONSTRATIVOS */}
       {selectedWorkout && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-[#111111] border border-[#1f1f1f] rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl flex flex-col max-h-[85vh]">
-            
-            {/* Header Modal */}
+          <div className="bg-[#111111] border border-[#1f1f1f] rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[85vh]">
             <div className="p-5 border-b border-[#1f1f1f] flex justify-between items-start">
               <div>
-                <span className="text-[9px] font-black uppercase bg-[#7c3aed]/10 text-[#7c3aed] px-2 py-0.5 rounded border border-[#7c3aed]/20">{selectedWorkout.muscle_group}</span>
-                <h2 className="text-base font-bold mt-1 text-white">{selectedWorkout.name}</h2>
+                <span className="text-[9px] font-black uppercase bg-[#7c3aed]/10 text-[#7c3aed] px-2 py-0.5 rounded border border-[#7c3aed]/20">Execução Técnica</span>
+                <h2 className="text-base font-bold mt-1 text-white">{selectedWorkout.title}</h2>
               </div>
               <button onClick={() => setSelectedWorkout(null)} className="p-1 rounded-lg hover:bg-zinc-800 text-zinc-500 hover:text-white transition-colors">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            {/* Ficha de Exercícios + Player de Mídia */}
-            <div className="flex-1 overflow-y-auto p-5 space-y-6 custom-scrollbar bg-[#070707]">
-              {selectedWorkout.exercises.map((ex, i) => (
-                <div key={i} className="p-4 rounded-xl bg-[#111111] border border-[#1f1f1f] space-y-3 shadow-inner">
-                  
-                  {/* Título e Séries */}
-                  <div className="flex justify-between items-center">
-                    <h4 className="text-xs font-bold text-white uppercase tracking-tight">{i + 1}. {ex.name}</h4>
-                    <span className="text-[11px] text-purple-400 font-black bg-[#7c3aed]/10 px-2.5 py-1 rounded border border-[#7c3aed]/20 shadow-sm">
-                      {ex.sets}x {ex.reps}
-                    </span>
-                  </div>
+            <div className="flex-1 overflow-y-auto p-5 space-y-4 custom-scrollbar bg-[#070707]">
+              {isWorkoutArray ? (
+                (selectedWorkout.exercises as Exercise[]).map((ex, i) => (
+                  <div key={i} className="p-4 rounded-xl bg-[#111111] border border-[#1f1f1f] flex flex-col sm:flex-row gap-4 items-center sm:items-start shadow-inner">
+                    
+                    {/* ENVIANDO O INDEX PARA ENFILEIRAR AS REQUISIÇÕES */}
+                    <div className="relative w-28 h-28 sm:w-32 sm:h-32 bg-zinc-950 rounded-xl overflow-hidden border border-zinc-900 shrink-0 shadow-md flex items-center justify-center">
+                      <ExerciseGif name={ex.name} index={i} />
+                    </div>
 
-                  {/* PLAYER DO GIF DEMONSTRATIVO */}
-                  <div className="relative w-full h-44 bg-zinc-950 rounded-xl overflow-hidden border border-zinc-900 flex items-center justify-center group">
-                    {ex.gif_url ? (
-                      <img 
-                        src={ex.gif_url} 
-                        alt={`Execução de ${ex.name}`} 
-                        className="w-full h-full object-cover"
-                        loading="lazy"
-                      />
-                    ) : (
-                      // Fallback visual premium com animação enquanto não há URL real injetada
-                      <div className="flex flex-col items-center justify-center space-y-2 text-zinc-600">
-                        <div className="p-3 bg-zinc-900/50 rounded-full border border-zinc-800/80 animate-bounce">
-                          <Dumbbell className="w-5 h-5 text-[#7c3aed]" />
-                        </div>
-                        <span className="text-[10px] uppercase font-black tracking-widest text-zinc-500">Execução em Loop</span>
+                    <div className="flex-1 w-full space-y-2">
+                      <div className="flex flex-wrap justify-between items-start gap-2">
+                        <h4 className="text-xs font-black text-white uppercase tracking-tight">{i + 1}. {ex.name}</h4>
+                        <span className="text-[10px] text-purple-400 font-black bg-[#7c3aed]/10 px-2 py-0.5 rounded border border-[#7c3aed]/20">{ex.sets}x {ex.reps}</span>
                       </div>
-                    )}
-                    <div className="absolute top-2 left-2 bg-black/60 backdrop-blur-md border border-zinc-800 px-2 py-0.5 rounded text-[9px] font-bold text-zinc-400 uppercase tracking-wider">
-                      Vídeo de Apoio
+                      <p className="text-[10px] text-zinc-500 font-bold">⏱️ Descanso: {ex.rest}</p>
+                      <div className="bg-[#0a0a0a] p-2.5 rounded-lg border border-zinc-900/80 flex items-start gap-2">
+                        <Info className="w-3.5 h-3.5 text-[#7c3aed] shrink-0 mt-0.5" />
+                        <p className="text-[10px] text-zinc-400 leading-relaxed"><span className="font-bold text-zinc-200">Instrução:</span> {ex.tip}</p>
+                      </div>
                     </div>
                   </div>
-
-                  {/* Detalhes Técnicos */}
-                  <div className="flex gap-4 text-[10px] text-zinc-500 font-bold px-1">
-                    <span>⏱️ Descanso: {ex.rest}</span>
-                  </div>
-
-                  {/* Dica do Coach Zanetti */}
-                  <div className="bg-[#0a0a0a] p-3 rounded-lg border border-zinc-900 flex items-start gap-2.5">
-                    <Info className="w-4 h-4 text-[#7c3aed] mt-0.5 shrink-0" />
-                    <p className="text-[10px] text-zinc-400 leading-relaxed">
-                      <span className="font-bold text-zinc-200 uppercase text-[9px] tracking-wider block mb-0.5">Instrução do Coach Zanetti:</span> 
-                      {ex.tip}
-                    </p>
-                  </div>
-
-                </div>
-              ))}
-            </div>
-
-            {/* Rodapé do Modal */}
-            <div className="p-4 border-t border-[#1f1f1f] bg-[#0a0a0a] flex justify-between items-center">
-              <span className="text-[11px] text-zinc-500 font-bold tracking-tight">+100 XP por treino concluído</span>
-              {!selectedWorkout.completed ? (
-                <button
-                  onClick={() => completeWorkout(selectedWorkout.id)}
-                  className="py-2.5 px-4 rounded-xl bg-gradient-to-r from-[#7c3aed] to-purple-600 text-white text-xs font-black hover:opacity-90 transition-all shadow-lg shadow-purple-500/10"
-                >
-                  Concluir Treino ✅
-                </button>
+                ))
               ) : (
-                <span className="text-xs font-bold text-[#22c55e] bg-green-500/5 px-3 py-2 rounded-xl border border-green-500/10">Treino Finalizado!</span>
+                <div className="p-5 rounded-xl bg-[#111111] border border-[#1f1f1f] text-xs text-zinc-300 whitespace-pre-wrap">
+                  {typeof selectedWorkout.exercises === 'string' ? selectedWorkout.exercises : JSON.stringify(selectedWorkout.exercises)}
+                </div>
               )}
             </div>
-
+            <div className="p-4 border-t border-[#1f1f1f] bg-[#0a0a0a] flex justify-end items-center">
+              <button onClick={() => setSelectedWorkout(null)} className="py-2 px-4 rounded-xl bg-zinc-800 text-white text-xs font-bold hover:bg-zinc-700 transition-all">Fechar Ficha</button>
+            </div>
           </div>
         </div>
       )}
-
     </div>
   );
 }

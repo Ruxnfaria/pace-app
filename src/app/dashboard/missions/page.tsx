@@ -2,25 +2,24 @@
 
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { Target, Shield, Award, CheckCircle2, Loader2, Sparkles, Zap } from 'lucide-react';
+import { Target, Shield, CheckCircle2, Sparkles, Zap, Calendar } from 'lucide-react';
+import Link from 'next/link';
 
 interface Mission {
   id: string;
   title: string;
-  description: string;
-  xp_reward: number;
   completed: boolean;
-  type: string;
+  for_date: string;
+  xp_reward: number;
 }
 
 export default function MissionsPage() {
   const supabase = createClient();
   const [missions, setMissions] = useState<Mission[]>([]);
   const [loading, setLoading] = useState(true);
-  const [generating, setGenerating] = useState(false);
   const [userXp, setUserXp] = useState(0);
 
-  // Sistema de Níveis baseado no XP acumulado
+  // Sistema de Patentes dinâmico baseado no XP real do Supabase
   const getLevelInfo = (xp: number) => {
     if (xp < 500) return { name: 'Iniciante 🌱', nextXp: 500, prevXp: 0 };
     if (xp < 1500) return { name: 'Bronze 🥉', nextXp: 1500, prevXp: 500 };
@@ -33,7 +32,7 @@ export default function MissionsPage() {
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
-      // 1. Busca XP do Perfil
+      // 1. Busca XP real do perfil do usuário
       const { data: profile } = await supabase
         .from('profiles')
         .select('xp')
@@ -41,21 +40,21 @@ export default function MissionsPage() {
         .single();
       if (profile) setUserXp(profile.xp || 0);
 
-      // 2. Busca as missões no banco
+      // 2. Busca todas as missões da tabela correta (daily_missions)
       const { data: missionsData } = await supabase
-        .from('missions')
-        .select('*')
+        .from('daily_missions')
+        .select('id, title, completed, for_date')
         .eq('user_id', user.id)
+        .order('for_date', { ascending: false })
         .order('created_at', { ascending: false });
 
       if (missionsData) {
         setMissions(missionsData.map(m => ({
           id: m.id,
           title: m.title,
-          description: m.description || '',
-          xp_reward: m.xp_reward,
           completed: m.completed,
-          type: m.type
+          for_date: m.for_date,
+          xp_reward: 50 // 50 XP fixo por missão para bater com o cálculo do Dashboard!
         })));
       }
     }
@@ -66,36 +65,31 @@ export default function MissionsPage() {
     loadMissionsAndData();
   }, []);
 
-  // Gera missões personalizadas com IA
-  async function generateMissions() {
-    setGenerating(true);
-    try {
-      const response = await fetch('/api/missions/generate', { method: 'POST' });
-      if (response.ok) {
-        await loadMissionsAndData();
-      } else {
-        alert('Erro ao gerar missões diárias.');
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setGenerating(false);
-    }
-  }
+  // Gerencia a conclusão da missão e atualização de XP em tempo real
+  async function handleCompleteMission(missionId: string, rewardXp: number, currentStatus: boolean) {
+    if (currentStatus) return; // Se já foi concluída, não faz nada
 
-  // Completa a missão, dispara o XP e atualiza a tela
-  async function completeMission(missionId: string, rewardXp: number) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    // 1. Marca missão como completada
-    await supabase.from('missions').update({ completed: true }).eq('id', missionId);
+    // 1. Atualiza o status na tabela oficial do banco
+    const { error } = await supabase
+      .from('daily_missions')
+      .update({ completed: true })
+      .eq('id', missionId);
 
-    // 2. Soma o XP na conta do usuário
-    await supabase.from('profiles').update({ xp: userXp + rewardXp }).eq('user_id', user.id);
+    if (!error) {
+      // 2. Injeta o novo XP acumulado no perfil do aluno
+      const newXp = userXp + rewardXp;
+      await supabase
+        .from('profiles')
+        .update({ xp: newXp })
+        .eq('user_id', user.id);
 
-    setUserXp(prev => prev + rewardXp);
-    setMissions(prev => prev.map(m => m.id === missionId ? { ...m, completed: true } : m));
+      // 3. Atualiza o estado visual imediatamente
+      setUserXp(newXp);
+      setMissions(prev => prev.map(m => m.id === missionId ? { ...m, completed: true } : m));
+    }
   }
 
   const lvl = getLevelInfo(userXp);
@@ -111,48 +105,39 @@ export default function MissionsPage() {
           <p className="text-xs lg:text-sm text-zinc-500">Cumpra os objetivos diários para coletar XP e subir de patente.</p>
         </div>
         
-        <button
-          onClick={generateMissions}
-          disabled={generating || loading}
-          className="flex items-center justify-center gap-2 py-3 px-5 rounded-xl bg-[#7c3aed] text-white text-xs font-black hover:bg-[#6d28d9] transition-all disabled:opacity-40 shadow-lg"
+        <Link
+          href="/dashboard/aria"
+          className="flex items-center justify-center gap-2 py-3 px-5 rounded-xl bg-[#7c3aed] text-white text-xs font-black hover:bg-[#6d28d9] transition-all shadow-lg"
         >
-          {generating ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin" /> Sincronizando...
-            </>
-          ) : (
-            <>
-              <Sparkles className="w-4 h-4 fill-white" /> Atualizar Foco com IA
-            </>
-          )}
-        </button>
+          <Sparkles className="w-4 h-4 fill-white" /> Solicitar Mais Missões na IA
+        </Link>
       </div>
 
-      {/* CARD DE PROGRESSÃO DE NÍVEL / GAMIFICAÇÃO */}
+      {/* CARD DE PROGRESSÃO DE PATENTE */}
       <div className="p-6 rounded-2xl bg-[#111111] border border-[#1f1f1f] flex flex-col md:flex-row items-center gap-6">
-        <div className="p-4 rounded-xl bg-[#7c3aed]/10 border border-[#7c3aed]/20 text-[#7c3aed] shadow-inner">
-          <Shield className="w-10 h-10 fill-[#7c3aed]/10" />
+        <div className="p-4 rounded-xl bg-[#7c3aed]/10 border border-[#7c3aed]/20 text-[#7c3aed]">
+          <Target className="w-10 h-10" />
         </div>
         <div className="flex-1 w-full space-y-3">
           <div className="flex justify-between items-end">
             <div>
-              <span className="text-[10px] font-black uppercase text-zinc-500 tracking-wider">Patente Atual</span>
+              <span className="text-[10px] font-black uppercase text-zinc-500 tracking-wider">Patente Cadastrada</span>
               <h2 className="text-xl font-black text-white mt-0.5">{lvl.name}</h2>
             </div>
             <span className="text-xs font-bold text-zinc-400">{userXp} / {lvl.nextXp} XP</span>
           </div>
           <div className="w-full bg-[#1f1f1f] h-3 rounded-full overflow-hidden relative shadow-inner">
             <div 
-              className="h-full bg-gradient-to-r from-[#7c3aed] to-purple-500 rounded-full transition-all duration-500 shadow-lg shadow-purple-500/30" 
+              className="h-full bg-gradient-to-r from-[#7c3aed] to-purple-500 rounded-full transition-all duration-500" 
               style={{ width: `${progressoXp}%` }}
             />
           </div>
         </div>
       </div>
 
-      {/* LISTAGEM DE MISSÕES */}
+      {/* OBJETIVOS GERADOS */}
       <div className="space-y-4">
-        <h3 className="text-sm font-bold uppercase tracking-wider text-zinc-500">Objetivos Ativos</h3>
+        <h3 className="text-sm font-bold uppercase tracking-wider text-zinc-500">Seu Checklist de Performance</h3>
 
         {loading ? (
           <div className="space-y-2 animate-pulse">
@@ -163,8 +148,8 @@ export default function MissionsPage() {
             <div className="p-3 bg-[#1f1f1f] w-fit mx-auto rounded-xl text-zinc-500">
               <Target className="w-6 h-6" />
             </div>
-            <h3 className="text-sm font-bold">Nenhum foco diário ativo</h3>
-            <p className="text-xs text-zinc-500 max-w-xs mx-auto">Clique no botão superior para fazer a ARIA varrer suas metas e disparar missões dinâmicas de hidratação, sono e treinos.</p>
+            <h3 className="text-sm font-bold">Nenhum foco ativo</h3>
+            <p className="text-xs text-zinc-500 max-w-xs mx-auto">Vá até o chat da Mentoria Pace e solicite o planejamento do dia para fragmentar sua rotina em metas.</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-2">
@@ -177,27 +162,31 @@ export default function MissionsPage() {
                     : 'border-[#1f1f1f]'
                 }`}
               >
-                <div className="flex items-start gap-3.5">
-                  <div className={`p-2.5 rounded-lg border mt-0.5 ${mission.completed ? 'bg-green-500/10 border-green-500/20 text-[#22c55e]' : 'bg-[#1f1f1f] border-zinc-800 text-zinc-500'}`}>
-                    <Award className="w-4 h-4" />
+                <div className="flex items-center gap-3.5">
+                  <div className={`p-2 rounded-lg border text-xs font-medium flex items-center gap-1 ${
+                    mission.completed ? 'bg-green-500/10 border-green-500/20 text-[#22c55e]' : 'bg-[#1f1f1f] border-zinc-800 text-zinc-400'
+                  }`}>
+                    <Calendar className="w-3.5 h-3.5" />
+                    {new Date(mission.for_date + 'T00:00:00').toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' })}
                   </div>
                   <div>
-                    <h4 className={`text-xs font-bold ${mission.completed ? 'text-zinc-500 line-through' : 'text-white'}`}>{mission.title}</h4>
-                    <p className="text-[11px] text-zinc-500 mt-0.5 leading-relaxed">{mission.description}</p>
+                    <h4 className={`text-xs font-bold ${mission.completed ? 'text-zinc-500 line-through' : 'text-white'}`}>
+                      {mission.title}
+                    </h4>
                   </div>
                 </div>
 
                 <div>
                   {!mission.completed ? (
                     <button
-                      onClick={() => completeMission(mission.id, mission.xp_reward)}
+                      onClick={() => handleCompleteMission(mission.id, mission.xp_reward, mission.completed)}
                       className="flex items-center gap-1 py-2 px-3 bg-[#1f1f1f] hover:bg-zinc-800 border border-zinc-800 rounded-xl text-[11px] font-bold text-zinc-300 transition-colors"
                     >
-                      Resgatar +{mission.xp_reward} <Zap className="w-3 h-3 fill-orange-400 text-orange-400" />
+                      Concluir +{mission.xp_reward} <Zap className="w-3 h-3 fill-orange-400 text-orange-400" />
                     </button>
                   ) : (
                     <span className="flex items-center gap-1 text-[11px] font-bold text-[#22c55e] bg-green-500/10 px-3 py-1.5 rounded-xl border border-green-500/20">
-                      <CheckCircle2 className="w-3.5 h-3.5" /> Reclamado
+                      <CheckCircle2 className="w-3.5 h-3.5" /> Batida
                     </span>
                   )}
                 </div>

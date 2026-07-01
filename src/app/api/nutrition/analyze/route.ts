@@ -21,11 +21,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Descrição ausente' }, { status: 400 });
     }
 
-    // 2. Prompt forçando o retorno estrito em formato JSON estruturado
-    const prompt = `Analise a seguinte refeição/alimento e estime os valores nutricionais (calorias, proteínas, carboidratos e gorduras):
+    // 2. Prompt com a metodologia clínica de alta performance do Dr. Gabriel Fontes
+    const prompt = `Atue como o sistema de mapeamento metabólico do Dr. Gabriel Fontes, especialista em nutrição esportiva de elite. 
+Analise minuciosamente a seguinte refeição/alimento descrita pelo paciente para estimar os macronutrientes com precisão cirúrgica:
 "${description}"
 
-Você DEBE retornar estritamente um objeto JSON puro (sem blocos markdown de código, sem textos extras). O formato do objeto deve ser obrigatoriamente este:
+Você DEVE retornar estritamente um objeto JSON puro (sem blocos markdown de código, sem textos extras). O formato do objeto deve ser obrigatoriamente este:
 {
   "calories": 350,
   "protein": 30,
@@ -33,12 +34,14 @@ Você DEBE retornar estritamente um objeto JSON puro (sem blocos markdown de có
   "fat": 8
 }
 
-Seja realista e assertivo nas estimativas com base em tabelas nutricionais padrão de alimentos.`;
+Diretrizes Clínicas:
+- Seja extremamente realista e assertivo nas estimativas com base em tabelas oficiais de composição de alimentos (TACO) voltadas para o cenário de performance.
+- Considere variações implícitas de preparo físico (como uso moderado de gorduras para grelhados se não especificado).`;
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o',
       messages: [{ role: 'user', content: prompt }],
-      temperature: 0.3,
+      temperature: 0.2, // Baixado para 0.2 para garantir máxima consistência matemática nos macros
       response_format: { type: "json_object" }
     });
 

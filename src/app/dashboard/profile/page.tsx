@@ -64,10 +64,12 @@ export default function ProfilePage() {
       .eq('user_id', user.id);
 
     setSaving(false);
+    
     if (!error) {
-      alert('Perfil atualizado com sucesso!');
+      alert('Perfil updated com sucesso!');
     } else {
-      alert('Erro ao atualizar perfil.');
+      console.error('Erro do Supabase:', error);
+      alert(`Erro do Banco: ${error.message} \nDetalhe: ${error.details || 'Verifique as colunas ou RLS'}`);
     }
   }
 
