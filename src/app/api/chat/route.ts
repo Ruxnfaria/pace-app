@@ -206,9 +206,13 @@ PERSONAS DE ELITE:
       const processedTools = new Set<string>();
     
       for (const toolCall of toolCalls) {
+        if (toolCall.type !== "function") {
+          continue;
+        }
+      
         const functionName = toolCall.function.name;
         const args = JSON.parse(toolCall.function.arguments);
-    
+      
         if (processedTools.has(functionName)) continue;
         processedTools.add(functionName);
 
