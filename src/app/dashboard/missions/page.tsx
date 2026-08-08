@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Target, Shield, CheckCircle2, Sparkles, Zap, Calendar } from 'lucide-react';
 import Link from 'next/link';
+import { useRewardQueue } from '@/components/gamification/RewardQueueProvider';
+import { GamificationActions } from '@/lib/gamification/actions';
 
 interface Mission {
   id: string;
@@ -15,6 +17,7 @@ interface Mission {
 
 export default function MissionsPage() {
   const supabase = createClient();
+  const { enqueueActions } = useRewardQueue();
   const [missions, setMissions] = useState<Mission[]>([]);
   const [loading, setLoading] = useState(true);
   const [userXp, setUserXp] = useState(0);
@@ -89,8 +92,22 @@ export default function MissionsPage() {
       // 3. Atualiza o estado visual imediatamente
       setUserXp(newXp);
       setMissions(prev => prev.map(m => m.id === missionId ? { ...m, completed: true } : m));
+      const completedMission = missions.find(
+        mission => mission.id === missionId
+      );
+      
+      if (completedMission) {
+        enqueueActions([
+          GamificationActions.showMissionCompleted(
+            completedMission.id,
+            completedMission.title,
+            rewardXp
+          ),
+        ]);
+      }
     }
   }
+  
 
   const lvl = getLevelInfo(userXp);
   const progressoXp = lvl.nextXp === lvl.prevXp ? 100 : ((userXp - lvl.prevXp) / (lvl.nextXp - lvl.prevXp)) * 100;

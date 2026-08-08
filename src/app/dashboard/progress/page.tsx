@@ -85,8 +85,17 @@ export default function ProgressPage() {
   }
 
   // Pega o último registro para exibir nos cards de destaque
-  const ultimoRegistro = history[history.length - 1] || { weight: '--', waist: '--', hip: '--', chest: '--' };
+  const ultimoRegistro =
+  history.length > 0
+    ? history[history.length - 1]
+    : { weight: 0, waist: 0, hip: 0, chest: 0, measured_at: "--" };
 
+const primeiroRegistro = history.length > 0 ? history[0] : null;
+
+const evolucaoTotal =
+  primeiroRegistro && history.length > 0
+    ? ultimoRegistro.weight - primeiroRegistro.weight
+    : 0;
   return (
     <div className="p-6 lg:p-10 space-y-8">
       
@@ -104,6 +113,45 @@ export default function ProgressPage() {
           <Plus className="w-4 h-4" /> Registrar Métricas
         </button>
       </div>
+{/* RESUMO DA EVOLUÇÃO */}
+<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+  <div className="p-5 rounded-2xl bg-[#111111] border border-[#1f1f1f]">
+    <p className="text-[10px] uppercase tracking-wider text-zinc-500 font-bold">
+      Peso Atual
+    </p>
+
+    <h3 className="text-3xl font-black text-white mt-2">
+      {ultimoRegistro.weight}
+      <span className="text-sm text-zinc-500 ml-1">kg</span>
+    </h3>
+  </div>
+
+  <div className="p-5 rounded-2xl bg-[#111111] border border-[#1f1f1f]">
+  <p className="text-[10px] uppercase tracking-wider text-zinc-500 font-bold">
+  Evolução Total
+</p>
+
+<h3 className="text-3xl font-black text-white mt-2">
+  {evolucaoTotal > 0 ? "+" : ""}
+  {evolucaoTotal.toFixed(1)}
+  <span className="text-sm text-zinc-500 ml-1">kg</span>
+</h3>
+  </div>
+
+  <div className="p-5 rounded-2xl bg-[#111111] border border-[#1f1f1f]">
+    <p className="text-[10px] uppercase tracking-wider text-zinc-500 font-bold">
+      Última Atualização
+    </p>
+
+    <h3 className="text-lg font-black text-white mt-2">
+      {history.length > 0
+        ? history[history.length - 1].measured_at
+        : "--"}
+    </h3>
+  </div>
+
+</div>
 
       {/* GRÁFICO PRINCIPAL */}
       <div className="p-6 rounded-2xl bg-[#111111] border border-[#1f1f1f] space-y-4">

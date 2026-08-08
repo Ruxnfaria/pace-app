@@ -52,17 +52,26 @@ export async function POST(req: Request) {
       content: imageUrl ? `${messageToSave} (Mídia anexada: ${imageUrl})` : messageToSave
     });
 
-    // 5. Prompt de Alta Performance Estruturado
-    const systemPrompt = `Você é a inteligência por trás da Mesa de Elite da Mentoria Pace. 
+   // 5. Prompt de Alta Performance Estruturado
+const systemPrompt = `Você é a inteligência por trás da Mesa de Elite da Mentoria Pace. 
 Você assume a postura de mentores profissionais de altíssimo nível, combinando rigor técnico, sobriedade e assertividade.
 
 ${userContext}
 
 DIRETRIZES ABSOLUTAS DE AUTOMAÇÃO:
 - Responda de forma direta, madura e elegante, em parágrafos corridos e fluidos no chat. PROIBIDO listas por tópicos no seu texto de resposta convencional.
-- Sempre que você (Coach Zanetti) prescrever, montar ou alterar uma rotina ou divisão de treino, você DEVE acionar obrigatoriamente a ferramenta 'salvar_treino' fornecendo a lista exata e desmembrada de exercícios para o sistema renderizar os players visuais.
-- Sempre que planejar as calorias e macros, acione 'salvar_nutricao'.
-- Sempre que definir metas claras, dispare múltiplas chamadas de 'salvar_missao_diaria'.
+- Sempre que você (Coach Zanetti) prescrever, montar ou alterar uma rotina ou divisão de treino, você DEVE acionar obrigatoriamente a ferramenta 'salvar_treino' fornecendo a lista exata e desmembrada de exercícios.
+- Sempre que você criar um treino, você DEVE criar no mínimo 3 missões diárias usando obrigatoriamente a ferramenta 'salvar_missao_diaria'.
+- Sempre que você (Dr. Gabriel Fontes) planejar calorias, macros ou dieta, acione obrigatoriamente 'salvar_nutricao'.
+- Sempre que você criar uma dieta, você DEVE criar no mínimo 3 missões diárias usando obrigatoriamente a ferramenta 'salvar_missao_diaria'.
+- As missões devem ser objetivas, mensuráveis e práticas.
+
+Exemplos de missões:
+Concluir treino de hoje.
+Beber 3 litros de água.
+Consumir todas as refeições planejadas.
+Fazer 20 minutos de cardio.
+Dormir 8 horas.
 
 PERSONAS DE ELITE:
 1. COACH LUCAS ZANETTI (Treino e Fichas)
@@ -99,38 +108,60 @@ PERSONAS DE ELITE:
           }
         }
       },
-      {
-        type: 'function',
-        function: {
-          name: 'salvar_nutricao',
-          description: 'Atualiza o planejamento de macros e o plano alimentar na aba de Nutrição.',
-          parameters: {
+{
+  type: 'function',
+  function: {
+    name: 'salvar_nutricao',
+    description: 'Salva o plano alimentar completo do aluno na aba de Nutrição.',
+    parameters: {
+      type: 'object',
+      properties: {
+        goal: { type: 'string' },
+        calories: { type: 'integer' },
+        protein: { type: 'integer' },
+        carbs: { type: 'integer' },
+        fat: { type: 'integer' },
+        meals: {
+          type: 'array',
+          items: {
             type: 'object',
             properties: {
-              calories: { type: 'integer', description: 'Total de calorias diárias' },
-              proteins: { type: 'integer', description: 'Gramas de proteína' },
-              carbs: { type: 'integer', description: 'Gramas de carboidrato' },
-              fats: { type: 'integer', description: 'Gramas de gordura' },
-              meal_plan: { type: 'string', description: 'Descrição das refeições estruturadas para o dia.' }
+              icon: { type: 'string' },
+              title: { type: 'string' },
+              time: { type: 'string' },
+              short: { type: 'string' },
+              foods: {
+                type: 'array',
+                items: { type: 'string' }
+              },
+              protein: { type: 'string' },
+              carbs: { type: 'string' },
+              fat: { type: 'string' }
             },
-            required: ['calories', 'proteins', 'carbs', 'fats', 'meal_plan']
+            required: ['icon', 'title', 'time', 'short', 'foods', 'protein', 'carbs', 'fat']
           }
         }
       },
-      {
-        type: 'function',
-        function: {
-          name: 'salvar_missao_diaria',
-          description: 'Gera uma única tarefa individual e obrigatória na lista de missões diárias.',
-          parameters: {
-            type: 'object',
-            properties: {
-              title: { type: 'string', description: 'Título da meta diária.' }
-            },
-            required: ['title']
-          }
-        }
-      }
+      required: ['goal', 'calories', 'protein', 'carbs', 'fat', 'meals']
+    }
+  }
+},
+{
+  type: 'function',
+  function: {
+    name: 'salvar_missao_diaria',
+    description: 'Cria uma missão diária individual para o aluno cumprir no dashboard.',
+    parameters: {
+      type: 'object',
+      properties: {
+        title: { type: 'string' },
+        xp_reward: { type: 'integer' },
+        category: { type: 'string' }
+      },
+      required: ['title']
+    }
+  }
+},
     ];
 
     // 7. Monta a linha do tempo
@@ -168,11 +199,18 @@ PERSONAS DE ELITE:
     const responseMessage = completion.choices[0].message;
     const toolCalls = responseMessage.tool_calls;
 
+    console.log("TOOL CALLS:", JSON.stringify(toolCalls, null, 2));
+
     // 9. PROCESSAMENTO DAS FERRAMENTAS (Salvando a lista de exercícios como string JSON no banco)
     if (toolCalls) {
+      const processedTools = new Set<string>();
+    
       for (const toolCall of toolCalls) {
         const functionName = toolCall.function.name;
         const args = JSON.parse(toolCall.function.arguments);
+    
+        if (processedTools.has(functionName)) continue;
+        processedTools.add(functionName);
 
         if (functionName === 'salvar_treino') {
           await supabase.from('workouts').insert({
@@ -183,13 +221,23 @@ PERSONAS DE ELITE:
         }
 
         if (functionName === 'salvar_nutricao') {
-          await supabase.from('nutrition').insert({
+          await supabase
+            .from('nutrition_plans')
+            .update({ active: false })
+            .eq('user_id', user.id);
+            await supabase
+            .from('nutrition_plans')
+            .update({ active: false })
+            .eq('user_id', user.id);
+          await supabase.from('nutrition_plans').insert({
             user_id: user.id,
+            goal: args.goal,
             calories: args.calories,
-            proteins: args.proteins,
+            protein: args.protein,
             carbs: args.carbs,
-            fats: args.fats,
-            meal_plan: args.meal_plan
+            fat: args.fat,
+            meals: args.meals,
+            active: true
           });
         }
 

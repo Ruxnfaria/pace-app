@@ -1,8 +1,14 @@
 'use client';
 
-import { Sidebar } from '@/components/sidebar';
+import { Sidebar } from "@/components/sidebar";
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { RewardQueueProvider } from "@/components/gamification/RewardQueueProvider";
+import { RewardQueueDebug } from "@/components/gamification/RewardQueueDebug";
+import { RewardQueueTest } from "@/components/gamification/RewardQueueTest";
+import { CelebrationManager } from "@/components/gamification/CelebrationManager";
+import { CoreEnergyAbsorption } from "@/components/gamification/core/CoreEnergyAbsorption";
+import { CoreEvolutionOverlay } from "@/components/evolution/CoreEvolutionOverlay";
 import { 
   LayoutDashboard, 
   MessageSquare, 
@@ -28,7 +34,8 @@ export default function DashboardLayout({
   const pathname = usePathname();
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-white">
+    <RewardQueueProvider>
+      <div className="min-h-screen bg-[#0a0a0a] text-white">
       {/* Sidebar para Desktop */}
       <Sidebar />
 
@@ -60,5 +67,15 @@ export default function DashboardLayout({
         })}
       </nav>
     </div>
-  );
+
+    <CelebrationManager />
+
+<CoreEnergyAbsorption />
+
+<CoreEvolutionOverlay />
+
+{/* <RewardQueueTest /> */}
+  </RewardQueueProvider>
+
+);
 }

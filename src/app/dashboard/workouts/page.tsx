@@ -106,7 +106,7 @@ export default function WorkoutsPage() {
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedWorkout, setSelectedWorkout] = useState<Workout | null>(null);
-
+  const [completedExercises, setCompletedExercises] = useState<number[]>([]);
   async function loadWorkouts() {
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
@@ -162,7 +162,43 @@ export default function WorkoutsPage() {
   }
 
   const isWorkoutArray = selectedWorkout && !selectedWorkout.isRawText && Array.isArray(selectedWorkout.exercises) && selectedWorkout.exercises.length > 0;
-
+  const toggleExercise = (index: number) => {
+    setCompletedExercises((prev) =>
+      prev.includes(index)
+        ? prev.filter((i) => i !== index)
+        : [...prev, index]
+    );
+  };
+  
+  const allExercisesCompleted =
+    isWorkoutArray &&
+    completedExercises.length ===
+      (selectedWorkout?.exercises as Exercise[])?.length;
+  async function handleFinishWorkout() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+  
+    const todayStr = new Date().toISOString().split("T")[0];
+  
+    const { error } = await supabase
+      .from("daily_missions")
+      .update({
+        completed: true,
+        completed_at: new Date().toISOString(),
+      })
+      .eq("user_id", user.id)
+      .eq("for_date", todayStr)
+      .ilike("title", "%Treinar%");
+  
+    if (error) {
+      console.error("Erro ao finalizar treino:", error);
+      return;
+    }
+  
+    alert("Treino finalizado! +XP nas missões.");
+    setCompletedExercises([]);
+setSelectedWorkout(null);
+  }
   return (
     <div className="p-6 lg:p-10 space-y-8">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -174,7 +210,39 @@ export default function WorkoutsPage() {
           <Sparkles className="w-4 h-4 fill-white" /> Ajustar Treino na Mentoria
         </Link>
       </div>
+{/* TREINO DE HOJE */}
+{workouts.length > 0 && (
+  <div className="p-6 rounded-2xl bg-[#111111] border border-[#7c3aed]/20">
+    <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+      <div>
+        <p className="text-[10px] uppercase tracking-widest text-[#7c3aed] font-black">
+          Treino de Hoje
+        </p>
 
+        <h2 className="text-2xl font-black text-white mt-1">
+          {workouts[0].title}
+        </h2>
+
+        <p className="text-sm text-zinc-500 mt-2">
+          {Array.isArray(workouts[0].exercises)
+            ? `${workouts[0].exercises.length} exercícios cadastrados`
+            : "Treino disponível"}
+        </p>
+      </div>
+
+      <button
+       onClick={() => {
+        setCompletedExercises([]);
+        setSelectedWorkout(workouts[0]);
+      }}
+        className="flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-[#7c3aed] text-white font-black text-sm hover:bg-[#6d28d9] transition-all"
+      >
+        <Play className="w-4 h-4 fill-white" />
+        Iniciar Agora
+      </button>
+    </div>
+  </div>
+)}
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 animate-pulse">
           {[1, 2, 3].map(i => <div key={i} className="h-40 bg-[#111111] rounded-2xl border border-[#1f1f1f]" />)}
@@ -214,7 +282,30 @@ export default function WorkoutsPage() {
                 <X className="w-4 h-4" />
               </button>
             </div>
+            {isWorkoutArray && (
+  <div className="px-5 pt-4">
+    <div className="flex justify-between text-xs text-zinc-400 mb-2">
+      <span>Progresso do treino</span>
+      <span>
+        {completedExercises.length}/
+        {(selectedWorkout.exercises as Exercise[]).length}
+      </span>
+    </div>
 
+    <div className="w-full h-2 bg-[#1f1f1f] rounded-full overflow-hidden">
+      <div
+        className="h-full bg-[#7c3aed] transition-all"
+        style={{
+          width: `${
+            (completedExercises.length /
+              (selectedWorkout.exercises as Exercise[]).length) *
+            100
+          }%`,
+        }}
+      />
+    </div>
+  </div>
+)}
             <div className="flex-1 overflow-y-auto p-5 space-y-4 custom-scrollbar bg-[#070707]">
               {isWorkoutArray ? (
                 (selectedWorkout.exercises as Exercise[]).map((ex, i) => (
@@ -226,6 +317,20 @@ export default function WorkoutsPage() {
                     </div>
 
                     <div className="flex-1 w-full space-y-2">
+                    <div className="flex justify-end">
+  <button
+    onClick={() => toggleExercise(i)}
+    className={`text-[10px] px-3 py-1 rounded-lg font-bold transition-all ${
+      completedExercises.includes(i)
+        ? "bg-green-500/20 text-green-400 border border-green-500/30"
+        : "bg-zinc-800 text-zinc-400 border border-zinc-700"
+    }`}
+  >
+    {completedExercises.includes(i)
+      ? "✓ Concluído"
+      : "Marcar Exercício"}
+  </button>
+</div>
                       <div className="flex flex-wrap justify-between items-start gap-2">
                         <h4 className="text-xs font-black text-white uppercase tracking-tight">{i + 1}. {ex.name}</h4>
                         <span className="text-[10px] text-purple-400 font-black bg-[#7c3aed]/10 px-2 py-0.5 rounded border border-[#7c3aed]/20">{ex.sets}x {ex.reps}</span>
@@ -244,9 +349,28 @@ export default function WorkoutsPage() {
                 </div>
               )}
             </div>
-            <div className="p-4 border-t border-[#1f1f1f] bg-[#0a0a0a] flex justify-end items-center">
-              <button onClick={() => setSelectedWorkout(null)} className="py-2 px-4 rounded-xl bg-zinc-800 text-white text-xs font-bold hover:bg-zinc-700 transition-all">Fechar Ficha</button>
-            </div>
+            <div className="p-4 border-t border-[#1f1f1f] bg-[#0a0a0a] flex justify-between items-center gap-3">
+  <button
+    onClick={() => setSelectedWorkout(null)}
+    className="py-2 px-4 rounded-xl bg-zinc-800 text-white text-xs font-bold hover:bg-zinc-700 transition-all"
+  >
+    Fechar Ficha
+  </button>
+
+  <button
+  onClick={handleFinishWorkout}
+  disabled={!allExercisesCompleted}
+  className={`py-2 px-4 rounded-xl text-xs font-bold transition-all ${
+    allExercisesCompleted
+      ? "bg-[#7c3aed] text-white hover:bg-[#6d28d9]"
+      : "bg-zinc-800 text-zinc-500 cursor-not-allowed"
+  }`}
+>
+  {allExercisesCompleted
+    ? "⚡ Finalizar Treino +XP"
+    : `🔒 Complete todos os exercícios (${completedExercises.length}/${(selectedWorkout?.exercises as Exercise[])?.length || 0})`}
+</button>
+</div>
           </div>
         </div>
       )}

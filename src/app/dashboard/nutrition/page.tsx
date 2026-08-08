@@ -13,14 +13,25 @@ interface MealLog {
   fat: number;
   logged_at: string;
 }
-
+interface MealScheduleItem {
+  icon: string;
+  title: string;
+  time: string;
+  short: string;
+  foods: string[];
+  protein: string;
+  carbs: string;
+  fat: string;
+}
 export default function NutritionPage() {
   const supabase = createClient();
   const [meals, setMeals] = useState<MealLog[]>([]);
+  const [nutritionPlan, setNutritionPlan] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [shopListOpen, setShopListOpen] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
+  const [checkedMeals, setCheckedMeals] = useState<string[]>([]);
 
   // Estado para os itens checados da lista de compras
   const [checkedItems, setCheckedItems] = useState<Record<string, boolean>>({});
@@ -33,10 +44,10 @@ export default function NutritionPage() {
   const [fat, setFat] = useState('');
 
   // Metas de alta performance estruturadas pelo Dr. Gabriel Fontes
-  const metaCalorias = 2200;
-  const metaProteina = 160; 
-  const metaCarbo = 240; 
-  const metaGordura = 70; 
+  const metaCalorias = nutritionPlan?.calories || 3000;
+const metaProteina = nutritionPlan?.protein || 180;
+const metaCarbo = nutritionPlan?.carbs || 400;
+const metaGordura = nutritionPlan?.fat || 70;
 
   async function loadNutritionLogs() {
     setLoading(true);
@@ -47,7 +58,18 @@ export default function NutritionPage() {
         .select('*')
         .eq('user_id', user.id)
         .order('logged_at', { ascending: false });
-
+        const { data: planData } = await supabase
+        .from("nutrition_plans")
+        .select("*")
+        .eq("user_id", user.id)
+        .eq("active", true)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      
+      if (planData) {
+        setNutritionPlan(planData);
+      }
       if (data) {
         setMeals(data.map(m => ({
           id: m.id,
@@ -96,34 +118,67 @@ export default function NutritionPage() {
     }
   }
 
-  // Salva a refeição no Supabase
-  async function handleSaveMeal(e: React.FormEvent) {
-    e.preventDefault();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+// Salva a refeição manual no Supabase
+async function completeMeal() {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return;
 
-    await supabase.from('nutrition_logs').insert({
-      user_id: user.id,
-      meal_name: mealDescription,
-      calories: parseInt(calories) || 0,
-      protein: parseFloat(protein) || 0,
-      carbs: parseFloat(carbs) || 0,
-      fat: parseFloat(fat) || 0,
-    });
+  const alreadyCompleted = meals.some(
+    (meal) => meal.meal_name === nextPendingMeal.title
+  );
 
-    setMealDescription('');
-    setCalories('');
-    setProtein('');
-    setCarbs('');
-    setFat('');
-    setModalOpen(false);
-    loadNutritionLogs();
+  if (alreadyCompleted) {
+    alert("Essa refeição já foi concluída.");
+    return;
   }
 
-  const toggleCheckItem = (id: string) => {
-    setCheckedItems(prev => ({ ...prev, [id]: !prev[id] }));
-  };
+  const mealCalories =
+    parseInt(nextPendingMeal.protein) * 4 +
+    parseInt(nextPendingMeal.carbs) * 4 +
+    parseInt(nextPendingMeal.fat) * 9;
 
+  const { data, error } = await supabase
+    .from("nutrition_logs")
+    .insert({
+      user_id: user.id,
+      meal_name: nextPendingMeal.title,
+      calories: mealCalories,
+      protein: parseInt(nextPendingMeal.protein),
+      carbs: parseInt(nextPendingMeal.carbs),
+      fat: parseInt(nextPendingMeal.fat),
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error("Erro ao concluir refeição:", error);
+    alert(error.message);
+    return;
+  }
+
+  setMeals((prev) => [
+    {
+      id: data.id,
+      meal_name: data.meal_name,
+      calories: data.calories || 0,
+      protein: Number(data.protein) || 0,
+      carbs: Number(data.carbs) || 0,
+      fat: Number(data.fat) || 0,
+      logged_at: data.logged_at,
+    },
+    ...prev,
+  ]);
+
+  setCheckedMeals((prev) => [...prev, nextPendingMeal.title]);
+
+  alert(`${nextPendingMeal.title} concluída!`);
+}
+const toggleCheckItem = (id: string) => {
+  setCheckedItems((prev) => ({
+    ...prev,
+    [id]: !prev[id],
+  }));
+};
   // Cálculos de totais consumidos hoje
   const totalCalorias = meals.reduce((sum, m) => sum + m.calories, 0);
   const totalProteina = meals.reduce((sum, m) => sum + m.protein, 0);
@@ -138,6 +193,7 @@ export default function NutritionPage() {
   const kgBatataSemana = ((metaCarbo * 0.4 * 7) / 20 * 100 / 1000).toFixed(1); 
 
   const shoppingListCategories = [
+    
     {
       title: "🍗 Fontes de Proteína (Semanal)",
       items: [
@@ -164,6 +220,99 @@ export default function NutritionPage() {
     }
   ];
 
+  const defaultMealSchedule: MealScheduleItem[] = [
+    {
+      icon: "☀️",
+      title: "Café da Manhã",
+      time: "07:00",
+      short: "Ovos + Pão + Whey",
+      foods: ["4 ovos inteiros", "2 fatias de pão integral", "1 banana", "30g de whey"],
+      protein: "35g",
+      carbs: "60g",
+      fat: "15g",
+    },
+    {
+      icon: "🍛",
+      title: "Almoço",
+      time: "12:30",
+      short: "Frango + Arroz",
+      foods: ["200g arroz", "150g frango", "salada", "legumes"],
+      protein: "45g",
+      carbs: "80g",
+      fat: "10g",
+    },
+    {
+      icon: "🥤",
+      title: "Lanche",
+      time: "16:00",
+      short: "Shake + Banana",
+      foods: ["1 banana", "40g aveia", "30g whey"],
+      protein: "30g",
+      carbs: "50g",
+      fat: "5g",
+    },
+    {
+      icon: "🍽️",
+      title: "Jantar",
+      time: "20:00",
+      short: "Carne + Arroz",
+      foods: ["200g arroz", "150g carne", "salada"],
+      protein: "40g",
+      carbs: "70g",
+      fat: "15g",
+    },
+    {
+      icon: "🌙",
+      title: "Ceia",
+      time: "22:30",
+      short: "Iogurte + Whey",
+      foods: ["1 iogurte natural", "30g whey", "1 fruta"],
+      protein: "30g",
+      carbs: "30g",
+      fat: "5g",
+    },
+  ];
+  const mealSchedule: MealScheduleItem[] =
+  Array.isArray(nutritionPlan?.meals) && nutritionPlan.meals.length > 0
+    ? nutritionPlan.meals
+    : defaultMealSchedule;
+  const now = new Date();
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  
+  function timeToMinutes(time: string) {
+    const [hours, minutes] = time.split(":").map(Number);
+    return hours * 60 + minutes;
+  }
+  
+  const currentMeal =
+    [...mealSchedule]
+      .reverse()
+      .find((meal) => currentMinutes >= timeToMinutes(meal.time)) ||
+    mealSchedule[0];
+    const nextPendingMeal =
+    mealSchedule.find(
+      (meal) =>
+        !meals.some(
+          (loggedMeal) => loggedMeal.meal_name === meal.title
+        )
+    ) || mealSchedule[0];
+  const nextMeal =
+    mealSchedule.find((meal) => timeToMinutes(meal.time) > currentMinutes) ||
+    mealSchedule[0];
+  
+  const nextMealMinutes = timeToMinutes(nextMeal.time);
+  const diffMinutes =
+    nextMealMinutes > currentMinutes
+      ? nextMealMinutes - currentMinutes
+      : 24 * 60 - currentMinutes + nextMealMinutes;
+  
+  const nextMealCountdown = `${Math.floor(diffMinutes / 60)}h ${diffMinutes % 60}m`;
+  const isCurrentMealCompleted = meals.some(
+    (meal) => meal.meal_name === currentMeal.title
+  );
+  const alreadyCompleted = meals.some(
+    (meal) => meal.meal_name === currentMeal.title
+  );
   return (
     <div className="p-6 lg:p-10 space-y-8">
       
@@ -190,7 +339,143 @@ export default function NutritionPage() {
           </button>
         </div>
       </div>
+      <div className="p-5 rounded-2xl bg-[#111111] border border-[#1f1f1f]">
+  <div className="flex items-center justify-between mb-4">
+    <div>
+      <p className="text-xs uppercase tracking-wider text-zinc-500 font-black">
+        Plano Atual
+      </p>
 
+      <h2 className="text-xl font-black text-white mt-1">
+        Hipertrofia
+      </h2>
+    </div>
+
+    <Apple className="w-6 h-6 text-[#7c3aed]" />
+  </div>
+
+  <div className="grid grid-cols-5 gap-4">
+    <div>
+      <p className="text-[10px] text-zinc-500 uppercase">Calorias</p>
+      <p className="text-base font-black">{metaCalorias}</p>
+    </div>
+
+    <div>
+      <p className="text-[10px] text-zinc-500 uppercase">Proteína</p>
+      <p className="text-base font-black">{metaProteina}g</p>
+    </div>
+
+    <div>
+      <p className="text-[10px] text-zinc-500 uppercase">Carbo</p>
+      <p className="text-base font-black">{metaCarbo}g</p>
+    </div>
+
+    <div>
+      <p className="text-[10px] text-zinc-500 uppercase">Gordura</p>
+      <p className="text-base font-black">{metaGordura}g</p>
+    </div>
+
+    <div>
+      <p className="text-[10px] text-zinc-500 uppercase">Coach</p>
+      <p className="text-sm font-black text-[#7c3aed]">
+        Dr. Gabriel Fontes
+      </p>
+    </div>
+  </div>
+</div>
+{/* REFEIÇÃO ATUAL */}
+<div className="p-5 rounded-2xl bg-[#111111] border border-[#1f1f1f]">
+  <div className="flex items-center justify-between mb-4">
+    <div>
+    <div className="flex items-center gap-2">
+  <p className="text-xs uppercase tracking-wider text-zinc-500 font-black">
+    Refeição Atual
+  </p>
+
+  <span className="px-2 py-1 rounded-full bg-green-500/10 text-green-400 text-[10px] font-bold">
+    EM HORÁRIO
+  </span>
+</div>
+
+      <h3 className="text-xl font-black text-white">
+      {nextPendingMeal.icon} {nextPendingMeal.title}
+      </h3>
+      <p className="text-sm text-[#7c3aed] font-bold mt-2">
+      Próxima refeição em {nextMealCountdown}
+</p>
+    </div>
+
+    <Sparkles className="w-5 h-5 text-[#7c3aed]" />
+  </div>
+
+  <div className="space-y-3 text-sm text-zinc-300 mt-4">
+  {nextPendingMeal.foods.map((food, index) => (
+    <div key={index} className="flex items-center gap-2">
+      <span className="w-2 h-2 rounded-full bg-[#7c3aed]" />
+      <p>{food}</p>
+    </div>
+  ))}
+</div>
+
+<div className="flex gap-6 mt-4 text-xs font-bold">
+  <span className="text-[#7c3aed]">{nextPendingMeal.protein} proteína</span>
+  <span className="text-orange-400">{nextPendingMeal.carbs} carbo</span>
+  <span className="text-yellow-400">{nextPendingMeal.fat} gordura</span>
+</div>
+
+<button
+  type="button"
+  disabled={meals.some((meal) => meal.meal_name === nextPendingMeal.title)}
+  onClick={() => completeMeal()}
+  className={`w-full mt-5 py-3 rounded-xl text-sm font-black transition-all ${
+    alreadyCompleted
+      ? "bg-green-600 text-white cursor-not-allowed"
+      : "bg-[#7c3aed] text-white hover:bg-[#6d28d9]"
+  }`}
+>
+{meals.some((meal) => meal.meal_name === nextPendingMeal.title)
+  ? "✓ Refeição Concluída"
+  : "Concluir Refeição"}
+</button>
+</div>
+
+
+ <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+  {mealSchedule
+    
+    .map((meal) => {
+      const isNext = meal.title === nextPendingMeal.title;
+      const isCompleted = meals.some(
+        (loggedMeal) => loggedMeal.meal_name === meal.title
+      );
+      return (
+        <div
+          key={meal.title}
+          className={`p-4 rounded-xl bg-[#111111] border transition-all ${
+            isNext
+              ? "border-[#7c3aed] shadow-lg shadow-purple-950/20"
+              : "border-[#1f1f1f]"
+          }`}
+        >
+          <p className="text-xs text-zinc-500">
+            {meal.icon} {meal.title}
+          </p>
+
+          <p className="font-bold text-white mt-1">{meal.time}</p>
+
+          <p className="text-[10px] text-zinc-500 mt-1">
+            {meal.short}
+          </p>
+
+          {isNext && (
+            <p className="text-[10px] text-[#7c3aed] font-black mt-2">
+              PRÓXIMA REFEIÇÃO
+            </p>
+          )}
+        </div>
+      );
+    })}
+</div>
       {/* METAS E RESUMO DE MACROS */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
         
