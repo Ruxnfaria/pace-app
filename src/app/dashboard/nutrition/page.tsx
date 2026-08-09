@@ -89,34 +89,94 @@ const metaGordura = nutritionPlan?.fat || 70;
     loadNutritionLogs();
   }, []);
 
-  // Aciona o sistema do Dr. Gabriel Fontes para analisar os macros do prato
-  async function analyzeMealWithAI() {
-    if (!mealDescription.trim()) return;
-    setAnalyzing(true);
+// Aciona o sistema do Dr. Gabriel Fontes para analisar os macros do prato
+async function analyzeMealWithAI() {
+  if (!mealDescription.trim()) return;
 
-    try {
-      const response = await fetch('/api/nutrition/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ description: mealDescription }),
+  setAnalyzing(true);
+
+  try {
+    const response = await fetch("/api/nutrition/analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ description: mealDescription }),
+    });
+
+    const data = await response.json();
+
+    if (response.ok && data.success) {
+      setCalories(data.data.calories.toString());
+      setProtein(data.data.protein.toString());
+      setCarbs(data.data.carbs.toString());
+      setFat(data.data.fat.toString());
+    } else {
+      alert(
+        "O sistema do Dr. Fontes não conseguiu processar. Digite os macros manualmente."
+      );
+    }
+  } catch (err) {
+    console.error(err);
+  } finally {
+    setAnalyzing(false);
+  }
+}
+
+// Salva uma refeição registrada manualmente
+async function handleSaveMeal(e: React.FormEvent<HTMLFormElement>) {
+  e.preventDefault();
+
+  try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      alert("Você precisa estar logado para registrar uma refeição.");
+      return;
+    }
+
+    const caloriesValue = Number(calories) || 0;
+    const proteinValue = Number(protein) || 0;
+    const carbsValue = Number(carbs) || 0;
+    const fatValue = Number(fat) || 0;
+
+    const mealName =
+      nextPendingMeal?.title ||
+      mealDescription.trim() ||
+      "Refeição";
+
+    const { error } = await supabase
+      .from("nutrition_logs")
+      .insert({
+        user_id: user.id,
+        meal_name: mealName,
+        calories: caloriesValue,
+        protein: proteinValue,
+        carbs: carbsValue,
+        fat: fatValue,
+        logged_at: new Date().toISOString(),
       });
 
-      const data = await response.json();
-
-      if (response.ok && data.success) {
-        setCalories(data.data.calories.toString());
-        setProtein(data.data.protein.toString());
-        setCarbs(data.data.carbs.toString());
-        setFat(data.data.fat.toString());
-      } else {
-        alert('O sistema do Dr. Fontes não conseguiu processar. Digite os macros manualmente.');
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setAnalyzing(false);
+    if (error) {
+      console.error("Erro ao salvar refeição:", error);
+      alert("Não foi possível registrar a refeição.");
+      return;
     }
+
+    await loadNutritionLogs();
+
+    setMealDescription("");
+    setCalories("");
+    setProtein("");
+    setCarbs("");
+    setFat("");
+
+    setModalOpen(false);
+  } catch (error) {
+    console.error("Erro inesperado ao salvar refeição:", error);
+    alert("Ocorreu um erro ao registrar a refeição.");
   }
+}
 
 // Salva a refeição manual no Supabase
 async function completeMeal() {
