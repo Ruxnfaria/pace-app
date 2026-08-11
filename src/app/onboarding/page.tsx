@@ -58,6 +58,7 @@ export default function OnboardingPage() {
         age: parseInt(age),
         gender,
         available_days: days,
+        onboarding_completed: true,
         updated_at: new Date().toISOString(),
       })
       .eq('user_id', userId);
