@@ -11,6 +11,7 @@ export async function POST(req: Request) {
     const contentType = req.headers.get("content-type") || "";
     let body: any = {};
 
+    // Perfect Pay pode enviar JSON ou Form URL Encoded
     if (contentType.includes("application/json")) {
       body = await req.json();
     } else {
@@ -21,88 +22,154 @@ export async function POST(req: Request) {
       });
     }
 
-    // Formato oficial do webhook da Perfect Pay
-    const customerEmail =
-      body?.customer?.email ||
-      body?.email ||
-      body?.client_email;
+    // Dados enviados pela Perfect Pay
+    const customerEmail = String(
+      body.email ||
+      body.client_email ||
+      ""
+    )
+      .trim()
+      .toLowerCase();
 
-    const saleStatus = Number(
-      body?.sale_status_enum ??
-      body?.sale_status ??
-      body?.status
-    );
-
-    const saleCode = body?.code || null;
-    const productCode = body?.product?.code || null;
+    const saleStatus = String(
+      body.status ||
+      body.sale_status ||
+      ""
+    )
+      .trim()
+      .toLowerCase();
 
     console.log(
-      `[Perfect Pay] Venda: ${saleCode} | Cliente: ${customerEmail} | Status: ${saleStatus}`
+      `[Perfect Pay] Email: ${customerEmail} | Status: ${saleStatus}`
     );
 
     if (!customerEmail) {
       return NextResponse.json(
-        { error: "E-mail do cliente não encontrado" },
+        { error: "E-mail não enviado pela Perfect Pay" },
         { status: 400 }
       );
     }
 
-    // 2 = approved
-    if (saleStatus === 2) {
+    // Procura o comprador no Supabase Auth
+    const {
+      data: { users },
+      error: usersError,
+    } = await supabaseAdmin.auth.admin.listUsers({
+      page: 1,
+      perPage: 1000,
+    });
+
+    if (usersError) {
+      throw usersError;
+    }
+
+    const authUser = users.find(
+      (user) =>
+        user.email?.trim().toLowerCase() === customerEmail
+    );
+
+    // O comprador ainda não criou conta no PACE
+    if (!authUser) {
+      console.log(
+        `[Perfect Pay] Usuário ainda não cadastrado: ${customerEmail}`
+      );
+
+      return NextResponse.json(
+        {
+          received: true,
+          userFound: false,
+          message: "Compra recebida, mas usuário ainda não possui conta no PACE.",
+        },
+        { status: 200 }
+      );
+    }
+
+    // PAGAMENTO APROVADO
+    if (
+      saleStatus === "approved" ||
+      saleStatus === "aprovado" ||
+      saleStatus === "2"
+    ) {
       const { data, error } = await supabaseAdmin
         .from("profiles")
         .update({
           status_assinatura: "ativo",
         })
-        .eq("email", customerEmail)
-        .select("id");
+        .eq("user_id", authUser.id)
+        .select("id, user_id, status_assinatura");
 
       if (error) {
         throw error;
       }
 
       console.log(
-        `[Perfect Pay] Usuário ${customerEmail} ativado. Perfis atualizados: ${data?.length ?? 0}`
+        `[Perfect Pay] ${customerEmail} ATIVADO. Perfis atualizados: ${data?.length ?? 0}`
+      );
+
+      return NextResponse.json(
+        {
+          received: true,
+          userFound: true,
+          subscriptionStatus: "ativo",
+          updatedProfiles: data?.length ?? 0,
+        },
+        { status: 200 }
       );
     }
 
-    // 6 = cancelled
-    // 7 = refunded
-    // 9 = charged_back
-    else if ([6, 7, 9].includes(saleStatus)) {
-      const { error } = await supabaseAdmin
+    // REEMBOLSO / CHARGEBACK
+    if (
+      ["4", "5", "chargeback", "refunded", "devolvido"].includes(
+        saleStatus
+      )
+    ) {
+      const { data, error } = await supabaseAdmin
         .from("profiles")
         .update({
           status_assinatura: "inativo",
         })
-        .eq("email", customerEmail);
+        .eq("user_id", authUser.id)
+        .select("id, user_id, status_assinatura");
 
       if (error) {
         throw error;
       }
 
       console.log(
-        `[Perfect Pay] Usuário ${customerEmail} desativado.`
+        `[Perfect Pay] ${customerEmail} BLOQUEADO. Perfis atualizados: ${data?.length ?? 0}`
+      );
+
+      return NextResponse.json(
+        {
+          received: true,
+          userFound: true,
+          subscriptionStatus: "inativo",
+          updatedProfiles: data?.length ?? 0,
+        },
+        { status: 200 }
       );
     }
+
+    // Outros eventos são recebidos, mas não alteram assinatura
+    console.log(
+      `[Perfect Pay] Status ${saleStatus} recebido sem alteração da assinatura.`
+    );
 
     return NextResponse.json(
       {
         received: true,
-        saleCode,
-        productCode,
+        userFound: true,
+        subscriptionChanged: false,
+        saleStatus,
       },
       { status: 200 }
     );
   } catch (error: any) {
-    console.error(
-      "[Perfect Pay] Erro no webhook:",
-      error
-    );
+    console.error("[Perfect Pay] Erro no webhook:", error);
 
     return NextResponse.json(
       {
-        error: error?.message || "Erro interno",
+        error: error?.message || "Erro interno no webhook",
       },
       { status: 500 }
     );
