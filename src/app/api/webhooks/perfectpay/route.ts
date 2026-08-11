@@ -22,19 +22,60 @@ export async function POST(req: Request) {
       });
     }
 
-    // Dados enviados pela Perfect Pay
+    // =====================================================
+    // 1. SEGURANÇA DO WEBHOOK
+    // =====================================================
+
+    const expectedToken = process.env.PERFECTPAY_WEBHOOK_SECRET;
+
+    if (!expectedToken) {
+      console.error(
+        "[Perfect Pay] PERFECTPAY_WEBHOOK_SECRET não configurado."
+      );
+
+      return NextResponse.json(
+        { error: "Configuração de segurança ausente" },
+        { status: 500 }
+      );
+    }
+
+    const receivedToken = String(body.token || "").trim();
+
+    if (!receivedToken || receivedToken !== expectedToken) {
+      console.warn("[Perfect Pay] Tentativa com token inválido.");
+
+      return NextResponse.json(
+        { error: "Token inválido" },
+        { status: 401 }
+      );
+    }
+
+    // =====================================================
+    // 2. DADOS DO COMPRADOR
+    // =====================================================
+
+    // Payload real da Perfect Pay:
+    // body.customer.email
+    //
+    // Mantemos os outros formatos como fallback.
     const customerEmail = String(
-      body.email ||
-      body.client_email ||
-      ""
+      body?.customer?.email ||
+        body.email ||
+        body.client_email ||
+        ""
     )
       .trim()
       .toLowerCase();
 
+    // Payload real da Perfect Pay:
+    // sale_status_enum
+    //
+    // Mantemos status/sale_status para compatibilidade.
     const saleStatus = String(
-      body.status ||
-      body.sale_status ||
-      ""
+      body.sale_status_enum ??
+        body.status ??
+        body.sale_status ??
+        ""
     )
       .trim()
       .toLowerCase();
@@ -50,7 +91,10 @@ export async function POST(req: Request) {
       );
     }
 
-    // Procura o comprador no Supabase Auth
+    // =====================================================
+    // 3. LOCALIZAR USUÁRIO NO SUPABASE AUTH
+    // =====================================================
+
     const {
       data: { users },
       error: usersError,
@@ -68,7 +112,7 @@ export async function POST(req: Request) {
         user.email?.trim().toLowerCase() === customerEmail
     );
 
-    // O comprador ainda não criou conta no PACE
+    // Comprou, mas ainda não criou conta no PACE
     if (!authUser) {
       console.log(
         `[Perfect Pay] Usuário ainda não cadastrado: ${customerEmail}`
@@ -78,17 +122,21 @@ export async function POST(req: Request) {
         {
           received: true,
           userFound: false,
-          message: "Compra recebida, mas usuário ainda não possui conta no PACE.",
+          message:
+            "Compra recebida, mas usuário ainda não possui conta no PACE.",
         },
         { status: 200 }
       );
     }
 
-    // PAGAMENTO APROVADO
+    // =====================================================
+    // 4. PAGAMENTO APROVADO
+    // =====================================================
+
     if (
+      saleStatus === "2" ||
       saleStatus === "approved" ||
-      saleStatus === "aprovado" ||
-      saleStatus === "2"
+      saleStatus === "aprovado"
     ) {
       const { data, error } = await supabaseAdmin
         .from("profiles")
@@ -103,7 +151,9 @@ export async function POST(req: Request) {
       }
 
       console.log(
-        `[Perfect Pay] ${customerEmail} ATIVADO. Perfis atualizados: ${data?.length ?? 0}`
+        `[Perfect Pay] ${customerEmail} ATIVADO. Perfis atualizados: ${
+          data?.length ?? 0
+        }`
       );
 
       return NextResponse.json(
@@ -117,11 +167,19 @@ export async function POST(req: Request) {
       );
     }
 
-    // REEMBOLSO / CHARGEBACK
+    // =====================================================
+    // 5. REEMBOLSO / CHARGEBACK
+    // =====================================================
+
     if (
-      ["4", "5", "chargeback", "refunded", "devolvido"].includes(
-        saleStatus
-      )
+      [
+        "7",
+        "9",
+        "refunded",
+        "devolvido",
+        "chargeback",
+        "charged_back",
+      ].includes(saleStatus)
     ) {
       const { data, error } = await supabaseAdmin
         .from("profiles")
@@ -136,7 +194,9 @@ export async function POST(req: Request) {
       }
 
       console.log(
-        `[Perfect Pay] ${customerEmail} BLOQUEADO. Perfis atualizados: ${data?.length ?? 0}`
+        `[Perfect Pay] ${customerEmail} BLOQUEADO. Perfis atualizados: ${
+          data?.length ?? 0
+        }`
       );
 
       return NextResponse.json(
@@ -150,7 +210,10 @@ export async function POST(req: Request) {
       );
     }
 
-    // Outros eventos são recebidos, mas não alteram assinatura
+    // =====================================================
+    // 6. OUTROS EVENTOS
+    // =====================================================
+
     console.log(
       `[Perfect Pay] Status ${saleStatus} recebido sem alteração da assinatura.`
     );
