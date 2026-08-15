@@ -120,7 +120,91 @@ async function analyzeMealWithAI() {
     setAnalyzing(false);
   }
 }
+async function updateNutritionMissions(
+  userId: string,
+  newMealProtein: number = 0
+) {
+  const today = new Date().toISOString().split("T")[0];
 
+  // Busca todas as refeições do usuário
+  const { data: allLogs, error: logsError } = await supabase
+    .from("nutrition_logs")
+    .select("protein, logged_at")
+    .eq("user_id", userId);
+
+  if (logsError) {
+    console.error("Erro ao buscar refeições para missões:", logsError);
+    return;
+  }
+
+  // Considera somente refeições registradas hoje
+  const todayLogs = (allLogs || []).filter((log) => {
+    if (!log.logged_at) return false;
+
+    const logDate = new Date(log.logged_at)
+      .toISOString()
+      .split("T")[0];
+
+    return logDate === today;
+  });
+
+  const mealCount = todayLogs.length;
+
+  const proteinTotal = todayLogs.reduce(
+    (sum, log) => sum + (Number(log.protein) || 0),
+    0
+  );
+
+  // MISSÃO: registrar 3 refeições
+  const { data: nutritionMission } = await supabase
+    .from("daily_missions")
+    .select("id, completed, xp_reward")
+    .eq("user_id", userId)
+    .eq("for_date", today)
+    .eq("category", "nutrition")
+    .maybeSingle();
+
+  if (nutritionMission) {
+    const nutritionCompleted = mealCount >= 3;
+
+    await supabase
+      .from("daily_missions")
+      .update({
+        current_value: Math.min(mealCount, 3),
+        completed: nutritionCompleted,
+        completed_at:
+          nutritionCompleted && !nutritionMission.completed
+            ? new Date().toISOString()
+            : undefined,
+      })
+      .eq("id", nutritionMission.id);
+  }
+
+  // MISSÃO: bater meta de proteína
+  const { data: proteinMission } = await supabase
+    .from("daily_missions")
+    .select("id, completed, xp_reward")
+    .eq("user_id", userId)
+    .eq("for_date", today)
+    .eq("category", "protein")
+    .maybeSingle();
+
+  if (proteinMission) {
+    const proteinCompleted = proteinTotal >= metaProteina;
+
+    await supabase
+      .from("daily_missions")
+      .update({
+        current_value: proteinCompleted ? 1 : 0,
+        completed: proteinCompleted,
+        completed_at:
+          proteinCompleted && !proteinMission.completed
+            ? new Date().toISOString()
+            : undefined,
+      })
+      .eq("id", proteinMission.id);
+  }
+}
 // Salva uma refeição registrada manualmente
 async function handleSaveMeal(e: React.FormEvent<HTMLFormElement>) {
   e.preventDefault();
@@ -157,13 +241,15 @@ async function handleSaveMeal(e: React.FormEvent<HTMLFormElement>) {
         logged_at: new Date().toISOString(),
       });
 
-    if (error) {
-      console.error("Erro ao salvar refeição:", error);
-      alert("Não foi possível registrar a refeição.");
-      return;
-    }
-
-    await loadNutritionLogs();
+      if (error) {
+        console.error("Erro ao salvar refeição:", error);
+        alert("Não foi possível registrar a refeição.");
+        return;
+      }
+      
+      await updateNutritionMissions(user.id, proteinValue);
+      
+      await loadNutritionLogs();
 
     setMealDescription("");
     setCalories("");
@@ -231,7 +317,12 @@ async function completeMeal() {
 
   setCheckedMeals((prev) => [...prev, nextPendingMeal.title]);
 
-  alert(`${nextPendingMeal.title} concluída!`);
+await updateNutritionMissions(
+  user.id,
+  parseInt(nextPendingMeal.protein)
+);
+
+alert(`${nextPendingMeal.title} concluída!`);
 }
 const toggleCheckItem = (id: string) => {
   setCheckedItems((prev) => ({
