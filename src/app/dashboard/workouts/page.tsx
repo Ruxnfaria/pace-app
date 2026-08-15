@@ -64,10 +64,13 @@ function ExerciseGif({ name, index }: { name: string; index: number }) {
         setLoading(false);
       }
     }, index * 400);
+    
+    
 
     return () => clearTimeout(delayTimer);
   }, [name, index]);
 
+  
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center w-full h-full bg-zinc-950/40 p-4">
@@ -78,6 +81,7 @@ function ExerciseGif({ name, index }: { name: string; index: number }) {
   }
 
   if (errorMsg) {
+    
     return (
       <div className="flex flex-col items-center justify-center w-full h-full bg-gradient-to-br from-red-950/50 to-zinc-950 p-2 text-center border border-red-900/30">
         <AlertTriangle className="w-4 h-4 text-red-500 mb-1 mx-auto" />
@@ -107,6 +111,8 @@ export default function WorkoutsPage() {
   const [loading, setLoading] = useState(true);
   const [selectedWorkout, setSelectedWorkout] = useState<Workout | null>(null);
   const [completedExercises, setCompletedExercises] = useState<number[]>([]);
+  const [generatingWorkout, setGeneratingWorkout] = useState(false);
+const [generateError, setGenerateError] = useState('');
   async function loadWorkouts() {
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
@@ -199,6 +205,31 @@ export default function WorkoutsPage() {
     setCompletedExercises([]);
 setSelectedWorkout(null);
   }
+  async function handleGenerateFirstWorkout() {
+    try {
+      setGeneratingWorkout(true);
+      setGenerateError('');
+  
+      const response = await fetch('/api/workouts/generate', {
+        method: 'POST',
+      });
+  
+      const data = await response.json();
+  
+      if (!response.ok) {
+        throw new Error(data.error || 'Erro ao gerar treino.');
+      }
+  
+      await loadWorkouts();
+    } catch (error: any) {
+      console.error('Erro ao gerar primeiro treino:', error);
+      setGenerateError(
+        error?.message || 'Não foi possível gerar seu treino. Tente novamente.'
+      );
+    } finally {
+      setGeneratingWorkout(false);
+    }
+  }
   return (
     <div className="p-6 lg:p-10 space-y-8">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -240,6 +271,61 @@ setSelectedWorkout(null);
         <Play className="w-4 h-4 fill-white" />
         Iniciar Agora
       </button>
+    </div>
+  </div>
+)}
+{!loading && workouts.length === 0 && (
+  <div className="rounded-3xl border border-[#7c3aed]/20 bg-gradient-to-br from-[#111111] to-[#0a0a0a] p-8 lg:p-10">
+    <div className="max-w-2xl space-y-6">
+      <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#7c3aed]/15 border border-[#7c3aed]/20">
+        <Dumbbell className="h-7 w-7 text-[#7c3aed]" />
+      </div>
+
+      <div className="space-y-2">
+        <p className="text-[10px] font-black uppercase tracking-[0.25em] text-[#7c3aed]">
+          Sua jornada começa aqui
+        </p>
+
+        <h2 className="text-2xl lg:text-3xl font-black text-white">
+          Vamos criar seu primeiro treino
+        </h2>
+
+        <p className="max-w-xl text-sm leading-6 text-zinc-400">
+          O PACE vai montar sua rotina com base no seu objetivo, nível de
+          experiência, dados físicos e quantidade de dias disponíveis para
+          treinar.
+        </p>
+      </div>
+
+      {generateError && (
+        <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3">
+          <p className="text-xs font-medium text-red-400">
+            {generateError}
+          </p>
+        </div>
+      )}
+
+      <button
+        onClick={handleGenerateFirstWorkout}
+        disabled={generatingWorkout}
+        className="flex items-center justify-center gap-2 rounded-xl bg-[#7c3aed] px-6 py-3.5 text-sm font-black text-white transition-all hover:bg-[#6d28d9] disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        {generatingWorkout ? (
+          <>
+            <Activity className="h-4 w-4 animate-spin" />
+            Montando seu treino...
+          </>
+        ) : (
+          <>
+            <Sparkles className="h-4 w-4" />
+            Gerar meu primeiro treino
+          </>
+        )}
+      </button>
+
+      <p className="text-[11px] text-zinc-600">
+        A geração pode levar alguns segundos.
+      </p>
     </div>
   </div>
 )}

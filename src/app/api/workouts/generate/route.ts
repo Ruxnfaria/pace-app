@@ -30,10 +30,14 @@ export async function POST() {
     // 3. Prompt de Engenharia com a identidade do Coach Zanetti e mapeamento de mídias
     const prompt = `Você é o Coach Lucas Zanetti, treinador de alta performance, especialista em cinesiologia e musculação da assessoria esportiva Pace App.
 Crie uma rotina semanal de treinos de musculação de elite altamente personalizada para o seguinte atleta:
-- Nome do Atleta: ${profile.name || 'Atleta'}
-- Objetivo Principal: ${profile.goal || 'Hipertrofia'}
-- Nível de Experiência: ${profile.fitness_level || 'Intermediário'}
-- Dias disponíveis para treinar na semana: ${profile.available_days || 3} dias
+- Nome do Atleta: ${profile.nome || 'Atleta'}
+- Objetivo Principal: ${profile.objetivo || 'Hipertrofia'}
+- Nível de Experiência: ${profile.nivel_experiencia || 'Intermediário'}
+- Dias disponíveis para treinar na semana: ${profile.dias_treino || 3} dias
+- Idade: ${profile.idade || 'Não informada'}
+- Sexo: ${profile.sexo || 'Não informado'}
+- Peso: ${profile.peso || 'Não informado'} kg
+- Altura: ${profile.altura || 'Não informada'} cm
 
 Regras obrigatórias para a ficha de exercícios:
 1. Monte treinos dinâmicos, intensos e focados no objetivo real do atleta.
@@ -84,13 +88,17 @@ Você DEVE retornar OBRIGATORIAMENTE um objeto JSON puro (sem explicações fora
     await supabase.from('workouts').delete().eq('user_id', user.id);
 
     for (const workout of rawWorkoutsArray) {
-      await supabase.from('workouts').insert({
-        user_id: user.id,
-        name: workout.name,
-        muscle_group: workout.muscle_group,
-        exercises: workout.exercises, // Injeta o array contendo o campo gif_url na coluna JSONB
-        completed: false
-      });
+      const { error: insertError } = await supabase
+        .from('workouts')
+        .insert({
+          user_id: user.id,
+          title: workout.name,
+          exercises: workout.exercises,
+        });
+    
+      if (insertError) {
+        throw insertError;
+      }
     }
 
     return NextResponse.json({ success: true });
