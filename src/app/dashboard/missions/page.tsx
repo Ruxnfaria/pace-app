@@ -13,6 +13,8 @@ interface Mission {
   completed: boolean;
   for_date: string;
   xp_reward: number;
+  current_value: number;
+target_value: number;
 }
 
 export default function MissionsPage() {
@@ -49,20 +51,22 @@ export default function MissionsPage() {
       // 2. Busca todas as missões da tabela correta (daily_missions)
       const { data: missionsData } = await supabase
         .from('daily_missions')
-        .select('id, title, completed, for_date')
+        .select('id, title, completed, for_date, xp_reward, current_value, target_value')
         .eq('user_id', user.id)
         .order('for_date', { ascending: false })
         .order('created_at', { ascending: false });
 
-      if (missionsData) {
-        setMissions(missionsData.map(m => ({
-          id: m.id,
-          title: m.title,
-          completed: m.completed,
-          for_date: m.for_date,
-          xp_reward: 50 // 50 XP fixo por missão para bater com o cálculo do Dashboard!
-        })));
-      }
+        if (missionsData) {
+          setMissions(missionsData.map(m => ({
+            id: m.id,
+            title: m.title,
+            completed: m.completed,
+            for_date: m.for_date,
+            xp_reward: m.xp_reward || 50,
+            current_value: m.current_value || 0,
+            target_value: m.target_value || 1,
+          })));
+        }
     }
     setLoading(false);
   }
@@ -156,11 +160,11 @@ export default function MissionsPage() {
                 </div>
 
                 <div>
-  {!mission.completed ? (
-    <span className="flex items-center gap-1 text-[11px] font-bold text-zinc-400 bg-[#1f1f1f] px-3 py-1.5 rounded-xl border border-zinc-800">
-      Em andamento
-    </span>
-  ) : (
+                {!mission.completed ? (
+  <span className="flex items-center gap-1 text-[11px] font-bold text-zinc-400 bg-[#1f1f1f] px-3 py-1.5 rounded-xl border border-zinc-800">
+    {mission.current_value}/{mission.target_value}
+  </span>
+) : (
     <span className="flex items-center gap-1 text-[11px] font-bold text-[#22c55e] bg-green-500/10 px-3 py-1.5 rounded-xl border border-green-500/20">
       <CheckCircle2 className="w-3.5 h-3.5" /> Batida
     </span>

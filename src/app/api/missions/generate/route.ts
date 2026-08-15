@@ -18,25 +18,6 @@ export async function POST() {
 
     const today = new Date().toISOString().split("T")[0];
 
-    // Evita duplicar missões do mesmo dia
-    const { data: existingMissions, error: existingError } =
-      await supabase
-        .from("daily_missions")
-        .select("id")
-        .eq("user_id", user.id)
-        .eq("for_date", today);
-
-    if (existingError) {
-      throw existingError;
-    }
-
-    if (existingMissions && existingMissions.length > 0) {
-      return NextResponse.json({
-        success: true,
-        alreadyExists: true,
-      });
-    }
-
     const missions = [
       {
         user_id: user.id,
@@ -76,12 +57,28 @@ export async function POST() {
       },
     ];
 
-    const { error: insertError } = await supabase
-      .from("daily_missions")
-      .insert(missions);
-
-    if (insertError) {
-      throw insertError;
+    for (const mission of missions) {
+      const { data: existingMission, error: checkError } = await supabase
+        .from("daily_missions")
+        .select("id")
+        .eq("user_id", user.id)
+        .eq("for_date", today)
+        .eq("category", mission.category)
+        .maybeSingle();
+    
+      if (checkError) {
+        throw checkError;
+      }
+    
+      if (!existingMission) {
+        const { error: insertError } = await supabase
+          .from("daily_missions")
+          .insert(mission);
+    
+        if (insertError) {
+          throw insertError;
+        }
+      }
     }
 
     return NextResponse.json({
