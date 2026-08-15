@@ -49,27 +49,27 @@ export default function OnboardingPage() {
     setError('');
 
     const { error } = await supabase
-      .from('profiles')
-      .update({
-        goal,
-        fitness_level: level,
-        weight: parseFloat(weight),
-        height: parseFloat(height),
-        age: parseInt(age),
-        gender,
-        available_days: days,
-        onboarding_completed: true,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('user_id', userId);
+  .from('profiles')
+  .update({
+    objetivo: goal,
+    nivel_experiencia: level,
+    peso: parseFloat(weight),
+    altura: parseFloat(height),
+    idade: parseInt(age),
+    sexo: gender,
+    dias_treino: days,
+    onboarding_completed: true,
+  })
+  .eq('user_id', userId);
 
-    if (error) {
-      setError('Erro ao salvar seu perfil. Tente novamente.');
-      setLoading(false);
-    } else {
-      router.push('/dashboard');
-      router.refresh();
-    }
+  if (error) {
+    console.error("ERRO ONBOARDING:", error);
+    setError(`Erro ao salvar: ${error.message}`);
+    setLoading(false);
+  } else {
+    router.push('/dashboard');
+    router.refresh();
+  }
   }
 
   // Animações das Etapas
