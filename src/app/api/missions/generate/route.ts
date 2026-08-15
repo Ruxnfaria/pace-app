@@ -1,75 +1,101 @@
-import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
-import OpenAI from 'openai';
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+import { NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
 
 export async function POST() {
   try {
     const supabase = await createClient();
 
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
     if (!user) {
-      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+      return NextResponse.json(
+        { error: "Não autorizado" },
+        { status: 401 }
+      );
     }
 
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('goal, fitness_level')
-      .eq('user_id', user.id)
-      .single();
+    const today = new Date().toISOString().split("T")[0];
 
-    const prompt = `Gere exatamente 3 missões diárias de estilo de vida saudável e fitness para um usuário cujo objetivo é: "${profile?.goal || 'Ganhar Massa'}" e nível é "${profile?.fitness_level || 'Intermediário'}".
-As missões devem focar em pilares como: hidratação, cardio, consistência alimentar ou sono.
+    // Evita duplicar missões do mesmo dia
+    const { data: existingMissions, error: existingError } =
+      await supabase
+        .from("daily_missions")
+        .select("id")
+        .eq("user_id", user.id)
+        .eq("for_date", today);
 
-Você DEVE responder obrigatoriamente um objeto JSON com formato rígido (sem explicações externas):
-{
-  "missions": [
-    {
-      "title": "Título curto da missão (ex: Hidratação Forte)",
-      "description": "Explicação breve da tarefa (ex: Beber 3.5 litros de água ao longo do dia de hoje).",
-      "xp_reward": 50
-    }
-  ]
-}`;
-
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0.6,
-      response_format: { type: "json_object" }
-    });
-
-    const content = completion.choices[0].message?.content;
-    if (!content) throw new Error("Retorno vazio da OpenAI.");
-
-    const parsedData = JSON.parse(content);
-    const missionsArray = parsedData.missions;
-
-    if (!Array.isArray(missionsArray)) {
-      throw new Error("Formato inválido retornado.");
+    if (existingError) {
+      throw existingError;
     }
 
-    // Limpa missões do dia anterior e injeta as novas tarefas
-    await supabase.from('missions').delete().eq('user_id', user.id);
-
-    for (const m of missionsArray) {
-      await supabase.from('missions').insert({
-        user_id: user.id,
-        title: m.title,
-        description: m.description,
-        xp_reward: m.xp_reward || 50,
-        completed: false,
-        type: 'daily'
+    if (existingMissions && existingMissions.length > 0) {
+      return NextResponse.json({
+        success: true,
+        alreadyExists: true,
       });
     }
 
-    return NextResponse.json({ success: true });
+    const missions = [
+      {
+        user_id: user.id,
+        title: "Concluir o treino de hoje",
+        description:
+          "Finalize todos os exercícios de uma ficha de treino do PACE.",
+        category: "workout",
+        target_value: 1,
+        current_value: 0,
+        xp_reward: 50,
+        completed: false,
+        for_date: today,
+      },
+      {
+        user_id: user.id,
+        title: "Registrar 3 refeições hoje",
+        description:
+          "Registre pelo menos 3 refeições durante o dia.",
+        category: "nutrition",
+        target_value: 3,
+        current_value: 0,
+        xp_reward: 50,
+        completed: false,
+        for_date: today,
+      },
+      {
+        user_id: user.id,
+        title: "Bater sua meta de proteína",
+        description:
+          "Alcance sua meta diária de proteína definida no PACE.",
+        category: "protein",
+        target_value: 1,
+        current_value: 0,
+        xp_reward: 50,
+        completed: false,
+        for_date: today,
+      },
+    ];
 
+    const { error: insertError } = await supabase
+      .from("daily_missions")
+      .insert(missions);
+
+    if (insertError) {
+      throw insertError;
+    }
+
+    return NextResponse.json({
+      success: true,
+      created: missions.length,
+    });
   } catch (error: any) {
-    console.error('Erro no Mission Generator:', error);
-    return NextResponse.json({ error: error.message || 'Erro interno' }, { status: 500 });
+    console.error("[PACE] Erro ao gerar missões:", error);
+
+    return NextResponse.json(
+      {
+        error: error?.message || "Erro interno",
+      },
+      { status: 500 }
+    );
   }
 }

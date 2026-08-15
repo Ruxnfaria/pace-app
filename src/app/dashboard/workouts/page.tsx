@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Dumbbell, X, Info, Sparkles, Play, Calendar, Trash2, Zap, Flame, Activity, AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
+import { useRewardQueue } from '@/components/gamification/RewardQueueProvider';
+import { GamificationActions } from '@/lib/gamification/actions';
 
 interface Exercise {
   name: string;
@@ -107,6 +109,7 @@ function ExerciseGif({ name, index }: { name: string; index: number }) {
 
 export default function WorkoutsPage() {
   const supabase = createClient();
+  const { enqueueActions } = useRewardQueue();
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedWorkout, setSelectedWorkout] = useState<Workout | null>(null);
@@ -180,31 +183,139 @@ const [generateError, setGenerateError] = useState('');
     isWorkoutArray &&
     completedExercises.length ===
       (selectedWorkout?.exercises as Exercise[])?.length;
-  async function handleFinishWorkout() {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-  
-    const todayStr = new Date().toISOString().split("T")[0];
-  
-    const { error } = await supabase
-      .from("daily_missions")
-      .update({
-        completed: true,
-        completed_at: new Date().toISOString(),
-      })
-      .eq("user_id", user.id)
-      .eq("for_date", todayStr)
-      .ilike("title", "%Treinar%");
-  
-    if (error) {
-      console.error("Erro ao finalizar treino:", error);
-      return;
-    }
-  
-    alert("Treino finalizado! +XP nas missões.");
-    setCompletedExercises([]);
-setSelectedWorkout(null);
-  }
+      async function handleFinishWorkout() {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+      
+        if (!user) return;
+      
+        try {
+          const today = new Date().toISOString().split("T")[0];
+      
+          // Procura SOMENTE a missão relacionada a treino
+          const { data: mission, error: missionError } = await supabase
+            .from("daily_missions")
+            .select(`
+              id,
+              title,
+              completed,
+              current_value,
+              target_value,
+              xp_reward
+            `)
+            .eq("user_id", user.id)
+            .eq("for_date", today)
+            .eq("category", "workout")
+            .maybeSingle();
+      
+          if (missionError) {
+            throw missionError;
+          }
+      
+          // O treino continua válido mesmo se não existir missão hoje
+          if (!mission) {
+            alert("Treino finalizado!");
+            setCompletedExercises([]);
+            setSelectedWorkout(null);
+            return;
+          }
+      
+          // Se a missão já foi concluída anteriormente,
+          // não entrega XP novamente
+          if (mission.completed) {
+            alert("Treino finalizado!");
+            setCompletedExercises([]);
+            setSelectedWorkout(null);
+            return;
+          }
+      
+          const target = mission.target_value || 1;
+      
+          const newCurrentValue = Math.min(
+            (mission.current_value || 0) + 1,
+            target
+          );
+      
+          const missionCompleted = newCurrentValue >= target;
+      
+          // Atualiza o progresso da missão
+          const { data: updatedMission, error: updateError } = await supabase
+            .from("daily_missions")
+            .update({
+              current_value: newCurrentValue,
+              completed: missionCompleted,
+              completed_at: missionCompleted
+                ? new Date().toISOString()
+                : null,
+            })
+            .eq("id", mission.id)
+            .eq("completed", false)
+            .select("id")
+            .maybeSingle();
+      
+          if (updateError) {
+            throw updateError;
+          }
+      
+          // Se outra ação já concluiu a missão, não recompensa novamente
+          if (!updatedMission) {
+            setCompletedExercises([]);
+            setSelectedWorkout(null);
+            return;
+          }
+      
+          if (missionCompleted) {
+            // Busca XP atual
+            const { data: profile, error: profileError } = await supabase
+              .from("profiles")
+              .select("total_xp")
+              .eq("user_id", user.id)
+              .single();
+      
+            if (profileError) {
+              throw profileError;
+            }
+      
+            const xpReward = mission.xp_reward || 50;
+            const newTotalXp = (profile?.total_xp || 0) + xpReward;
+      
+            // Entrega XP automaticamente
+            const { error: xpError } = await supabase
+              .from("profiles")
+              .update({
+                total_xp: newTotalXp,
+              })
+              .eq("user_id", user.id);
+      
+            if (xpError) {
+              throw xpError;
+            }
+      
+            enqueueActions([
+              GamificationActions.showMissionCompleted(
+                mission.id,
+                mission.title,
+                xpReward
+              ),
+            ]);
+          } else {
+            enqueueActions([
+              GamificationActions.showMissionProgress(
+                mission.id,
+                newCurrentValue,
+                target
+              ),
+            ]);
+          }
+      
+          setCompletedExercises([]);
+          setSelectedWorkout(null);
+        } catch (error) {
+          console.error("[PACE] Erro ao finalizar treino:", error);
+          alert("Não foi possível finalizar o treino. Tente novamente.");
+        }
+      }
   async function handleGenerateFirstWorkout() {
     try {
       setGeneratingWorkout(true);

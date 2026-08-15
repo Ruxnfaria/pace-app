@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { Target, Shield, CheckCircle2, Sparkles, Zap, Calendar } from 'lucide-react';
+import { Target, Shield, CheckCircle2, Sparkles, Calendar } from 'lucide-react';
 import Link from 'next/link';
 import { useRewardQueue } from '@/components/gamification/RewardQueueProvider';
 import { GamificationActions } from '@/lib/gamification/actions';
@@ -35,13 +35,16 @@ export default function MissionsPage() {
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
+      await fetch('/api/missions/generate', {
+        method: 'POST',
+      });
       // 1. Busca XP real do perfil do usuário
       const { data: profile } = await supabase
         .from('profiles')
-        .select('xp')
+        .select('total_xp')
         .eq('user_id', user.id)
         .single();
-      if (profile) setUserXp(profile.xp || 0);
+        if (profile) setUserXp(profile.total_xp || 0);
 
       // 2. Busca todas as missões da tabela correta (daily_missions)
       const { data: missionsData } = await supabase
@@ -66,48 +69,7 @@ export default function MissionsPage() {
 
   useEffect(() => {
     loadMissionsAndData();
-  }, []);
-
-  // Gerencia a conclusão da missão e atualização de XP em tempo real
-  async function handleCompleteMission(missionId: string, rewardXp: number, currentStatus: boolean) {
-    if (currentStatus) return; // Se já foi concluída, não faz nada
-
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
-    // 1. Atualiza o status na tabela oficial do banco
-    const { error } = await supabase
-      .from('daily_missions')
-      .update({ completed: true })
-      .eq('id', missionId);
-
-    if (!error) {
-      // 2. Injeta o novo XP acumulado no perfil do aluno
-      const newXp = userXp + rewardXp;
-      await supabase
-        .from('profiles')
-        .update({ xp: newXp })
-        .eq('user_id', user.id);
-
-      // 3. Atualiza o estado visual imediatamente
-      setUserXp(newXp);
-      setMissions(prev => prev.map(m => m.id === missionId ? { ...m, completed: true } : m));
-      const completedMission = missions.find(
-        mission => mission.id === missionId
-      );
-      
-      if (completedMission) {
-        enqueueActions([
-          GamificationActions.showMissionCompleted(
-            completedMission.id,
-            completedMission.title,
-            rewardXp
-          ),
-        ]);
-      }
-    }
-  }
-  
+  }, []);  
 
   const lvl = getLevelInfo(userXp);
   const progressoXp = lvl.nextXp === lvl.prevXp ? 100 : ((userXp - lvl.prevXp) / (lvl.nextXp - lvl.prevXp)) * 100;
@@ -194,19 +156,16 @@ export default function MissionsPage() {
                 </div>
 
                 <div>
-                  {!mission.completed ? (
-                    <button
-                      onClick={() => handleCompleteMission(mission.id, mission.xp_reward, mission.completed)}
-                      className="flex items-center gap-1 py-2 px-3 bg-[#1f1f1f] hover:bg-zinc-800 border border-zinc-800 rounded-xl text-[11px] font-bold text-zinc-300 transition-colors"
-                    >
-                      Concluir +{mission.xp_reward} <Zap className="w-3 h-3 fill-orange-400 text-orange-400" />
-                    </button>
-                  ) : (
-                    <span className="flex items-center gap-1 text-[11px] font-bold text-[#22c55e] bg-green-500/10 px-3 py-1.5 rounded-xl border border-green-500/20">
-                      <CheckCircle2 className="w-3.5 h-3.5" /> Batida
-                    </span>
-                  )}
-                </div>
+  {!mission.completed ? (
+    <span className="flex items-center gap-1 text-[11px] font-bold text-zinc-400 bg-[#1f1f1f] px-3 py-1.5 rounded-xl border border-zinc-800">
+      Em andamento
+    </span>
+  ) : (
+    <span className="flex items-center gap-1 text-[11px] font-bold text-[#22c55e] bg-green-500/10 px-3 py-1.5 rounded-xl border border-green-500/20">
+      <CheckCircle2 className="w-3.5 h-3.5" /> Batida
+    </span>
+  )}
+</div>
               </div>
             ))}
           </div>
