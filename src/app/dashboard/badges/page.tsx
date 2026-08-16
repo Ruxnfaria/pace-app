@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Check, Lock, Sparkles, Trophy } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { useRewardQueue } from "@/components/gamification/RewardQueueProvider";
+import { GamificationActions } from "@/lib/gamification/actions";
 
 type Profile = {
   total_xp?: number | null;
@@ -27,6 +29,7 @@ type Achievement = {
 
 export default function BadgesPage() {
   const supabase = createClient();
+  const { enqueueActions } = useRewardQueue();
 
   const [profile, setProfile] = useState<Profile | null>(null);
   const [savedBadges, setSavedBadges] = useState<BadgeRecord[]>([]);
@@ -152,6 +155,75 @@ export default function BadgesPage() {
       },
     ];
   }, [profile, savedBadges, completedMissions]);
+
+  useEffect(() => {
+    async function syncUnlockedAchievements() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+  
+      if (!user) return;
+  
+      const savedBadgeNames = new Set(
+        savedBadges
+          .map((badge) => badge.badge_name)
+          .filter((name): name is string => Boolean(name))
+      );
+  
+      const newlyUnlocked = achievements.filter(
+        (achievement) =>
+          achievement.unlocked && !savedBadgeNames.has(achievement.name)
+      );
+  
+      if (newlyUnlocked.length === 0) return;
+  
+      const newBadgeRecords: BadgeRecord[] = [];
+  
+      for (const achievement of newlyUnlocked) {
+        const { error } = await supabase.from("badges").insert({
+          user_id: user.id,
+          badge_name: achievement.name,
+          badge_description: achievement.description,
+        });
+  
+        if (error) {
+          console.error(
+            `[PACE] Erro ao salvar conquista ${achievement.name}:`,
+            error
+          );
+          continue;
+        }
+  
+        newBadgeRecords.push({
+          badge_name: achievement.name,
+        });
+  
+        enqueueActions([
+          GamificationActions.showAchievementUnlocked(
+            achievement.key,
+            achievement.name
+          ),
+        ]);
+      }
+  
+      if (newBadgeRecords.length > 0) {
+        setSavedBadges((current) => [
+          ...current,
+          ...newBadgeRecords,
+        ]);
+      }
+    }
+  
+    if (!loading) {
+      syncUnlockedAchievements();
+    }
+  }, [
+    achievements,
+    loading,
+    savedBadges,
+    supabase,
+    enqueueActions,
+  ]);
 
   const unlockedCount = achievements.filter(
     (achievement) => achievement.unlocked
