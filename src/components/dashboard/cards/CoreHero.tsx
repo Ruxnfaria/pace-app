@@ -23,6 +23,7 @@ type CoreHeroProps = {
   xpProgress: number;
   completedMissions: number;
   totalMissions: number;
+  rankingPosition: number | null;
   href?: string;
 };
 
@@ -35,6 +36,7 @@ export default function CoreHero({
   xpProgress,
   completedMissions,
   totalMissions,
+  rankingPosition,
   href = "/dashboard/workouts",
 }: CoreHeroProps) {
   const [isAbsorbingEnergy, setIsAbsorbingEnergy] = useState(false);
@@ -181,19 +183,17 @@ const coreEnergy = Math.round(core.progressPercentage);
   </p>
 </div>
 
-            <div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4">
+<div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4">
   <p className="text-[10px] font-black uppercase tracking-[0.17em] text-zinc-500">
-    Evolução do Núcleo
+    Posição atual
   </p>
 
   <p className="mt-2 text-2xl font-black text-white">
-    {coreEnergy}%
+    {rankingPosition ? `#${rankingPosition}` : "--"}
   </p>
 
-  <p className="mt-1 text-xs text-zinc-500">
-    {nextRank
-      ? `Rumo a ${nextRank.name}`
-      : "Núcleo no estágio máximo"}
+  <p className="mt-1 text-xs font-bold text-[#a855f7]">
+    Ranking {currentRank.name}
   </p>
 </div>
           </div>

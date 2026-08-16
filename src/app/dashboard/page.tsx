@@ -128,9 +128,30 @@ if (completedHistoryError) {
   .select("user_id, total_xp")
   .order("total_xp", { ascending: false });
 
-if (rankingData) {
-  const position = rankingData.findIndex((p) => p.user_id === user.id) + 1;
-  setRankingPosition(position);
+if (rankingData && profileData) {
+  const userEnergy = Number(profileData.total_xp) || 0;
+
+  const userRank = getCoreRankProgress(
+    userEnergy
+  ).currentRank.id;
+
+  const usersInSameRank = rankingData.filter((item) => {
+    const itemEnergy = Number(item.total_xp) || 0;
+
+    return (
+      getCoreRankProgress(itemEnergy).currentRank.id ===
+      userRank
+    );
+  });
+
+  const position =
+    usersInSameRank.findIndex(
+      (item) => item.user_id === user.id
+    ) + 1;
+
+  setRankingPosition(
+    position > 0 ? position : null
+  );
 }
 
         // 2. BUSCA EM TEMPO REAL: Último Treino injetado pela IA
@@ -508,6 +529,7 @@ const coreProgressPercent = Math.round(
   xpProgress={coreProgressPercent}
   completedMissions={completedMissions}
   totalMissions={totalMissions}
+  rankingPosition={rankingPosition}
 />
 
 <NextActionCard
