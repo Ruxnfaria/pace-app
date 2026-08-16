@@ -59,12 +59,13 @@ export default function Core({
             intensity={glow}
           />
       
-          <BronzeFrame
-            tier={shellTier}
-            primary={appearance.primary}
-            secondary={appearance.secondary}
-            glow={glow}
-          />
+      <BronzeFrame
+  tier={shellTier}
+  primary={appearance.primary}
+  secondary={appearance.secondary}
+  glow={glow}
+  progress={energy}
+/>
       
          {/*
 <Rings

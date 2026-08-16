@@ -106,7 +106,7 @@ export default function MissionsPage() {
         <div className="flex-1 w-full space-y-3">
           <div className="flex justify-between items-end">
             <div>
-              <span className="text-[10px] font-black uppercase text-zinc-500 tracking-wider">Patente Cadastrada</span>
+              <span className="text-[10px] font-black uppercase text-zinc-500 tracking-wider">Rank atual</span>
               <h2 className="text-xl font-black text-white mt-0.5">{lvl.name}</h2>
             </div>
             <span className="text-xs font-bold text-zinc-400">

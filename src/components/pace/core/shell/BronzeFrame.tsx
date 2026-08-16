@@ -5,6 +5,7 @@ type BronzeFrameProps = {
   primary: string;
   secondary: string;
   glow: number;
+  progress: number;
 };
 
 export default function BronzeFrame({
@@ -12,10 +13,17 @@ export default function BronzeFrame({
   primary,
   secondary,
   glow,
+  progress,
 }: BronzeFrameProps) {
   const showSideArmor = tier <= 2;
   const showCrown = tier === 1;
+  const safeProgress = Math.max(0, Math.min(progress, 100));
 
+  const radius = 116;
+  const circumference = 2 * Math.PI * radius;
+  
+  const progressOffset =
+    circumference - (safeProgress / 100) * circumference;
   return (
     <svg
       viewBox="0 0 320 320"
@@ -39,17 +47,46 @@ export default function BronzeFrame({
         </filter>
       </defs>
 
-      {/* Aro externo */}
-      <circle
-        cx="160"
-        cy="160"
-        r="116"
-        fill="none"
-        stroke="url(#bronzeMetal)"
-        strokeWidth={tier === 3 ? 8 : tier === 2 ? 10 : 12}
-        opacity="0.96"
-        filter="url(#bronzeGlow)"
-      />
+      {/* Aro externo de fundo */}
+<circle
+  cx="160"
+  cy="160"
+  r="116"
+  fill="none"
+  stroke="url(#bronzeMetal)"
+  strokeWidth={tier === 3 ? 8 : tier === 2 ? 10 : 12}
+  opacity="0.25"
+/>
+
+{/* Aro externo de fundo */}
+<circle
+  cx="160"
+  cy="160"
+  r="116"
+  fill="none"
+  stroke="url(#bronzeMetal)"
+  strokeWidth={tier === 3 ? 8 : tier === 2 ? 10 : 12}
+  opacity="0.25"
+/>
+
+{/* Progresso radial do Núcleo */}
+<circle
+  cx="160"
+  cy="160"
+  r={radius}
+  fill="none"
+  stroke={primary}
+  strokeWidth={tier === 3 ? 8 : tier === 2 ? 10 : 12}
+  strokeLinecap="round"
+  strokeDasharray={circumference}
+  strokeDashoffset={progressOffset}
+  transform="rotate(-90 160 160)"
+  opacity="1"
+  filter="url(#bronzeGlow)"
+  style={{
+    transition: "stroke-dashoffset 900ms ease",
+  }}
+/>
 
       {/* Aro interno */}
       <circle
