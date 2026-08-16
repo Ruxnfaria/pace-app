@@ -29,11 +29,11 @@ export default function MissionOverviewCard({
 
         <div className="rounded-2xl bg-violet-500/10 px-5 py-3">
           <p className="text-xs uppercase tracking-widest text-violet-300">
-            XP TOTAL
+            ENERGIA
           </p>
 
           <p className="mt-1 text-xl font-black text-white">
-            +{totalXP} XP
+          ⚡ {totalXP} Energia
           </p>
         </div>
       </div>

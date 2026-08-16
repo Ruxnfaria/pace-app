@@ -67,24 +67,14 @@ useEffect(() => {
   };
 }, []);
 
-    const energy =
-    totalMissions > 0
-      ? Math.round((completedMissions / totalMissions) * 100)
-      : 0;
-      const core = getCoreRankProgress(totalXP);
+const core = getCoreRankProgress(totalXP);
 
 const currentRank = core.currentRank;
 const nextRank = core.nextRank;
-      const visualState: CoreVisualState =
-  energy >= 100
-    ? "transcendent"
-    : energy >= 75
-      ? "vibrant"
-      : energy >= 45
-        ? "energized"
-        : energy >= 15
-          ? "stable"
-          : "dormant";
+
+// Percentual de carga dentro do rank atual.
+// É isso que controla brilho, escala e intensidade visual do Núcleo.
+const coreEnergy = Math.round(core.progressPercentage);
 
   const hasMissions = totalMissions > 0;
   const allMissionsCompleted =
@@ -150,60 +140,62 @@ const nextRank = core.nextRank;
           <div className="mt-7 rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4">
             <div className="flex items-end justify-between gap-4">
               <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500">
-                  Energia atual
-                </p>
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500">
+  Progresso do Núcleo
+</p>
 
-                <p className="mt-1 text-xs text-zinc-400">
-                  {completedMissions}/{totalMissions || 0} missões concluídas
-                </p>
+<p className="mt-1 text-xs text-zinc-400">
+  {nextRank
+    ? `Próxima evolução: ${nextRank.name}`
+    : "Rank máximo alcançado"}
+</p>
               </div>
 
               <p className="text-3xl font-black text-white">
-                {energy}
-                <span className="ml-1 text-sm text-[#a855f7]">%</span>
-              </p>
+  {coreEnergy}
+  <span className="ml-1 text-sm text-[#a855f7]">%</span>
+</p>
             </div>
 
             <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/[0.07]">
               <div
                 className="h-full rounded-full bg-gradient-to-r from-[#7c3aed] via-[#9333ea] to-[#c084fc] shadow-[0_0_18px_rgba(168,85,247,0.55)] transition-all duration-700"
-                style={{ width: `${energy}%` }}
+                style={{ width: `${coreEnergy}%` }}
               />
             </div>
           </div>
 
           {/* Estatísticas */}
           <div className="mt-4 grid grid-cols-2 gap-3">
+          <div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4">
+  <p className="text-[10px] font-black uppercase tracking-[0.17em] text-zinc-500">
+    Rank atual
+  </p>
+
+  <p className="mt-2 text-2xl font-black text-white">
+    {currentRank.name}
+  </p>
+
+  <p className="mt-1 text-xs font-bold text-[#a855f7]">
+    {currentRank.coreName}
+  </p>
+</div>
+
             <div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4">
-              <p className="text-[10px] font-black uppercase tracking-[0.17em] text-zinc-500">
-                Nível atual
-              </p>
+  <p className="text-[10px] font-black uppercase tracking-[0.17em] text-zinc-500">
+    Evolução do Núcleo
+  </p>
 
-              <p className="mt-2 text-2xl font-black text-white">
-                {level}
-              </p>
+  <p className="mt-2 text-2xl font-black text-white">
+    {coreEnergy}%
+  </p>
 
-              <p className="mt-1 text-xs font-bold text-[#a855f7]">
-                {levelName}
-              </p>
-            </div>
-
-            <div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4">
-              <p className="text-[10px] font-black uppercase tracking-[0.17em] text-zinc-500">
-                Energia total
-              </p>
-
-              <p className="mt-2 text-2xl font-black text-white">
-                {totalXP}
-              </p>
-
-              <p className="mt-1 text-xs text-zinc-500">
-                {xpMissing > 0
-                  ? `${xpMissing} até o próximo nível`
-                  : "Próximo nível liberado"}
-              </p>
-            </div>
+  <p className="mt-1 text-xs text-zinc-500">
+    {nextRank
+      ? `Rumo a ${nextRank.name}`
+      : "Núcleo no estágio máximo"}
+  </p>
+</div>
           </div>
 
           <Link
@@ -242,10 +234,10 @@ const nextRank = core.nextRank;
     isAbsorbingEnergy ? "core-absorb-energy" : ""
   }`}
 >
-  <Core
-    rank="bronze_1"
-    energy={energy}
-  />
+<Core
+  rank={currentRank.id}
+  energy={coreEnergy}
+/>
 </div>
         </div>
       </div>

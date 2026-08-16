@@ -15,7 +15,10 @@ import BottomSummary from "@/components/dashboard/BottomSummary";
 import { useRewardQueue } from "@/components/gamification/RewardQueueProvider";
 import { GamificationActions } from "@/lib/gamification/actions";
 import EnergyToday from "@/components/dashboard/EnergyToday";
-import { didCoreStageChange } from "@/lib/gamification/coreStages";
+import {
+  didCoreStageChange,
+  getCoreRankProgress,
+} from "@/lib/gamification/coreStages";
 
 import {
   Zap,
@@ -321,28 +324,18 @@ console.log("MISSÕES GERADAS:", generatedMissions);
   const totalMissions = missions.length;
   const completedMissions = missions.filter(m => m.completed).length;
   const progressPercent = totalMissions > 0 ? Math.round((completedMissions / totalMissions) * 100) : 0;
-  const currentXP = missions
-  .filter((m) => m.completed)
-  .reduce((total, mission) => total + (mission.xp_reward || 50), 0);
 
   const hora = new Date().getHours();
   const saudacao = hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite';
-  const userLevel = profile?.level || 1;
   const totalXP = profile?.total_xp || 0;
-  const xpForNextLevel = userLevel * 500;
-  const xpMissing = Math.max(xpForNextLevel - totalXP, 0);
-  const xpProgress = Math.min((totalXP / xpForNextLevel) * 100, 100);
+
+const coreProgress = getCoreRankProgress(totalXP);
+const currentRank = coreProgress.currentRank;
+const nextRank = coreProgress.nextRank;
+const coreProgressPercent = Math.round(
+  coreProgress.progressPercentage
+);
   
-  const levelName =
-    userLevel >= 10
-      ? "Elite Pace"
-      : userLevel >= 7
-      ? "Avançado"
-      : userLevel >= 5
-      ? "Atleta"
-      : userLevel >= 3
-      ? "Amador"
-      : "Iniciante";
 
       const today = new Date();
 
@@ -508,14 +501,15 @@ console.log("MISSÕES GERADAS:", generatedMissions);
 
  {/* NÚCLEO PRINCIPAL DO PACE */}
  <CoreHero
-  level={userLevel}
-  levelName={levelName}
+  level={1}
+  levelName={currentRank.name}
   totalXP={totalXP}
-  xpMissing={xpMissing}
-  xpProgress={xpProgress}
+  xpMissing={coreProgress.energyMissing}
+  xpProgress={coreProgressPercent}
   completedMissions={completedMissions}
   totalMissions={totalMissions}
 />
+
 <NextActionCard
   title={latestWorkout?.title}
   exerciseCount={latestWorkoutExerciseCount}
@@ -548,13 +542,13 @@ console.log("MISSÕES GERADAS:", generatedMissions);
 </section>
 <MissionOverviewCard
   missions={missions.length}
-  totalXP={650}
+  totalXP={totalXP}
 />
 <BottomSummary
   streak={profile?.streak || 0}
   rankingPosition={rankingPosition}
-  leagueName="Liga Prata"
-  xpMissing={xpMissing}
+  leagueName={currentRank.name}
+  xpMissing={coreProgress.energyMissing}
 />
 
 {/* OBJETIVO ATUAL */}

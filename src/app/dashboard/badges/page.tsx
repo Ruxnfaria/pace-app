@@ -106,22 +106,21 @@ export default function BadgesPage() {
       {
         key: "100_xp",
         name: "Início da Jornada",
-        description: "Acumule seus primeiros 100 XP.",
+        description: "Acumule suas primeiras 100 de Energia.",
         icon: "⚡",
         unlocked: totalXP >= 100,
         progress: Math.min(totalXP, 100),
         target: 100,
-        progressLabel: `${Math.min(totalXP, 100)}/100 XP`,
-      },
+        progressLabel: `${Math.min(totalXP, 100)}/100 Energia`,      },
       {
         key: "500_xp",
         name: "Atleta Disciplinado",
-        description: "Alcance a marca de 500 XP.",
+        description: "Alcance a marca de 500 de Energia.",
         icon: "💪",
         unlocked: totalXP >= 500,
         progress: Math.min(totalXP, 500),
         target: 500,
-        progressLabel: `${Math.min(totalXP, 500)}/500 XP`,
+        progressLabel: `${Math.min(totalXP, 500)}/500 Energia`,
       },
       {
         key: "7_day_streak",
@@ -260,8 +259,8 @@ export default function BadgesPage() {
             </h1>
 
             <p className="mt-2 max-w-xl text-sm text-zinc-400">
-              Complete missões, acumule XP e mantenha sua sequência para
-              desbloquear novos marcos.
+            Complete missões, gere Energia e mantenha sua sequência para
+            fortalecer seu Núcleo e desbloquear novos marcos.
             </p>
           </div>
 

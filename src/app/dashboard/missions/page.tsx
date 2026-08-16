@@ -85,7 +85,9 @@ export default function MissionsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="space-y-1">
           <h1 className="text-2xl lg:text-3xl font-black tracking-tight">SISTEMA DE MISSÕES</h1>
-          <p className="text-xs lg:text-sm text-zinc-500">Cumpra os objetivos diários para coletar XP e subir de patente.</p>
+          <p className="text-xs lg:text-sm text-zinc-500">
+  Cumpra os objetivos diários para gerar Energia e fortalecer seu Núcleo.
+</p>
         </div>
         
         <Link
@@ -107,7 +109,9 @@ export default function MissionsPage() {
               <span className="text-[10px] font-black uppercase text-zinc-500 tracking-wider">Patente Cadastrada</span>
               <h2 className="text-xl font-black text-white mt-0.5">{lvl.name}</h2>
             </div>
-            <span className="text-xs font-bold text-zinc-400">{userXp} / {lvl.nextXp} XP</span>
+            <span className="text-xs font-bold text-zinc-400">
+  {userXp} / {lvl.nextXp} Energia
+</span>
           </div>
           <div className="w-full bg-[#1f1f1f] h-3 rounded-full overflow-hidden relative shadow-inner">
             <div 
