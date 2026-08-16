@@ -28,60 +28,120 @@ export default function ProgressPage() {
 
   async function loadProgressLogs() {
     setLoading(true);
-    const { data: { user } } = await supabase.auth.getUser();
+  
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+  
     if (user) {
+      // Busca o peso atual salvo no perfil/onboarding
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('peso')
+        .eq('user_id', user.id)
+        .maybeSingle();
+  
+      // Busca o histórico real de medições
       const { data } = await supabase
         .from('body_measurements')
         .select('*')
         .eq('user_id', user.id)
         .order('measured_at', { ascending: true });
-
-      if (data) {
-        setHistory(data.map(m => ({
-          id: m.id,
-          weight: Number(m.weight) || 0,
-          waist: Number(m.waist) || 0,
-          hip: Number(m.hip) || 0,
-          chest: Number(m.chest) || 0,
-          measured_at: new Date(m.measured_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
-        })));
+  
+      if (data && data.length > 0) {
+        setHistory(
+          data.map((m) => ({
+            id: m.id,
+            weight: Number(m.weight) || 0,
+            waist: Number(m.waist) || 0,
+            hip: Number(m.hip) || 0,
+            chest: Number(m.chest) || 0,
+            measured_at: new Date(m.measured_at).toLocaleDateString(
+              'pt-BR',
+              {
+                day: '2-digit',
+                month: '2-digit',
+              }
+            ),
+          }))
+        );
+      } else if (profileData?.peso) {
+        // Se ainda não há histórico, usa o peso informado no onboarding
+        setHistory([
+          {
+            id: 'onboarding-initial-weight',
+            weight: Number(profileData.peso),
+            waist: 0,
+            hip: 0,
+            chest: 0,
+            measured_at: 'Inicial',
+          },
+        ]);
+      } else {
+        setHistory([]);
       }
     }
+  
     setLoading(false);
   }
-
+  
   useEffect(() => {
     loadProgressLogs();
   }, []);
-
+  
   async function handleSaveMeasurements(e: React.FormEvent) {
     e.preventDefault();
-    const { data: { user } } = await supabase.auth.getUser();
+  
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+  
     if (!user) return;
-
+  
     // 1. Salva na tabela de medidas
-    await supabase.from('body_measurements').insert({
-      user_id: user.id,
-      weight: parseFloat(weight) || null,
-      waist: parseFloat(waist) || null,
-      hip: parseFloat(hip) || null,
-      chest: parseFloat(chest) || null,
-    });
-
-    // 2. Atualiza o peso atual também no perfil principal do usuário
-    if (weight) {
-      await supabase
-        .from('profiles')
-        .update({ weight: parseFloat(weight) })
-        .eq('user_id', user.id);
+    const { error: measurementError } = await supabase
+      .from('body_measurements')
+      .insert({
+        user_id: user.id,
+        weight: parseFloat(weight) || null,
+        waist: parseFloat(waist) || null,
+        hip: parseFloat(hip) || null,
+        chest: parseFloat(chest) || null,
+      });
+  
+    if (measurementError) {
+      console.error(
+        'Erro ao salvar medidas:',
+        measurementError
+      );
+      alert('Não foi possível salvar suas métricas.');
+      return;
     }
-
+  
+    // 2. Atualiza também o peso atual no perfil principal
+    if (weight) {
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update({
+          peso: parseFloat(weight),
+        })
+        .eq('user_id', user.id);
+  
+      if (profileError) {
+        console.error(
+          'Erro ao atualizar peso no perfil:',
+          profileError
+        );
+      }
+    }
+  
     setWeight('');
     setWaist('');
     setHip('');
     setChest('');
     setModalOpen(false);
-    loadProgressLogs();
+  
+    await loadProgressLogs();
   }
 
   // Pega o último registro para exibir nos cards de destaque
