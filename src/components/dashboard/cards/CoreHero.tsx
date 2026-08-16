@@ -181,6 +181,14 @@ const coreEnergy = Math.round(core.progressPercentage);
   <p className="mt-1 text-xs font-bold text-[#a855f7]">
     {currentRank.coreName}
   </p>
+
+  <Link
+    href="/dashboard/ranks"
+    className="mt-3 inline-flex items-center gap-1.5 text-[11px] font-black text-[#a855f7] transition-colors hover:text-[#c084fc]"
+  >
+    Ver progressão
+    <ArrowRight className="h-3.5 w-3.5" />
+  </Link>
 </div>
 
 <div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4">
@@ -228,16 +236,29 @@ const coreEnergy = Math.round(core.progressPercentage);
 
           <div className="absolute h-[270px] w-[270px] rounded-full border border-[#a855f7]/10" />
 
-          <div
-  data-pace-core-target
-  className={`relative z-10 scale-[1.08] sm:scale-[1.18] lg:scale-[1.28] ${
-    isAbsorbingEnergy ? "core-absorb-energy" : ""
-  }`}
->
-<Core
-  rank={currentRank.id}
-  energy={coreEnergy}
-/>
+          <div className="relative z-10 flex flex-col items-center">
+  <div
+    data-pace-core-target
+    className={`scale-[1.08] sm:scale-[1.18] lg:scale-[1.28] ${
+      isAbsorbingEnergy ? "core-absorb-energy" : ""
+    }`}
+  >
+    <Core
+      rank={currentRank.id}
+      energy={coreEnergy}
+    />
+  </div>
+
+  <div className="mt-3 text-center">
+    <p className="text-3xl font-black text-white">
+      {coreEnergy}
+      <span className="ml-1 text-base text-[#a855f7]">%</span>
+    </p>
+
+    <p className="mt-1 text-[10px] font-black uppercase tracking-[0.22em] text-zinc-500">
+      Progresso do Núcleo
+    </p>
+  </div>
 </div>
         </div>
       </div>
