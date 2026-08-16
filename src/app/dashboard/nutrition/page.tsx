@@ -126,6 +126,22 @@ async function analyzeMealWithAI() {
 async function updateNutritionMissions(userId: string) {
   const today = new Date().toISOString().split("T")[0];
 
+  // Busca a meta real de proteína diretamente do plano ativo
+  const { data: activePlan, error: planError } = await supabase
+    .from("nutrition_plans")
+    .select("protein")
+    .eq("user_id", userId)
+    .eq("active", true)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (planError) {
+    console.error("[PACE] Erro ao buscar meta de proteína:", planError);
+  }
+
+  const proteinGoal = Number(activePlan?.protein) || 180;
+
   const { data: allLogs, error: logsError } = await supabase
     .from("nutrition_logs")
     .select("protein, logged_at")
@@ -266,8 +282,8 @@ async function updateNutritionMissions(userId: string) {
 
   await completeMissionWithXp(
     "protein",
-    proteinTotal >= metaProteina ? 1 : 0,
-    proteinTotal >= metaProteina
+    proteinTotal >= proteinGoal ? 1 : 0,
+    proteinTotal >= proteinGoal
   );
 }
 // Salva uma refeição registrada manualmente
