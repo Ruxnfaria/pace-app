@@ -222,7 +222,7 @@ const [generateError, setGenerateError] = useState('');
           }
       
           // Se a missão já foi concluída anteriormente,
-          // não entrega XP novamente
+          // não entrega Energia novamente
           if (mission.completed) {
             alert("Treino finalizado!");
             setCompletedExercises([]);
@@ -266,7 +266,7 @@ const [generateError, setGenerateError] = useState('');
           }
       
           if (missionCompleted) {
-            // Busca XP atual
+           // Busca Energia atual
             const { data: profile, error: profileError } = await supabase
               .from("profiles")
               .select("total_xp")
@@ -280,7 +280,7 @@ const [generateError, setGenerateError] = useState('');
             const xpReward = mission.xp_reward || 50;
             const newTotalXp = (profile?.total_xp || 0) + xpReward;
       
-            // Entrega XP automaticamente
+            // Entrega Energia automaticamente
             const { error: xpError } = await supabase
               .from("profiles")
               .update({

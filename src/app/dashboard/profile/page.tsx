@@ -622,7 +622,7 @@ const [weeklyXP, setWeeklyXP] = useState(0);
             </p>
 
             <p className="text-xs font-bold text-zinc-500">
-              XP acumulados
+            Energia acumulada
             </p>
           </div>
 
@@ -696,7 +696,7 @@ const [weeklyXP, setWeeklyXP] = useState(0);
 
             <span className="text-right font-black text-[#a855f7]">
               {xpUntilNextLeague > 0
-                ? `${xpUntilNextLeague} XP restantes`
+                ? `${xpUntilNextLeague} Energia restante`
                 : "Divisão máxima"}
             </span>
           </div>

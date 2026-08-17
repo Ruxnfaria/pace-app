@@ -24,7 +24,7 @@ export default function MissionsPage() {
   const [loading, setLoading] = useState(true);
   const [userXp, setUserXp] = useState(0);
 
-  // Sistema de Patentes dinâmico baseado no XP real do Supabase
+  // Sistema de progressão dinâmico baseado na Energia real do Supabase
   const getLevelInfo = (xp: number) => {
     if (xp < 500) return { name: 'Iniciante 🌱', nextXp: 500, prevXp: 0 };
     if (xp < 1500) return { name: 'Bronze 🥉', nextXp: 1500, prevXp: 500 };
@@ -40,7 +40,7 @@ export default function MissionsPage() {
       await fetch('/api/missions/generate', {
         method: 'POST',
       });
-      // 1. Busca XP real do perfil do usuário
+      // 1. Busca Energia real do perfil do usuário
       const { data: profile } = await supabase
         .from('profiles')
         .select('total_xp')

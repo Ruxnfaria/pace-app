@@ -93,7 +93,7 @@ export default function BottomSummary({
             </p>
 
             <h3 className="mt-2 text-xl font-black text-white sm:text-2xl">
-              Você está a apenas {xpMissing} XP do próximo nível.
+            Você está a apenas {xpMissing} de Energia do próximo rank.
             </h3>
 
             <p className="mt-1 text-sm text-zinc-400">

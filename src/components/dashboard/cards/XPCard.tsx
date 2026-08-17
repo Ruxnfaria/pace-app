@@ -106,7 +106,7 @@ export function XPCard({
             </span>
 
             <span className="text-[10px] font-black text-[#c084fc]">
-              {xpNeededForNextLevel} XP restantes
+            {xpNeededForNextLevel} Energia restante
             </span>
           </div>
 
@@ -127,7 +127,7 @@ export function XPCard({
         <div className="mt-5 flex items-center justify-between border-t border-white/5 pt-4">
           <div>
             <p className="text-[9px] font-bold uppercase tracking-wider text-zinc-600">
-              XP conquistado hoje
+            Energia gerada hoje
             </p>
 
             <p className="mt-1 text-sm font-black text-[#a855f7]">

@@ -84,7 +84,7 @@ export function XPHero({
 />
 
             <div className="mt-3 flex justify-between text-[11px] font-bold text-zinc-600">
-              <span>{totalXP} XP acumulados</span>
+            <span>{totalXP} de Energia acumulada</span>
               <span>{xpForNextLevel} XP</span>
             </div>
           </div>

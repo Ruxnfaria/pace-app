@@ -120,7 +120,7 @@ export function TodayGoal({ missions }: TodayGoalProps) {
               ) : (
                 <Badge variant="xp">
                   <Zap className="mr-1 h-3 w-3 fill-current" />
-                  +{availableXP} XP disponíveis
+                  +{availableXP} Energia disponível
                 </Badge>
               )}
             </div>

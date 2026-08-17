@@ -37,7 +37,7 @@ export function MissionsList({
             </h2>
 
             <p className="text-xs text-zinc-500 mt-1">
-              Complete suas missões para ganhar XP e evoluir.
+              Completesuas missões para gerar Energia e evoluir seu Núcleo
             </p>
           </div>
 
