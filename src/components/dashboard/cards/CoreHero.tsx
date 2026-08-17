@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import {
   getCoreRankProgress,
 } from "@/lib/gamification/coreStages";
+import { consumeCoreEnergy } from "@/lib/gamification/coreEnergyPulse";
 
 
 import Core from "@/components/pace/core/Core";
@@ -40,6 +41,7 @@ export default function CoreHero({
   href = "/dashboard/workouts",
 }: CoreHeroProps) {
   const [isAbsorbingEnergy, setIsAbsorbingEnergy] = useState(false);
+  const [pendingEnergy, setPendingEnergy] = useState(0);
 
 useEffect(() => {
   function handleCoreEnergize() {
@@ -66,6 +68,31 @@ useEffect(() => {
       "pace:core-energize",
       handleCoreEnergize
     );
+  };
+}, []);
+useEffect(() => {
+  const pending = consumeCoreEnergy();
+
+  if (pending <= 0) return;
+
+  setPendingEnergy(pending);
+
+  const startTimer = window.setTimeout(() => {
+    setIsAbsorbingEnergy(false);
+
+    window.requestAnimationFrame(() => {
+      setIsAbsorbingEnergy(true);
+    });
+  }, 350);
+
+  const endTimer = window.setTimeout(() => {
+    setIsAbsorbingEnergy(false);
+    setPendingEnergy(0);
+  }, 1800);
+
+  return () => {
+    window.clearTimeout(startTimer);
+    window.clearTimeout(endTimer);
   };
 }, []);
 
@@ -248,6 +275,18 @@ const coreEnergy = Math.round(core.progressPercentage);
       energy={coreEnergy}
     />
   </div>
+
+  {pendingEnergy > 0 && (
+  <div className="mb-2 rounded-full border border-[#a855f7]/30 bg-[#7c3aed]/15 px-4 py-2 text-center shadow-[0_0_25px_rgba(168,85,247,0.20)]">
+    <p className="text-sm font-black text-[#c084fc]">
+      +{pendingEnergy} Energia
+    </p>
+
+    <p className="mt-0.5 text-[9px] font-black uppercase tracking-[0.18em] text-zinc-500">
+      Núcleo absorvendo
+    </p>
+  </div>
+)}
 
   <div className="mt-3 text-center">
     <p className="text-3xl font-black text-white">

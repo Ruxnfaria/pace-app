@@ -6,6 +6,7 @@ import { Dumbbell, X, Info, Sparkles, Play, Calendar, Trash2, Zap, Flame, Activi
 import Link from 'next/link';
 import { useRewardQueue } from '@/components/gamification/RewardQueueProvider';
 import { GamificationActions } from '@/lib/gamification/actions';
+import { queueCoreEnergy } from "@/lib/gamification/coreEnergyPulse";
 
 interface Exercise {
   name: string;
@@ -288,17 +289,20 @@ const [generateError, setGenerateError] = useState('');
               })
               .eq("user_id", user.id);
       
-            if (xpError) {
-              throw xpError;
-            }
-      
-            enqueueActions([
-              GamificationActions.showMissionCompleted(
-                mission.id,
-                mission.title,
-                xpReward
-              ),
-            ]);
+              if (xpError) {
+                console.error("[PACE] Erro ao entregar Energia:", xpError);
+                return;
+              }
+              
+              queueCoreEnergy(xpReward);
+              
+              enqueueActions([
+                GamificationActions.showMissionCompleted(
+                  mission.id,
+                  mission.title,
+                  xpReward
+                ),
+              ]);
           } else {
             enqueueActions([
               GamificationActions.showMissionProgress(

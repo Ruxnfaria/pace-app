@@ -6,6 +6,7 @@ import { Target, Shield, CheckCircle2, Sparkles, Calendar } from 'lucide-react';
 import Link from 'next/link';
 import { useRewardQueue } from '@/components/gamification/RewardQueueProvider';
 import { GamificationActions } from '@/lib/gamification/actions';
+import { getCoreRankProgress } from '@/lib/gamification/coreStages';
 
 interface Mission {
   id: string;
@@ -24,14 +25,6 @@ export default function MissionsPage() {
   const [loading, setLoading] = useState(true);
   const [userXp, setUserXp] = useState(0);
 
-  // Sistema de progressão dinâmico baseado na Energia real do Supabase
-  const getLevelInfo = (xp: number) => {
-    if (xp < 500) return { name: 'Iniciante 🌱', nextXp: 500, prevXp: 0 };
-    if (xp < 1500) return { name: 'Bronze 🥉', nextXp: 1500, prevXp: 500 };
-    if (xp < 3000) return { name: 'Prata 🥈', nextXp: 3000, prevXp: 1500 };
-    if (xp < 6000) return { name: 'Ouro 🥇', nextXp: 6000, prevXp: 3000 };
-    return { name: 'Elite 🏆', nextXp: xp, prevXp: 6000 };
-  };
 
   async function loadMissionsAndData() {
     setLoading(true);
@@ -75,8 +68,10 @@ export default function MissionsPage() {
     loadMissionsAndData();
   }, []);  
 
-  const lvl = getLevelInfo(userXp);
-  const progressoXp = lvl.nextXp === lvl.prevXp ? 100 : ((userXp - lvl.prevXp) / (lvl.nextXp - lvl.prevXp)) * 100;
+  const coreProgress = getCoreRankProgress(userXp);
+  const currentRank = coreProgress.currentRank;
+  const nextRank = coreProgress.nextRank;
+  const progressoEnergia = Math.round(coreProgress.progressPercentage);
 
   return (
     <div className="p-6 lg:p-10 space-y-8">
@@ -107,16 +102,19 @@ export default function MissionsPage() {
           <div className="flex justify-between items-end">
             <div>
               <span className="text-[10px] font-black uppercase text-zinc-500 tracking-wider">Rank atual</span>
-              <h2 className="text-xl font-black text-white mt-0.5">{lvl.name}</h2>
+              <h2 className="text-xl font-black text-white mt-0.5">
+  {currentRank.name}
+</h2>
             </div>
             <span className="text-xs font-bold text-zinc-400">
-  {userXp} / {lvl.nextXp} Energia
+  {progressoEnergia}%
+  {nextRank ? ` para ${nextRank.name}` : ''}
 </span>
           </div>
           <div className="w-full bg-[#1f1f1f] h-3 rounded-full overflow-hidden relative shadow-inner">
             <div 
               className="h-full bg-gradient-to-r from-[#7c3aed] to-purple-500 rounded-full transition-all duration-500" 
-              style={{ width: `${progressoXp}%` }}
+              style={{ width: `${progressoEnergia}%` }}
             />
           </div>
         </div>

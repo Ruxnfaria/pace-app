@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client';
 import { Apple, Plus, Loader2, X, Sparkles, Utensils, Check, ShoppingCart, CheckSquare, Square } from 'lucide-react';
 import { useRewardQueue } from '@/components/gamification/RewardQueueProvider';
 import { GamificationActions } from '@/lib/gamification/actions';
+import { queueCoreEnergy } from "@/lib/gamification/coreEnergyPulse";
 
 interface MealLog {
   id: string;
@@ -260,18 +261,20 @@ async function updateNutritionMissions(userId: string) {
       })
       .eq("user_id", userId);
 
-    if (xpError) {
-      console.error("[PACE] Erro ao entregar XP:", xpError);
-      return;
-    }
-
-    enqueueActions([
-      GamificationActions.showMissionCompleted(
-        mission.id,
-        mission.title,
-        xpReward
-      ),
-    ]);
+      if (xpError) {
+        console.error("[PACE] Erro ao entregar Energia:", xpError);
+        return;
+      }
+      
+      queueCoreEnergy(xpReward);
+      
+      enqueueActions([
+        GamificationActions.showMissionCompleted(
+          mission.id,
+          mission.title,
+          xpReward
+        ),
+      ]);
   }
 
   await completeMissionWithXp(
