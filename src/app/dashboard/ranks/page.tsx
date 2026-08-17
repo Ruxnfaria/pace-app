@@ -209,8 +209,7 @@ export default function RanksPage() {
     </p>
   </div>
 
-  <div className="overflow-x-auto pb-4">
-    <div className="flex min-w-max gap-3">
+  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-8">
 
       {rankGroups.map((group) => {
         const groupHasCurrentRank = group.ranks.some(
@@ -220,7 +219,7 @@ export default function RanksPage() {
         return (
           <div
             key={group.title}
-            className={`min-w-[170px] rounded-2xl border p-4 transition-all ${
+            className={`min-w-0 rounded-2xl border px-2 py-4 transition-all ${
               groupHasCurrentRank
                 ? "border-[#a855f7]/60 bg-[#7c3aed]/10 shadow-[0_0_30px_rgba(124,58,237,0.12)]"
                 : "border-white/[0.06] bg-white/[0.02]"
@@ -263,7 +262,7 @@ export default function RanksPage() {
                     className="relative flex flex-col items-center"
                   >
                     <div
-                      className={`relative flex h-[118px] w-[118px] items-center justify-center rounded-full transition-all duration-500 ${
+                     className={`relative flex h-[92px] w-[92px] items-center justify-center rounded-full transition-all duration-500 ${
                         current
                           ? "scale-105"
                           : future
@@ -275,7 +274,7 @@ export default function RanksPage() {
                         <div className="absolute inset-0 rounded-full bg-[#7c3aed]/20 blur-2xl" />
                       )}
 
-                      <div className="relative scale-[0.34]">
+<div className="relative scale-[0.27]">
                         <Core
                           rank={rank.id}
                           energy={
@@ -336,12 +335,11 @@ export default function RanksPage() {
             </div>
           </div>
         );
-      })}
+    })}
 
     </div>
-  </div>
-
-  <div className="mt-6 border-t border-white/[0.06] pt-5">
+  
+    <div className="mt-6 border-t border-white/[0.06] pt-5">
     <p className="text-xs leading-5 text-zinc-500">
       Alimente seu Núcleo para avançar pelos ranks. Cada nova etapa
       altera o visual do Núcleo e libera uma nova posição competitiva
