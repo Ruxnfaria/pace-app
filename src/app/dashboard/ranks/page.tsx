@@ -10,6 +10,7 @@ import {
   CORE_RANKS,
   getCoreRankProgress,
 } from "@/lib/gamification/coreStages";
+import Core from "@/components/pace/core/Core";
 
 export default function RanksPage() {
   const supabase = createClient();
@@ -59,6 +60,46 @@ export default function RanksPage() {
   const currentRankIndex = CORE_RANKS.findIndex(
     (rank) => rank.id === progress.currentRank.id
   );
+  const rankGroups = [
+    {
+      title: "Iniciante",
+      ranks: CORE_RANKS.filter((rank) => rank.id === "beginner"),
+    },
+    {
+      title: "Bronze",
+      ranks: CORE_RANKS.filter((rank) =>
+        ["bronze_3", "bronze_2", "bronze_1"].includes(rank.id)
+      ),
+    },
+    {
+      title: "Prata",
+      ranks: CORE_RANKS.filter((rank) =>
+        ["silver_3", "silver_2", "silver_1"].includes(rank.id)
+      ),
+    },
+    {
+      title: "Ouro",
+      ranks: CORE_RANKS.filter((rank) =>
+        ["gold_3", "gold_2", "gold_1"].includes(rank.id)
+      ),
+    },
+    {
+      title: "Diamante",
+      ranks: CORE_RANKS.filter((rank) => rank.id === "diamond"),
+    },
+    {
+      title: "Imparável",
+      ranks: CORE_RANKS.filter((rank) => rank.id === "unstoppable"),
+    },
+    {
+      title: "Inabalável",
+      ranks: CORE_RANKS.filter((rank) => rank.id === "unshakable"),
+    },
+    {
+      title: "Lenda",
+      ranks: CORE_RANKS.filter((rank) => rank.id === "legend"),
+    },
+  ];
 
   if (loading) {
     return (
@@ -152,89 +193,162 @@ export default function RanksPage() {
         </div>
       </section>
 
-      {/* TODOS OS RANKS */}
-      <section className="rounded-3xl border border-[#1f1f1f] bg-[#0d0d12] p-6">
-        <div className="mb-7">
-          <p className="text-[10px] uppercase tracking-[0.24em] font-black text-[#a855f7]">
-            Todos os ranks
-          </p>
+    {/* TODOS OS RANKS */}
+<section className="rounded-3xl border border-[#1f1f1f] bg-gradient-to-b from-[#121022] to-[#0b0b11] p-6 overflow-hidden">
+  <div className="mb-8">
+    <p className="text-[10px] uppercase tracking-[0.24em] font-black text-[#a855f7]">
+      Todos os ranks
+    </p>
 
-          <h2 className="mt-2 text-xl font-black text-white">
-            Sua jornada até o topo
-          </h2>
-        </div>
+    <h2 className="mt-2 text-2xl font-black text-white">
+      Caminho dos Ranks
+    </h2>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {CORE_RANKS.map((rank, index) => {
-            const current = index === currentRankIndex;
-            const unlocked = index < currentRankIndex;
-            const locked = index > currentRankIndex;
+    <p className="mt-2 text-sm text-zinc-500">
+      Cada etapa transforma seu Núcleo e aproxima você do topo do PACE.
+    </p>
+  </div>
 
-            return (
-              <div
-                key={rank.id}
-                className={`relative overflow-hidden rounded-3xl border p-5 transition-all ${
-                  current
-                    ? "border-[#a855f7] bg-[#7c3aed]/15 shadow-[0_0_35px_rgba(124,58,237,0.16)]"
-                    : unlocked
-                    ? "border-emerald-500/20 bg-emerald-500/[0.03]"
-                    : "border-[#1f1f1f] bg-[#111111]"
+  <div className="overflow-x-auto pb-4">
+    <div className="flex min-w-max gap-3">
+
+      {rankGroups.map((group) => {
+        const groupHasCurrentRank = group.ranks.some(
+          (rank) => rank.id === progress.currentRank.id
+        );
+
+        return (
+          <div
+            key={group.title}
+            className={`min-w-[170px] rounded-2xl border p-4 transition-all ${
+              groupHasCurrentRank
+                ? "border-[#a855f7]/60 bg-[#7c3aed]/10 shadow-[0_0_30px_rgba(124,58,237,0.12)]"
+                : "border-white/[0.06] bg-white/[0.02]"
+            }`}
+          >
+            <div className="mb-5 text-center">
+              <p
+                className={`text-xs font-black uppercase tracking-[0.16em] ${
+                  groupHasCurrentRank
+                    ? "text-[#c084fc]"
+                    : "text-zinc-400"
                 }`}
               >
-                <div className="flex items-start justify-between">
+                {group.title}
+              </p>
+            </div>
+
+            <div className="flex flex-col items-center gap-6">
+              {group.ranks.map((rank) => {
+                const rankIndex = CORE_RANKS.findIndex(
+                  (item) => item.id === rank.id
+                );
+
+                const current = rank.id === progress.currentRank.id;
+                const unlocked = rankIndex < currentRankIndex;
+                const future = rankIndex > currentRankIndex;
+
+                const divisionLabel =
+                  rank.id.endsWith("_3")
+                    ? "III"
+                    : rank.id.endsWith("_2")
+                    ? "II"
+                    : rank.id.endsWith("_1")
+                    ? "I"
+                    : null;
+
+                return (
                   <div
-                    className={`flex h-12 w-12 items-center justify-center rounded-2xl border ${
-                      current
-                        ? "border-[#7c3aed]/40 bg-[#7c3aed]/20 text-[#c084fc]"
-                        : unlocked
-                        ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
-                        : "border-white/[0.05] bg-white/[0.03] text-zinc-700"
-                    }`}
+                    key={rank.id}
+                    className="relative flex flex-col items-center"
                   >
-                    {unlocked ? (
-                      <CheckCircle2 className="h-5 w-5" />
-                    ) : locked ? (
-                      <Lock className="h-5 w-5" />
-                    ) : (
-                      <span className="text-lg">⚡</span>
-                    )}
+                    <div
+                      className={`relative flex h-[118px] w-[118px] items-center justify-center rounded-full transition-all duration-500 ${
+                        current
+                          ? "scale-105"
+                          : future
+                          ? "opacity-55"
+                          : "opacity-100"
+                      }`}
+                    >
+                      {current && (
+                        <div className="absolute inset-0 rounded-full bg-[#7c3aed]/20 blur-2xl" />
+                      )}
+
+                      <div className="relative scale-[0.34]">
+                        <Core
+                          rank={rank.id}
+                          energy={
+                            current
+                              ? Math.round(
+                                  progress.progressPercentage
+                                )
+                              : unlocked
+                              ? 100
+                              : 20
+                          }
+                        />
+                      </div>
+                    </div>
+
+                    <div className="mt-2 text-center">
+                      <p
+                        className={`text-xs font-black ${
+                          current
+                            ? "text-white"
+                            : future
+                            ? "text-zinc-600"
+                            : "text-zinc-300"
+                        }`}
+                      >
+                        {divisionLabel || rank.name}
+                      </p>
+
+                      {current && (
+                        <span className="mt-1 inline-flex rounded-full bg-[#7c3aed]/20 px-2 py-0.5 text-[8px] font-black uppercase tracking-widest text-[#c084fc]">
+                          Atual
+                        </span>
+                      )}
+
+                      {unlocked && (
+                        <span className="mt-1 inline-flex items-center gap-1 text-[8px] font-black uppercase tracking-widest text-emerald-400">
+                          <CheckCircle2 className="h-3 w-3" />
+                          Conquistado
+                        </span>
+                      )}
+
+                      {future && (
+                        <span className="mt-1 inline-flex items-center gap-1 text-[8px] font-black uppercase tracking-widest text-zinc-700">
+                          <Lock className="h-3 w-3" />
+                          Bloqueado
+                        </span>
+                      )}
+
+                      {rank.id === "legend" && (
+                        <p className="mt-2 max-w-[120px] text-[9px] font-black uppercase tracking-wider text-yellow-400">
+                          Ranking Global
+                        </p>
+                      )}
+                    </div>
                   </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
 
-                  {current && (
-                    <span className="rounded-full bg-[#7c3aed]/20 px-2.5 py-1 text-[8px] uppercase tracking-widest font-black text-[#c084fc]">
-                      Atual
-                    </span>
-                  )}
-                </div>
+    </div>
+  </div>
 
-                <p className="mt-5 text-lg font-black text-white">
-                  {rank.name}
-                </p>
-
-                <p className="mt-1 text-xs font-bold text-[#a855f7]">
-                  {rank.coreName}
-                </p>
-
-                <p className="mt-3 text-xs leading-5 text-zinc-500">
-                  {rank.description}
-                </p>
-
-                {rank.id === "legend" && (
-                  <div className="mt-4 rounded-xl border border-yellow-500/20 bg-yellow-500/[0.05] p-3">
-                    <p className="text-[9px] uppercase tracking-widest font-black text-yellow-400">
-                      Rank máximo
-                    </p>
-
-                    <p className="mt-1 text-xs text-zinc-400">
-                      Desbloqueia a disputa pelo Ranking Global.
-                    </p>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </section>
+  <div className="mt-6 border-t border-white/[0.06] pt-5">
+    <p className="text-xs leading-5 text-zinc-500">
+      Alimente seu Núcleo para avançar pelos ranks. Cada nova etapa
+      altera o visual do Núcleo e libera uma nova posição competitiva
+      dentro do PACE.
+    </p>
+  </div>
+</section>
 
       {/* COMO FUNCIONA */}
       <section className="rounded-3xl border border-[#1f1f1f] bg-[#111111] p-6">
