@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
 export default function LoginPage() {
+  const [resetLoading, setResetLoading] = useState(false);
+const [resetMessage, setResetMessage] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -18,6 +20,31 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     setError('');
+    async function handleForgotPassword() {
+      if (!email) {
+        setError('Digite seu e-mail primeiro.');
+        return;
+      }
+    
+      setError('');
+      setResetMessage('');
+      setResetLoading(true);
+    
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/update-password`,
+      });
+    
+      if (error) {
+        console.error('[PACE] Erro ao solicitar redefinição:', error);
+        setError('Não foi possível enviar o e-mail de recuperação.');
+      } else {
+        setResetMessage(
+          'Enviamos um link para redefinir sua senha. Verifique seu e-mail.'
+        );
+      }
+    
+      setResetLoading(false);
+    }
 
     const { error } = await supabase.auth.signInWithPassword({
       email,
@@ -32,7 +59,31 @@ export default function LoginPage() {
       router.refresh();
     }
   }
-
+  async function handleForgotPassword() {
+    if (!email) {
+      setError("Digite seu e-mail primeiro.");
+      return;
+    }
+  
+    setError("");
+    setResetMessage("");
+    setResetLoading(true);
+  
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/update-password`,
+    });
+  
+    if (error) {
+      console.error("[PACE] Erro ao solicitar redefinição:", error);
+      setError("Não foi possível enviar o e-mail de recuperação.");
+    } else {
+      setResetMessage(
+        "Enviamos um link para redefinir sua senha. Verifique seu e-mail."
+      );
+    }
+  
+    setResetLoading(false);
+  }
   return (
     <div className="space-y-6">
       <div className="space-y-1 text-center">
@@ -56,7 +107,14 @@ export default function LoginPage() {
         <div className="space-y-1">
           <div className="flex justify-between items-center">
             <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Senha</label>
-            <Link href="#" className="text-xs text-[#7c3aed] hover:underline font-medium">Esqueci a senha</Link>
+            <button
+  type="button"
+  onClick={handleForgotPassword}
+  disabled={resetLoading}
+  className="text-xs text-[#7c3aed] hover:underline font-medium disabled:opacity-50"
+>
+  {resetLoading ? 'Enviando...' : 'Esqueci a senha'}
+</button>
           </div>
           <input
             type="password"
@@ -69,6 +127,11 @@ export default function LoginPage() {
         </div>
 
         {error && <p className="text-xs text-red-500 font-medium bg-red-500/10 p-3 rounded-lg border border-red-500/20">{error}</p>}
+        {resetMessage && (
+  <p className="text-xs text-emerald-400 font-medium bg-emerald-500/10 p-3 rounded-lg border border-emerald-500/20">
+    {resetMessage}
+  </p>
+)}
 
         <button
           type="submit"

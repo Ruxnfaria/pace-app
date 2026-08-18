@@ -9,7 +9,9 @@ export type CoreRankId =
   | "gold_3"
   | "gold_2"
   | "gold_1"
-  | "diamond"
+  | "diamond_3"
+  | "diamond_2"
+  | "diamond_1"
   | "unstoppable"
   | "unshakable"
   | "legend";
@@ -195,18 +197,46 @@ export const CORE_RANKS: CoreRank[] = [
   },
 
   {
-    id: "diamond",
-    name: "Diamante",
+    id: "diamond_3",
+    name: "Diamante III",
     coreName: "Núcleo Cristalino",
-    description: "Raridade, excelência e constância.",
+    description: "A disciplina começa a assumir uma forma extraordinária.",
     minimumEnergy: 9500,
-    maximumEnergy: 12499,
+    maximumEnergy: 10499,
     material: "diamond",
     visualState: "transcendent",
     ringCount: 3,
     particleIntensity: 8,
     glowIntensity: 7,
     auraIntensity: 5,
+  },
+  {
+    id: "diamond_2",
+    name: "Diamante II",
+    coreName: "Núcleo Cristalino",
+    description: "Seu Núcleo alcança um nível raro de consistência.",
+    minimumEnergy: 10500,
+    maximumEnergy: 11499,
+    material: "diamond",
+    visualState: "transcendent",
+    ringCount: 3,
+    particleIntensity: 9,
+    glowIntensity: 8,
+    auraIntensity: 6,
+  },
+  {
+    id: "diamond_1",
+    name: "Diamante I",
+    coreName: "Núcleo Cristalino",
+    description: "A excelência está completamente cristalizada.",
+    minimumEnergy: 11500,
+    maximumEnergy: 12499,
+    material: "diamond",
+    visualState: "transcendent",
+    ringCount: 4,
+    particleIntensity: 10,
+    glowIntensity: 9,
+    auraIntensity: 7,
   },
 
   {

@@ -169,19 +169,49 @@ export const CORE_APPEARANCE: Record<
     rotationSpeed: 1.56,
   },
 
-  diamond: {
+  diamond_3: {
     primary: "#67e8f9",
     secondary: "#ffffff",
-
-    glow: 7.2,
-    aura: 5.4,
+  
+    glow: 7.0,
+    aura: 5.0,
     rings: 4,
     particles: 24,
-
-    crystalScale: 1.32,
-    lightningScale: 1.18,
-
-    rotationSpeed: 1.68,
+  
+    crystalScale: 1.30,
+    lightningScale: 1.16,
+  
+    rotationSpeed: 1.62,
+  },
+  
+  diamond_2: {
+    primary: "#5ee7f7",
+    secondary: "#e0f2fe",
+  
+    glow: 7.7,
+    aura: 5.8,
+    rings: 4,
+    particles: 28,
+  
+    crystalScale: 1.35,
+    lightningScale: 1.21,
+  
+    rotationSpeed: 1.74,
+  },
+  
+  diamond_1: {
+    primary: "#a5f3fc",
+    secondary: "#ffffff",
+  
+    glow: 8.4,
+    aura: 6.7,
+    rings: 5,
+    particles: 32,
+  
+    crystalScale: 1.41,
+    lightningScale: 1.27,
+  
+    rotationSpeed: 1.88,
   },
 
   unstoppable: {

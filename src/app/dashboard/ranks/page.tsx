@@ -84,9 +84,11 @@ export default function RanksPage() {
       ),
     },
     {
-      title: "Diamante",
-      ranks: CORE_RANKS.filter((rank) => rank.id === "diamond"),
-    },
+        title: "Diamante",
+        ranks: CORE_RANKS.filter((rank) =>
+          ["diamond_3", "diamond_2", "diamond_1"].includes(rank.id)
+        ),
+      },
     {
       title: "Imparável",
       ranks: CORE_RANKS.filter((rank) => rank.id === "unstoppable"),

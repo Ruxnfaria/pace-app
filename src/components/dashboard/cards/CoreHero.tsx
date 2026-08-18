@@ -3,19 +3,21 @@
 import Link from "next/link";
 import { ArrowRight, Zap } from "lucide-react";
 import { useEffect, useState } from "react";
-import {
-  getCoreRankProgress,
-} from "@/lib/gamification/coreStages";
-import { consumeCoreEnergy } from "@/lib/gamification/coreEnergyPulse";
-
 
 import Core from "@/components/pace/core/Core";
-type CoreVisualState =
-  | "dormant"
-  | "stable"
-  | "energized"
-  | "vibrant"
-  | "transcendent";
+import CoreRankUpOverlay from "@/lib/gamification/CoreRankUpOverlay";
+
+import {
+  consumeCoreEnergy,
+} from "@/lib/gamification/coreEnergyPulse";
+
+import {
+  didCoreRankChange,
+  getCoreRank,
+  getCoreRankProgress,
+  type CoreRank,
+} from "@/lib/gamification/coreStages";
+
 type CoreHeroProps = {
   level: number;
   levelName: string;
