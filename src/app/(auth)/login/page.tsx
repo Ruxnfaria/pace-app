@@ -20,34 +20,6 @@ const [resetMessage, setResetMessage] = useState('');
     e.preventDefault();
     setLoading(true);
     setError('');
-    async function handleForgotPassword() {
-      if (!email) {
-        setError('Digite seu e-mail primeiro.');
-        return;
-      }
-    
-      setError('');
-      setResetMessage('');
-      setResetLoading(true);
-    
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/update-password`,
-      });
-    
-      if (error) {
-        console.error("[PACE] Erro ao solicitar redefinição:", error);
-      
-        setError(
-          `Erro ao enviar recuperação: ${error.message}`
-        );
-      } else {
-        setResetMessage(
-          'Enviamos um link para redefinir sua senha. Verifique seu e-mail.'
-        );
-      }
-    
-      setResetLoading(false);
-    }
 
     const { error } = await supabase.auth.signInWithPassword({
       email,
@@ -78,7 +50,8 @@ const [resetMessage, setResetMessage] = useState('');
   
     if (error) {
       console.error("[PACE] Erro ao solicitar redefinição:", error);
-      setError("Não foi possível enviar o e-mail de recuperação.");
+  
+      setError(`Erro ao enviar recuperação: ${error.message}`);
     } else {
       setResetMessage(
         "Enviamos um link para redefinir sua senha. Verifique seu e-mail."
