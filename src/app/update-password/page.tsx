@@ -17,38 +17,87 @@ export default function UpdatePasswordPage() {
 
   useEffect(() => {
     let mounted = true;
-
-    async function checkRecoverySession() {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      if (mounted && session) {
-        setRecoveryReady(true);
+  
+    async function initializeRecovery() {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const code = params.get("code");
+  
+        // Se o Supabase retornou um código PKCE,
+        // precisamos trocá-lo por uma sessão.
+        if (code) {
+          const { error: exchangeError } =
+            await supabase.auth.exchangeCodeForSession(code);
+  
+          if (exchangeError) {
+            console.error(
+              "[PACE] Erro ao validar código de recuperação:",
+              exchangeError
+            );
+  
+            if (mounted) {
+              setRecoveryReady(false);
+              setError(
+                "Não foi possível validar este link de recuperação. Solicite um novo e-mail."
+              );
+              setCheckingSession(false);
+            }
+  
+            return;
+          }
+        }
+  
+        const {
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession();
+  
+        if (sessionError) {
+          console.error(
+            "[PACE] Erro ao verificar sessão:",
+            sessionError
+          );
+        }
+  
+        if (mounted) {
+          setRecoveryReady(Boolean(session));
+          setCheckingSession(false);
+  
+          if (session) {
+            setError("");
+          }
+        }
+      } catch (err) {
+        console.error(
+          "[PACE] Erro no fluxo de recuperação:",
+          err
+        );
+  
+        if (mounted) {
+          setRecoveryReady(false);
+          setCheckingSession(false);
+        }
       }
-
-      setCheckingSession(false);
     }
-
-    checkRecoverySession();
-
+  
+    initializeRecovery();
+  
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
       if (!mounted) return;
-
-      if (event === "PASSWORD_RECOVERY" && session) {
+  
+      if (
+        (event === "PASSWORD_RECOVERY" ||
+          event === "SIGNED_IN") &&
+        session
+      ) {
         setRecoveryReady(true);
         setCheckingSession(false);
         setError("");
       }
-
-      if (event === "SIGNED_IN" && session) {
-        setRecoveryReady(true);
-        setCheckingSession(false);
-      }
     });
-
+  
     return () => {
       mounted = false;
       subscription.unsubscribe();
