@@ -35,8 +35,11 @@ const [resetMessage, setResetMessage] = useState('');
       });
     
       if (error) {
-        console.error('[PACE] Erro ao solicitar redefinição:', error);
-        setError('Não foi possível enviar o e-mail de recuperação.');
+        console.error("[PACE] Erro ao solicitar redefinição:", error);
+      
+        setError(
+          `Erro ao enviar recuperação: ${error.message}`
+        );
       } else {
         setResetMessage(
           'Enviamos um link para redefinir sua senha. Verifique seu e-mail.'
