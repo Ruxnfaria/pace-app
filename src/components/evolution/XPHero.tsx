@@ -26,7 +26,7 @@ export function XPHero({
       padding="lg"
       className="min-h-[330px] lg:min-h-[370px]"
     >
-      {/* Linhas de energia do PACE */}
+      {/* Linhas de energia do PRAXE */}
       <div className="pointer-events-none absolute inset-0 opacity-40">
         <div className="absolute -right-28 -top-36 h-80 w-80 rounded-full border border-[#a855f7]/20" />
         <div className="absolute -right-16 -top-24 h-64 w-64 rounded-full border border-[#7c3aed]/15" />

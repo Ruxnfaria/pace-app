@@ -148,7 +148,7 @@ export default function AriaChatPage() {
         </div>
         <div>
           <div className="flex items-center gap-1.5">
-            <h1 className="text-sm font-black text-white tracking-wide uppercase">MENTORIA PACE</h1>
+            <h1 className="text-sm font-black text-white tracking-wide uppercase">MENTORIA PRAXE</h1>
             <span className="flex h-2 w-2 rounded-full bg-[#22c55e] animate-pulse" />
           </div>
           <p className="text-[10px] text-zinc-500 font-medium">Suporte exclusivo com Coach Lucas Zanetti e Dr. Gabriel Fontes</p>

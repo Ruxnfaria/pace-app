@@ -520,7 +520,7 @@ const coreProgressPercent = Math.round(
     </div>
   </div>
 
- {/* NÚCLEO PRINCIPAL DO PACE */}
+ {/* NÚCLEO PRINCIPAL DO PRAXE */}
  <CoreHero
   level={1}
   levelName={currentRank.name}
@@ -670,7 +670,7 @@ const coreProgressPercent = Math.round(
             </div>
             <div className="space-y-1">
               <h3 className="text-sm font-bold text-white group-hover:text-[#7c3aed] transition-colors flex items-center gap-1.5">
-                Falar com os Especialistas Pace <Zap className="w-3.5 h-3.5 text-[#7c3aed] fill-[#7c3aed]" />
+                Falar com os Especialistas Praxe <Zap className="w-3.5 h-3.5 text-[#7c3aed] fill-[#7c3aed]" />
               </h3>
               <p className="text-xs text-zinc-400 max-w-xl">
                 Acesse o canal direto da sua assessoria privada. Fale agora com o **Coach Lucas Zanetti** (Treino) ou com o **Dr. Gabriel Fontes** (Nutrição) para montar ou ajustar o seu protocolo.

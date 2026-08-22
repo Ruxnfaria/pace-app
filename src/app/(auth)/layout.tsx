@@ -19,7 +19,7 @@ export default function AuthLayout({
       >
         <Zap className="w-8 h-8 text-[#7c3aed] fill-[#7c3aed]" />
         <span className="text-3xl font-black tracking-tight bg-gradient-to-r from-white via-zinc-200 to-zinc-500 bg-clip-text text-transparent">
-          PACE
+          PRAXE
         </span>
       </motion.div>
 

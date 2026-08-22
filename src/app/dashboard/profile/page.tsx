@@ -332,7 +332,7 @@ const [weeklyXP, setWeeklyXP] = useState(0);
     5: "Elite",
     6: "Lenda",
     7: "Imparável",
-    8: "Mestre Pace",
+    8: "Mestre Praxe",
     9: "Titã",
     10: "GOAT",
   };
@@ -470,13 +470,13 @@ const [weeklyXP, setWeeklyXP] = useState(0);
     },
     {
       name: "Início da Jornada",
-      description: "Alcançou 100 XP",
+      description: "Alcançou 100 de Energia",
       icon: <Zap className="h-6 w-6" />,
       unlocked: totalXP >= 100,
     },
     {
       name: "Atleta Disciplinado",
-      description: "Alcançou 500 XP",
+      description: "Alcançou 500 de Energia",
       icon: <Dumbbell className="h-6 w-6" />,
       unlocked: totalXP >= 500,
     },
@@ -548,7 +548,7 @@ const [weeklyXP, setWeeklyXP] = useState(0);
 
               <div>
                 <h2 className="text-3xl font-black text-white">
-                  {name || "Atleta Pace"}
+                  {name || "Atleta praxe"}
                 </h2>
 
                 <p className="mt-1 text-sm font-bold text-zinc-500">
@@ -597,7 +597,7 @@ const [weeklyXP, setWeeklyXP] = useState(0);
           </p>
 
           <h2 className="mt-1 text-xl font-black text-white">
-            Sua evolução no Pace
+            Sua evolução no Praxe
           </h2>
         </div>
 
@@ -854,7 +854,7 @@ const [weeklyXP, setWeeklyXP] = useState(0);
 
           <div>
             <p className="font-black text-white">
-              Plano Pace Premium
+              Plano Praxe Premium
             </p>
 
             <p className="mt-1 text-xs text-zinc-500">

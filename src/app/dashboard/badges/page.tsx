@@ -96,7 +96,7 @@ export default function BadgesPage() {
       {
         key: "first_mission",
         name: "Primeiro Passo",
-        description: "Complete sua primeira missão no Pace.",
+        description: "Complete sua primeira missão no Praxe.",
         icon: "🏅",
         unlocked: completedMissions >= 1 || hasBadge("Primeiro Passo"),
         progress: Math.min(completedMissions, 1),
@@ -135,7 +135,7 @@ export default function BadgesPage() {
       {
         key: "level_5",
         name: "Nível 5",
-        description: "Alcance o nível 5 no Pace.",
+        description: "Alcance o nível 5 no Praxe.",
         icon: "🚀",
         unlocked: level >= 5,
         progress: Math.min(level, 5),
@@ -144,7 +144,7 @@ export default function BadgesPage() {
       },
       {
         key: "30_day_streak",
-        name: "Guerreiro Pace",
+        name: "Guerreiro Praxe",
         description: "Mantenha uma sequência de 30 dias.",
         icon: "🏆",
         unlocked: streak >= 30,
@@ -187,7 +187,7 @@ export default function BadgesPage() {
   
         if (error) {
           console.error(
-            `[PACE] Erro ao salvar conquista ${achievement.name}:`,
+            `[PRAXE] Erro ao salvar conquista ${achievement.name}:`,
             error
           );
           continue;
@@ -251,7 +251,7 @@ export default function BadgesPage() {
         <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
           <div>
             <p className="text-xs font-black uppercase tracking-widest text-[#a855f7]">
-              Sua jornada no Pace
+              Sua jornada no Praxe
             </p>
 
             <h1 className="mt-2 text-3xl font-black tracking-tight text-white">

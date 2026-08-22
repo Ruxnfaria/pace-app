@@ -51,7 +51,7 @@ export function XPCard({
     5: "Elite",
     6: "Lenda",
     7: "Imparável",
-    8: "Mestre Pace",
+    8: "Mestre Praxe",
     9: "Titã",
     10: "GOAT",
   };

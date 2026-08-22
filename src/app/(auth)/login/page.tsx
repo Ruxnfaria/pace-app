@@ -49,7 +49,7 @@ const [resetMessage, setResetMessage] = useState('');
     });
   
     if (error) {
-      console.error("[PACE] Erro ao solicitar redefinição:", error);
+      console.error("[PRAXE] Erro ao solicitar redefinição:", error);
   
       setError(`Erro ao enviar recuperação: ${error.message}`);
     } else {

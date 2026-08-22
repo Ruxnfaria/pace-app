@@ -15,14 +15,14 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "PACE",
-    template: "%s | PACE",
+    default: "PRAXE",
+    template: "%s | PRAXE",
   },
 
   description:
     "Transforme treino, nutrição e consistência em evolução.",
 
-  applicationName: "PACE",
+  applicationName: "PRAXE",
 
   manifest: "/manifest.webmanifest",
 
@@ -33,7 +33,7 @@ export const metadata: Metadata = {
 
   appleWebApp: {
     capable: true,
-    title: "PACE",
+    title: "PRAXE",
     statusBarStyle: "black-translucent",
   },
 

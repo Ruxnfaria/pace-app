@@ -28,7 +28,7 @@ export async function POST() {
         }
 
     // 3. Prompt de Engenharia com a identidade do Coach Zanetti e mapeamento de mídias
-    const prompt = `Você é o Coach Lucas Zanetti, treinador de alta performance, especialista em cinesiologia e musculação da assessoria esportiva Pace App.
+    const prompt = `Você é o Coach Lucas Zanetti, treinador de alta performance, especialista em cinesiologia e musculação da assessoria esportiva Praxe App.
 Crie uma rotina semanal de treinos de musculação de elite altamente personalizada para o seguinte atleta:
 - Nome do Atleta: ${profile.nome || 'Atleta'}
 - Objetivo Principal: ${profile.objetivo || 'Hipertrofia'}

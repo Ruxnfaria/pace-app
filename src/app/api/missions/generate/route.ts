@@ -23,7 +23,7 @@ export async function POST() {
         user_id: user.id,
         title: "Concluir o treino de hoje",
         description:
-          "Finalize todos os exercícios de uma ficha de treino do PACE.",
+          "Finalize todos os exercícios de uma ficha de treino do PRAXE.",
         category: "workout",
         target_value: 1,
         current_value: 0,
@@ -47,7 +47,7 @@ export async function POST() {
         user_id: user.id,
         title: "Bater sua meta de proteína",
         description:
-          "Alcance sua meta diária de proteína definida no PACE.",
+          "Alcance sua meta diária de proteína definida no PRAXE.",
         category: "protein",
         target_value: 1,
         current_value: 0,
@@ -86,7 +86,7 @@ export async function POST() {
       created: missions.length,
     });
   } catch (error: any) {
-    console.error("[PACE] Erro ao gerar missões:", error);
+    console.error("[PRAXE] Erro ao gerar missões:", error);
 
     return NextResponse.json(
       {

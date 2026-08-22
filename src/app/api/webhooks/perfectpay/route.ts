@@ -112,7 +112,7 @@ export async function POST(req: Request) {
         user.email?.trim().toLowerCase() === customerEmail
     );
 
-    // Comprou, mas ainda não criou conta no PACE
+    // Comprou, mas ainda não criou conta no PRAXE
     if (!authUser) {
       console.log(
         `[Perfect Pay] Usuário ainda não cadastrado: ${customerEmail}`
@@ -123,7 +123,7 @@ export async function POST(req: Request) {
           received: true,
           userFound: false,
           message:
-            "Compra recebida, mas usuário ainda não possui conta no PACE.",
+            "Compra recebida, mas usuário ainda não possui conta no PRAXE.",
         },
         { status: 200 }
       );

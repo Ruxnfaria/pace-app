@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
 
 const items = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { label: "Mentoria Pace", href: "/dashboard/aria", icon: MessageSquare },
+  { label: "Mentoria Praxe", href: "/dashboard/aria", icon: MessageSquare },
   { label: "Treinos", href: "/dashboard/workouts", icon: Dumbbell },
   { label: "Nutrição", href: "/dashboard/nutrition", icon: Apple },
   { label: "Evolução", href: "/dashboard/progress", icon: TrendingUp },
@@ -55,7 +55,7 @@ export function Sidebar() {
           </div>
 
           <span className="text-[24px] font-extrabold tracking-tight text-white uppercase leading-none">
-            PACE
+          PRAXE
           </span>
         </Link>
 

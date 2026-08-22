@@ -40,7 +40,7 @@ function RenderAnimatedFallback({ exerciseName }: { exerciseName: string }) {
   return (
     <div className="flex flex-col items-center justify-center w-full h-full bg-gradient-to-br from-zinc-900 to-black p-4">
       <Activity className="w-7 h-7 text-zinc-500 animate-pulse" />
-      <span className="text-[8px] font-black tracking-widest text-zinc-400 uppercase mt-2">PACE PLAY</span>
+      <span className="text-[8px] font-black tracking-widest text-zinc-400 uppercase mt-2">PRAXE PLAY</span>
     </div>
   );
 }
@@ -290,7 +290,7 @@ const [generateError, setGenerateError] = useState('');
               .eq("user_id", user.id);
       
               if (xpError) {
-                console.error("[PACE] Erro ao entregar Energia:", xpError);
+                console.error("[PRAXE] Erro ao entregar Energia:", xpError);
                 return;
               }
               
@@ -316,7 +316,7 @@ const [generateError, setGenerateError] = useState('');
           setCompletedExercises([]);
           setSelectedWorkout(null);
         } catch (error) {
-          console.error("[PACE] Erro ao finalizar treino:", error);
+          console.error("[PRAXE] Erro ao finalizar treino:", error);
           alert("Não foi possível finalizar o treino. Tente novamente.");
         }
       }
@@ -406,7 +406,7 @@ const [generateError, setGenerateError] = useState('');
         </h2>
 
         <p className="max-w-xl text-sm leading-6 text-zinc-400">
-          O PACE vai montar sua rotina com base no seu objetivo, nível de
+          O PRAXE vai montar sua rotina com base no seu objetivo, nível de
           experiência, dados físicos e quantidade de dias disponíveis para
           treinar.
         </p>

@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "PACE",
-    short_name: "PACE",
+    name: "PRAXE",
+    short_name: "PRAXE",
     description:
       "Transforme treino, nutrição e consistência em evolução.",
 

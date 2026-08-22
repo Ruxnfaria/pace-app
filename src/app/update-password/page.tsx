@@ -31,7 +31,7 @@ export default function UpdatePasswordPage() {
   
           if (exchangeError) {
             console.error(
-              "[PACE] Erro ao validar código de recuperação:",
+              "[PRAXE] Erro ao validar código de recuperação:",
               exchangeError
             );
   
@@ -54,7 +54,7 @@ export default function UpdatePasswordPage() {
   
         if (sessionError) {
           console.error(
-            "[PACE] Erro ao verificar sessão:",
+            "[PRAXE] Erro ao verificar sessão:",
             sessionError
           );
         }
@@ -69,7 +69,7 @@ export default function UpdatePasswordPage() {
         }
       } catch (err) {
         console.error(
-          "[PACE] Erro no fluxo de recuperação:",
+          "[PRAXE] Erro no fluxo de recuperação:",
           err
         );
   
@@ -132,7 +132,7 @@ export default function UpdatePasswordPage() {
     });
 
     if (updateError) {
-      console.error("[PACE] Erro ao redefinir senha:", updateError);
+      console.error("[PRAXE] Erro ao redefinir senha:", updateError);
       setError(updateError.message || "Não foi possível redefinir sua senha.");
       setLoading(false);
       return;
@@ -162,7 +162,7 @@ export default function UpdatePasswordPage() {
         </h1>
 
         <p className="mt-2 text-sm text-zinc-400">
-          Digite uma nova senha para sua conta PACE.
+          Digite uma nova senha para sua conta PRAXE
         </p>
 
         {!recoveryReady && (

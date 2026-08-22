@@ -25,7 +25,7 @@ export async function proxy(request: NextRequest) {
       .single();
 
     if (error) {
-      console.error("[PACE] Erro ao verificar perfil:", error);
+      console.error("[PRAXE] Erro ao verificar perfil:", error);
     }
 
     // 3. Precisa ter assinatura ativa

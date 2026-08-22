@@ -8,7 +8,7 @@ export default function BlockedPage() {
             </div>
   
             <p className="mb-3 text-sm font-semibold uppercase tracking-[0.25em] text-violet-400">
-              PACE
+            PRAXE
             </p>
   
             <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
@@ -17,7 +17,7 @@ export default function BlockedPage() {
   
             <p className="mx-auto mt-4 max-w-md text-base leading-7 text-zinc-400">
               Ative sua assinatura para continuar seus treinos, nutrição,
-              missões, ranking e toda a sua evolução dentro do PACE.
+              missões, ranking e toda a sua evolução dentro do PRAXE.
             </p>
           </div>
   
@@ -72,7 +72,7 @@ export default function BlockedPage() {
           </div>
   
           <p className="mt-8 text-sm text-zinc-600">
-            PACE — transforme consistência em evolução.
+          PRAXE — transforme consistência em evolução.
           </p>
         </div>
       </main>

@@ -53,7 +53,7 @@ export async function POST(req: Request) {
     });
 
    // 5. Prompt de Alta Performance Estruturado
-const systemPrompt = `Você é a inteligência por trás da Mesa de Elite da Mentoria Pace. 
+const systemPrompt = `Você é a inteligência por trás da Mesa de Elite da Mentoria Praxe. 
 Você assume a postura de mentores profissionais de altíssimo nível, combinando rigor técnico, sobriedade e assertividade.
 
 ${userContext}

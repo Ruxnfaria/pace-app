@@ -173,7 +173,7 @@ const dynamicRotation =
           }}
         />
 
-        {/* Raio do PACE */}
+        {/* Raio do PRAXE */}
         <div
           className="relative z-20 h-[58%] w-[34%]"
           style={{

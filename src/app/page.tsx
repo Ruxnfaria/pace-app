@@ -20,7 +20,7 @@ export default function LandingPage() {
           className="flex items-center justify-center gap-2"
         >
           <Zap className="w-8 h-8 text-[#7c3aed] fill-[#7c3aed]" />
-          <span className="text-3xl font-black tracking-tight">PACE</span>
+          <span className="text-3xl font-black tracking-tight">PRAXE</span>
         </motion.div>
 
         {/* Textos Humanizados de Alta Conversão */}

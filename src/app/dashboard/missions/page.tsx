@@ -134,7 +134,7 @@ export default function MissionsPage() {
               <Target className="w-6 h-6" />
             </div>
             <h3 className="text-sm font-bold">Nenhum foco ativo</h3>
-            <p className="text-xs text-zinc-500 max-w-xs mx-auto">Vá até o chat da Mentoria Pace e solicite o planejamento do dia para fragmentar sua rotina em metas.</p>
+            <p className="text-xs text-zinc-500 max-w-xs mx-auto">Vá até o chat da Mentoria Praxe e solicite o planejamento do dia para fragmentar sua rotina em metas.</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-2">

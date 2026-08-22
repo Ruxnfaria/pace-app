@@ -14,7 +14,7 @@ export default function ServiceWorkerRegister() {
           await navigator.serviceWorker.register("/sw.js");
 
         console.log(
-          "PACE Service Worker registrado:",
+          "PRAXE Service Worker registrado:",
           registration.scope
         );
       } catch (error) {

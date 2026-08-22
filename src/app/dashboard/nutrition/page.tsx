@@ -138,7 +138,7 @@ async function updateNutritionMissions(userId: string) {
     .maybeSingle();
 
   if (planError) {
-    console.error("[PACE] Erro ao buscar meta de proteína:", planError);
+    console.error("[PRAXE] Erro ao buscar meta de proteína:", planError);
   }
 
   const proteinGoal = Number(activePlan?.protein) || 180;
@@ -183,7 +183,7 @@ async function updateNutritionMissions(userId: string) {
 
     if (missionError) {
       console.error(
-        `[PACE] Erro ao buscar missão ${category}:`,
+        `[PRAXE] Erro ao buscar missão ${category}:`,
         missionError
       );
       return;
@@ -202,7 +202,7 @@ async function updateNutritionMissions(userId: string) {
 
       if (error) {
         console.error(
-          `[PACE] Erro ao atualizar progresso ${category}:`,
+          `[PRAXE] Erro ao atualizar progresso ${category}:`,
           error
         );
       }
@@ -229,7 +229,7 @@ async function updateNutritionMissions(userId: string) {
 
     if (completeError) {
       console.error(
-        `[PACE] Erro ao concluir missão ${category}:`,
+        `[PRAXE] Erro ao concluir missão ${category}:`,
         completeError
       );
       return;
@@ -248,7 +248,7 @@ async function updateNutritionMissions(userId: string) {
       .single();
 
     if (profileError) {
-      console.error("[PACE] Erro ao buscar XP:", profileError);
+      console.error("[PRAXE] Erro ao buscar XP:", profileError);
       return;
     }
 
@@ -262,7 +262,7 @@ async function updateNutritionMissions(userId: string) {
       .eq("user_id", userId);
 
       if (xpError) {
-        console.error("[PACE] Erro ao entregar Energia:", xpError);
+        console.error("[PRAXE] Erro ao entregar Energia:", xpError);
         return;
       }
       

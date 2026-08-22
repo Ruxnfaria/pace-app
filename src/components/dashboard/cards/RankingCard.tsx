@@ -23,7 +23,7 @@ export function RankingCard({
       <div className="relative">
         <div className="mb-3 flex items-center justify-between">
           <span className="text-xs font-bold uppercase tracking-wider text-zinc-500">
-            Ranking PACE
+            Ranking PRAXE
           </span>
 
           <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-yellow-400/20 bg-yellow-400/10">

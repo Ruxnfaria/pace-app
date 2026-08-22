@@ -30,7 +30,7 @@ export function queueCoreEnergy(amount: number) {
     );
   } catch (error) {
     console.error(
-      "[PACE] Erro ao guardar Energia pendente:",
+      "[PRAXE] Erro ao guardar Energia pendente:",
       error
     );
   }
@@ -51,7 +51,7 @@ export function consumeCoreEnergy(): number {
     return Number(pending.amount) || 0;
   } catch (error) {
     console.error(
-      "[PACE] Erro ao consumir Energia pendente:",
+      "[PRAXE] Erro ao consumir Energia pendente:",
       error
     );
 

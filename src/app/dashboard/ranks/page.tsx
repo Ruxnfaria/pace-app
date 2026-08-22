@@ -37,7 +37,7 @@ export default function RanksPage() {
 
       if (error) {
         console.error(
-          "[PACE] Erro ao carregar progressão:",
+          "[PRAXE] Erro ao carregar progressão:",
           error
         );
 
@@ -134,7 +134,7 @@ export default function RanksPage() {
           </h1>
 
           <p className="mt-1 text-sm text-zinc-500">
-            Alimente seu Núcleo, evolua e alcance os ranks mais altos do PACE.
+            Alimente seu Núcleo, evolua e alcance os ranks mais altos do PRAXE.
           </p>
         </div>
       </div>
@@ -207,7 +207,7 @@ export default function RanksPage() {
     </h2>
 
     <p className="mt-2 text-sm text-zinc-500">
-      Cada etapa transforma seu Núcleo e aproxima você do topo do PACE.
+      Cada etapa transforma seu Núcleo e aproxima você do topo do PRAXE.
     </p>
   </div>
 
@@ -345,7 +345,7 @@ export default function RanksPage() {
     <p className="text-xs leading-5 text-zinc-500">
       Alimente seu Núcleo para avançar pelos ranks. Cada nova etapa
       altera o visual do Núcleo e libera uma nova posição competitiva
-      dentro do PACE.
+      dentro do PRAXE.
     </p>
   </div>
 </section>

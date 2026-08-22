@@ -56,7 +56,7 @@ export default function RankingPage() {
 
       if (error) {
         console.error(
-          "[PACE] Erro ao carregar ranking:",
+          "[PRAXE] Erro ao carregar ranking:",
           error
         );
 
@@ -150,7 +150,7 @@ export default function RankingPage() {
 
         <div>
           <p className="text-xs uppercase tracking-widest text-[#7c3aed] font-black">
-            Competição Pace
+            Competição Praxe
           </p>
 
           <h1 className="text-3xl font-black text-white">
@@ -319,7 +319,7 @@ export default function RankingPage() {
 
             <h2 className="mt-1 text-2xl font-black text-white">
               {selectedRank === "legend"
-                ? "Ranking Global Pace"
+                ? "Ranking Global Praxe"
                 : `Ranking ${selectedRankInfo?.name || ""}`}
             </h2>
           </div>
@@ -395,7 +395,7 @@ export default function RankingPage() {
                     </div>
 
                     <h3 className="mt-5 text-lg font-black text-white">
-                      {person.nome || "Atleta Pace"}
+                      {person.nome || "Atleta Praxe"}
                     </h3>
 
                     <p className="mt-1 text-xs text-zinc-500">
@@ -444,7 +444,7 @@ export default function RankingPage() {
                               <div className="flex items-center gap-2">
                                 <p className="font-bold text-white">
                                   {person.nome ||
-                                    "Atleta Pace"}
+                                    "Atleta Praxe"}
                                 </p>
 
                                 {isCurrentUser && (
