@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   MessageSquare,
@@ -45,46 +46,32 @@ function PaceBolt() {
 
 export function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
+  const supabase = createClient();
+
+  async function handleLogout() {
+    const { error } = await supabase.auth.signOut();
+
+    if (error) {
+      console.error("[PRAXE] Erro ao sair da conta:", error);
+      return;
+    }
+
+    router.replace("/login");
+    router.refresh();
+  }
 
   return (
     <aside className="hidden lg:flex fixed left-0 top-0 h-screen w-64 bg-[#111111] border-r border-[#1f1f1f] flex-col justify-between p-5 z-40">
       <div>
-        <Link href="/dashboard" className="flex items-center gap-2 mb-8">
-          <div className="flex items-center justify-center">
-            <PaceBolt />
-          </div>
-
-          <span className="text-[24px] font-extrabold tracking-tight text-white uppercase leading-none">
-          PRAXE
-          </span>
-        </Link>
-
-        <nav className="space-y-2">
-          {items.map((item) => {
-            const Icon = item.icon;
-            const isActive =
-              pathname === item.href || pathname.startsWith(`${item.href}/`);
-
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold transition-all",
-                  isActive
-                    ? "bg-[#7c3aed] text-white shadow-lg shadow-purple-950/30"
-                    : "text-zinc-500 hover:text-white hover:bg-[#1a1a1a]"
-                )}
-              >
-                <Icon className="w-5 h-5" />
-                {item.label}
-              </Link>
-            );
-          })}
-        </nav>
+        {/* aqui fica todo o conteúdo da sidebar */}
       </div>
 
-      <button className="flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold text-zinc-500 hover:text-white hover:bg-[#1a1a1a] transition-all">
+      <button
+        type="button"
+        onClick={handleLogout}
+        className="flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold text-zinc-500 hover:text-white hover:bg-[#1a1a1a] transition-all"
+      >
         <LogOut className="w-5 h-5" />
         Sair da conta
       </button>
