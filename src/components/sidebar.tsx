@@ -50,20 +50,21 @@ export function Sidebar() {
   const supabase = createClient();
 
   async function handleLogout() {
+    alert("BOTÃO FUNCIONOU");
+  
     try {
       const { error } = await supabase.auth.signOut();
-
+  
       if (error) {
         console.error("[PRAXE] Erro ao sair da conta:", error);
+        alert("Erro ao deslogar: " + error.message);
         return;
       }
-
+  
       window.location.href = "/login";
     } catch (error) {
-      console.error(
-        "[PRAXE] Erro inesperado ao sair da conta:",
-        error
-      );
+      console.error("[PRAXE] Erro inesperado ao sair:", error);
+      alert("Erro inesperado ao sair da conta.");
     }
   }
 
