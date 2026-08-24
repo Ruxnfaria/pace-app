@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
@@ -46,25 +47,28 @@ function PaceBolt() {
 }
 
 export function Sidebar() {
+  const [loggingOut, setLoggingOut] = useState(false);
   const pathname = usePathname();
   const supabase = createClient();
 
   async function handleLogout() {
-    alert("BOTÃO FUNCIONOU");
+    if (loggingOut) return;
+  
+    setLoggingOut(true);
   
     try {
       const { error } = await supabase.auth.signOut();
   
       if (error) {
         console.error("[PRAXE] Erro ao sair da conta:", error);
-        alert("Erro ao deslogar: " + error.message);
+        setLoggingOut(false);
         return;
       }
   
       window.location.href = "/login";
     } catch (error) {
       console.error("[PRAXE] Erro inesperado ao sair:", error);
-      alert("Erro inesperado ao sair da conta.");
+      setLoggingOut(false);
     }
   }
 
@@ -112,13 +116,15 @@ export function Sidebar() {
       </div>
 
       <button
-        type="button"
-        onClick={handleLogout}
-        className="flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold text-zinc-500 hover:text-white hover:bg-[#1a1a1a] transition-all"
-      >
-        <LogOut className="w-5 h-5" />
-        Sair da conta
-      </button>
+  type="button"
+  onClick={handleLogout}
+  disabled={loggingOut}
+  className="flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold text-zinc-500 hover:text-white hover:bg-[#1a1a1a] transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+>
+  <LogOut className="w-5 h-5" />
+
+  {loggingOut ? "Saindo..." : "Sair da conta"}
+</button>
     </aside>
   );
 }

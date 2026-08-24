@@ -125,7 +125,13 @@ async function analyzeMealWithAI() {
   }
 }
 async function updateNutritionMissions(userId: string) {
-  const today = new Date().toISOString().split("T")[0];
+  const now = new Date();
+
+const today = [
+  now.getFullYear(),
+  String(now.getMonth() + 1).padStart(2, "0"),
+  String(now.getDate()).padStart(2, "0"),
+].join("-");
 
   // Busca a meta real de proteína diretamente do plano ativo
   const { data: activePlan, error: planError } = await supabase
@@ -155,10 +161,16 @@ async function updateNutritionMissions(userId: string) {
 
   const todayLogs = (allLogs || []).filter((log) => {
     if (!log.logged_at) return false;
-
-    return (
-      new Date(log.logged_at).toISOString().split("T")[0] === today
-    );
+  
+    const logDate = new Date(log.logged_at);
+  
+    const logDay = [
+      logDate.getFullYear(),
+      String(logDate.getMonth() + 1).padStart(2, "0"),
+      String(logDate.getDate()).padStart(2, "0"),
+    ].join("-");
+  
+    return logDay === today;
   });
 
   const mealCount = todayLogs.length;

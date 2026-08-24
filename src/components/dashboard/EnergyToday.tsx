@@ -7,6 +7,7 @@ import {
   HeartPulse,
   Moon,
   Utensils,
+  Plus,
 } from "lucide-react";
 
 type EnergyItem = {
@@ -20,7 +21,9 @@ type EnergyItem = {
 type EnergyTodayProps = {
   workoutCompleted: boolean;
   proteinCompleted: boolean;
-  waterProgress?: number;
+  waterConsumedMl?: number;
+  waterGoalMl?: number;
+  onAddWater?: (amount: number) => void;
   cardioCompleted?: boolean;
   sleepCompleted?: boolean;
 };
@@ -28,10 +31,19 @@ type EnergyTodayProps = {
 export default function EnergyToday({
   workoutCompleted,
   proteinCompleted,
-  waterProgress = 0,
+  waterConsumedMl = 0,
+  waterGoalMl = 2500,
+  onAddWater,
   cardioCompleted = false,
   sleepCompleted = false,
 }: EnergyTodayProps) {
+  const safeWaterGoal = Math.max(waterGoalMl, 1);
+
+  const waterProgress = Math.min(
+    Math.max((waterConsumedMl / safeWaterGoal) * 100, 0),
+    100
+  );
+
   const items: EnergyItem[] = [
     {
       id: "workout",
@@ -50,7 +62,7 @@ export default function EnergyToday({
     {
       id: "water",
       label: "Água",
-      progress: Math.min(Math.max(waterProgress, 0), 100),
+      progress: waterProgress,
       completed: waterProgress >= 100,
       icon: Droplets,
     },
@@ -113,6 +125,7 @@ export default function EnergyToday({
         <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-5">
           {items.map((item) => {
             const Icon = item.icon;
+            const isWater = item.id === "water";
 
             return (
               <div
@@ -145,13 +158,48 @@ export default function EnergyToday({
                   {item.label}
                 </p>
 
-                <p className="mt-1 text-xs text-zinc-500">
-                  {item.completed
-                    ? "Concluído"
-                    : item.progress > 0
-                      ? `${Math.round(item.progress)}%`
-                      : "Pendente"}
-                </p>
+                {isWater ? (
+                  <>
+                    <p className="mt-1 text-xs text-zinc-500">
+                      {waterConsumedMl.toLocaleString("pt-BR")} /{" "}
+                      {waterGoalMl.toLocaleString("pt-BR")} ml
+                    </p>
+
+                    <p className="mt-1 text-xs font-bold text-violet-400">
+                      {Math.round(waterProgress)}%
+                    </p>
+
+                    {!item.completed && onAddWater && (
+                      <div className="mt-3 grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => onAddWater(250)}
+                          className="flex items-center justify-center gap-1 rounded-lg border border-violet-500/20 bg-violet-500/10 px-2 py-2 text-[10px] font-black text-violet-300 transition hover:bg-violet-500/20"
+                        >
+                          <Plus className="h-3 w-3" />
+                          250 ml
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => onAddWater(500)}
+                          className="flex items-center justify-center gap-1 rounded-lg border border-violet-500/20 bg-violet-500/10 px-2 py-2 text-[10px] font-black text-violet-300 transition hover:bg-violet-500/20"
+                        >
+                          <Plus className="h-3 w-3" />
+                          500 ml
+                        </button>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <p className="mt-1 text-xs text-zinc-500">
+                    {item.completed
+                      ? "Concluído"
+                      : item.progress > 0
+                        ? `${Math.round(item.progress)}%`
+                        : "Pendente"}
+                  </p>
+                )}
               </div>
             );
           })}

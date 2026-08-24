@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 
 
 import { MissionsList } from "@/components/dashboard/cards/MissionsList";
-import { TodayGoal } from "@/components/dashboard/cards/TodayGoal";
+import TodayGoal from "@/components/dashboard/cards/TodayGoal";
 import CoreHero from "@/components/dashboard/cards/CoreHero";
 import NextActionCard from "@/components/dashboard/cards/NextActionCard";
 import MissionOverviewCard from "@/components/dashboard/MissionOverviewCard";
@@ -70,11 +70,37 @@ export default function DashboardPage() {
   const [missions, setMissions] = useState<any[]>([]);
   const [completedMissionDates, setCompletedMissionDates] = useState<string[]>([]);
   const [rankingPosition, setRankingPosition] = useState<number | null>(null);
+  const [waterConsumedMl, setWaterConsumedMl] = useState<number>(0);
   useEffect(() => {
     async function loadDashboardData() {
       const { data: { user } } = await supabase.auth.getUser();
+      const [waterConsumedMl, setWaterConsumedMl] = useState(0);
       
       if (user) {
+        const now = new Date();
+
+const todayWater = [
+  now.getFullYear(),
+  String(now.getMonth() + 1).padStart(2, "0"),
+  String(now.getDate()).padStart(2, "0"),
+].join("-");
+
+const { data: waterData, error: waterError } = await supabase
+  .from("water_logs")
+  .select("amount_ml")
+  .eq("user_id", user.id)
+  .eq("logged_date", todayWater);
+
+if (waterError) {
+  console.error("[PRAXE] Erro ao carregar água:", waterError);
+} else {
+  const totalWater = (waterData || []).reduce(
+    (sum, log) => sum + (Number(log.amount_ml) || 0),
+    0
+  );
+
+  setWaterConsumedMl(totalWater);
+}
         const startDate = new Date();
 startDate.setDate(startDate.getDate() - 6);
 
@@ -212,6 +238,37 @@ console.log("MISSÕES GERADAS:", generatedMissions);
     
     loadDashboardData();
   }, [supabase]);
+
+  async function handleAddWater(amount: number) {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+  
+    if (!user) return;
+  
+    const now = new Date();
+  
+    const today = [
+      now.getFullYear(),
+      String(now.getMonth() + 1).padStart(2, "0"),
+      String(now.getDate()).padStart(2, "0"),
+    ].join("-");
+  
+    const { error } = await supabase
+      .from("water_logs")
+      .insert({
+        user_id: user.id,
+        amount_ml: amount,
+        logged_date: today,
+      });
+  
+    if (error) {
+      console.error("[PRAXE] Erro ao registrar água:", error);
+      return;
+    }
+  
+    setWaterConsumedMl((current) => current + amount);
+  }
 
   async function handleToggleMission(id: string, currentStatus: boolean) {
     const mission = missions.find((m) => m.id === id);
@@ -552,7 +609,9 @@ const coreProgressPercent = Math.round(
       mission.completed &&
       mission.title.toLowerCase().includes("proteína")
   )}
-  waterProgress={0}
+  waterConsumedMl={waterConsumedMl}
+waterGoalMl={2500}
+onAddWater={handleAddWater}
   cardioCompleted={missions.some(
     (mission) =>
       mission.completed &&

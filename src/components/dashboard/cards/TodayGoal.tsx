@@ -1,198 +1,210 @@
-import Link from "next/link";
+"use client";
+
 import {
-  ArrowRight,
   Check,
-  Circle,
-  Target,
-  Zap,
+  Dumbbell,
+  Droplets,
+  HeartPulse,
+  Moon,
+  Utensils,
+  Plus,
 } from "lucide-react";
 
-import { Badge } from "@/components/ui/Badge";
-import { Card } from "@/components/ui/Card";
-import { ProgressBar } from "@/components/ui/ProgressBar";
-
-interface TodayMission {
-  id: string | number;
-  title: string;
+type EnergyItem = {
+  id: string;
+  label: string;
+  progress: number;
   completed: boolean;
-  xp_reward?: number | null;
-}
+  icon: React.ElementType;
+};
 
-interface TodayGoalProps {
-  missions: TodayMission[];
-}
+type EnergyTodayProps = {
+  workoutCompleted: boolean;
+  proteinCompleted: boolean;
+  waterConsumedMl?: number;
+  waterGoalMl?: number;
+  onAddWater?: (amount: number) => void;
+  cardioCompleted?: boolean;
+  sleepCompleted?: boolean;
+};
 
-export function TodayGoal({ missions }: TodayGoalProps) {
-  const totalMissions = missions.length;
+export default function EnergyToday({
+  workoutCompleted,
+  proteinCompleted,
+  waterConsumedMl = 0,
+  waterGoalMl = 2500,
+  onAddWater,
+  cardioCompleted = false,
+  sleepCompleted = false,
+}: EnergyTodayProps) {
+  const safeWaterGoal = Math.max(waterGoalMl, 1);
 
-  const completedMissions = missions.filter(
-    (mission) => mission.completed
-  ).length;
+  const waterProgress = Math.min(
+    Math.max((waterConsumedMl / safeWaterGoal) * 100, 0),
+    100
+  );
 
-  const remainingMissions = totalMissions - completedMissions;
+  const items: EnergyItem[] = [
+    {
+      id: "workout",
+      label: "Treino",
+      progress: workoutCompleted ? 100 : 0,
+      completed: workoutCompleted,
+      icon: Dumbbell,
+    },
+    {
+      id: "protein",
+      label: "Proteína",
+      progress: proteinCompleted ? 100 : 0,
+      completed: proteinCompleted,
+      icon: Utensils,
+    },
+    {
+      id: "water",
+      label: "Água",
+      progress: waterProgress,
+      completed: waterProgress >= 100,
+      icon: Droplets,
+    },
+    {
+      id: "cardio",
+      label: "Cardio",
+      progress: cardioCompleted ? 100 : 0,
+      completed: cardioCompleted,
+      icon: HeartPulse,
+    },
+    {
+      id: "sleep",
+      label: "Sono",
+      progress: sleepCompleted ? 100 : 0,
+      completed: sleepCompleted,
+      icon: Moon,
+    },
+  ];
 
-  const progress =
-    totalMissions > 0
-      ? Math.round((completedMissions / totalMissions) * 100)
-      : 0;
+  const completedItems = items.filter((item) => item.completed).length;
 
-  const availableXP = missions
-    .filter((mission) => !mission.completed)
-    .reduce(
-      (total, mission) => total + (mission.xp_reward || 50),
-      0
-    );
-
-  const visibleMissions = [
-    ...missions.filter((mission) => !mission.completed),
-    ...missions.filter((mission) => mission.completed),
-  ].slice(0, 3);
-
-  const dayCompleted =
-    totalMissions > 0 && completedMissions === totalMissions;
+  const totalProgress = Math.round(
+    items.reduce((total, item) => total + item.progress, 0) /
+      items.length
+  );
 
   return (
-    <Card
-      padding="lg"
-      className="group overflow-hidden border-[#7c3aed]/20"
-    >
-      {/* Glows decorativos */}
-      <div className="pointer-events-none absolute -right-20 -top-24 h-56 w-56 rounded-full bg-[#7c3aed]/10 blur-3xl transition-all duration-500 group-hover:bg-[#7c3aed]/15" />
+    <section className="relative overflow-hidden rounded-[30px] border border-white/[0.08] bg-[#0d0d14] p-6">
+      <div className="pointer-events-none absolute -right-24 -top-24 h-64 w-64 rounded-full bg-violet-600/10 blur-[100px]" />
 
-      <div className="pointer-events-none absolute -bottom-28 left-1/3 h-44 w-72 rounded-full bg-[#a855f7]/5 blur-3xl" />
-
-      <div className="relative z-10 grid gap-8 lg:grid-cols-[1fr_1.2fr] lg:items-center">
-        {/* Resumo */}
-        <div>
-          <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-[#7c3aed]/25 bg-[#7c3aed]/10">
-              <Target className="h-5 w-5 text-[#a855f7]" />
-            </div>
-
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#a855f7]">
-                Plano de evolução
-              </p>
-
-              <h2 className="mt-1 text-2xl font-black text-white">
-                Hoje
-              </h2>
-            </div>
-          </div>
-
-          <p className="mt-5 max-w-md text-sm leading-6 text-zinc-400">
-            {totalMissions === 0
-              ? "Suas missões de hoje ainda não foram carregadas."
-              : dayCompleted
-              ? "Você concluiu todas as missões de hoje."
-              : `Complete mais ${remainingMissions} ${
-                  remainingMissions === 1 ? "missão" : "missões"
-                } para finalizar seu plano diário.`}
-          </p>
-
-          <div className="mt-6">
-            <div className="mb-3 flex items-center justify-between">
-              <span className="text-xs font-bold text-zinc-500">
-                Progresso diário
-              </span>
-
-              <span className="text-sm font-black text-[#c084fc]">
-                {progress}%
-              </span>
-            </div>
-
-            <ProgressBar
-              value={progress}
-              max={100}
-              height="lg"
-              color={dayCompleted ? "green" : "purple"}
-            />
-
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-              <span className="text-xs font-bold text-zinc-500">
-                {completedMissions}/{totalMissions} concluídas
-              </span>
-
-              {dayCompleted ? (
-                <Badge variant="success">
-                  Dia concluído
-                </Badge>
-              ) : (
-                <Badge variant="xp">
-                  <Zap className="mr-1 h-3 w-3 fill-current" />
-                  +{availableXP} Energia disponível
-                </Badge>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Lista resumida */}
-        <div className="rounded-2xl border border-white/5 bg-black/20 p-4 sm:p-5">
-          <div className="mb-4 flex items-center justify-between">
-            <p className="text-xs font-black uppercase tracking-[0.16em] text-zinc-500">
-              Próximos passos
+      <div className="relative">
+        <div className="flex items-end justify-between gap-4">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.24em] text-violet-400">
+              Evolução de hoje
             </p>
 
-            <span className="text-[10px] font-bold text-zinc-600">
-              {remainingMissions} restantes
-            </span>
+            <h2 className="mt-2 text-2xl font-black text-white">
+              {completedItems} de {items.length} pilares concluídos
+            </h2>
+
+            <p className="mt-2 text-sm text-zinc-400">
+              Cada ação fortalece a energia diária do seu Núcleo.
+            </p>
           </div>
 
-          {visibleMissions.length > 0 ? (
-            <div className="space-y-2">
-              {visibleMissions.map((mission) => (
-                <div
-                  key={mission.id}
-                  className={`flex items-center justify-between gap-4 rounded-xl border px-3 py-3 transition-colors ${
-                    mission.completed
-                      ? "border-green-500/10 bg-green-500/5"
-                      : "border-white/5 bg-[#0c0c0c]"
-                  }`}
-                >
-                  <div className="flex min-w-0 items-center gap-3">
-                    {mission.completed ? (
-                      <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-green-500/15">
-                        <Check className="h-3.5 w-3.5 text-green-400" />
-                      </div>
-                    ) : (
-                      <Circle className="h-5 w-5 shrink-0 text-zinc-600" />
-                    )}
+          <p className="text-3xl font-black text-white">
+            {totalProgress}
+            <span className="ml-1 text-sm text-violet-400">%</span>
+          </p>
+        </div>
 
-                    <p
-                      className={`truncate text-sm font-bold ${
-                        mission.completed
-                          ? "text-zinc-600 line-through"
-                          : "text-zinc-200"
-                      }`}
-                    >
-                      {mission.title}
-                    </p>
+        <div className="mt-5 h-2 overflow-hidden rounded-full bg-white/[0.07]">
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-violet-700 via-violet-500 to-fuchsia-400 transition-all duration-700"
+            style={{ width: `${totalProgress}%` }}
+          />
+        </div>
+
+        <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-5">
+          {items.map((item) => {
+            const Icon = item.icon;
+            const isWater = item.id === "water";
+
+            return (
+              <div
+                key={item.id}
+                className={`rounded-2xl border p-4 transition-all ${
+                  item.completed
+                    ? "border-violet-400/30 bg-violet-500/10"
+                    : "border-white/[0.07] bg-white/[0.025]"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div
+                    className={`flex h-10 w-10 items-center justify-center rounded-xl ${
+                      item.completed
+                        ? "bg-violet-500/20 text-violet-300"
+                        : "bg-white/[0.04] text-zinc-500"
+                    }`}
+                  >
+                    <Icon className="h-5 w-5" />
                   </div>
 
-                  <span className="shrink-0 text-[10px] font-black text-[#a855f7]">
-                    +{mission.xp_reward || 50} XP
-                  </span>
+                  {item.completed && (
+                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-violet-500 text-white">
+                      <Check className="h-4 w-4" />
+                    </div>
+                  )}
                 </div>
-              ))}
-            </div>
-          ) : (
-            <div className="flex min-h-28 items-center justify-center rounded-xl border border-dashed border-white/10">
-              <p className="text-sm text-zinc-600">
-                Nenhuma missão disponível.
-              </p>
-            </div>
-          )}
 
-          <Link
-            href="/dashboard/missions"
-            className="mt-4 flex items-center justify-center gap-1.5 rounded-xl border border-[#7c3aed]/20 bg-[#7c3aed]/10 px-4 py-3 text-xs font-black text-[#c084fc] transition-all hover:border-[#7c3aed]/40 hover:bg-[#7c3aed]/15"
-          >
-            Ver todas as missões
-            <ArrowRight className="h-3.5 w-3.5" />
-          </Link>
+                <p className="mt-4 text-sm font-black text-white">
+                  {item.label}
+                </p>
+
+                {isWater ? (
+                  <>
+                    <p className="mt-1 text-xs text-zinc-500">
+                      {waterConsumedMl.toLocaleString("pt-BR")} /{" "}
+                      {waterGoalMl.toLocaleString("pt-BR")} ml
+                    </p>
+
+                    <p className="mt-1 text-xs font-bold text-violet-400">
+                      {Math.round(waterProgress)}%
+                    </p>
+
+                    {!item.completed && onAddWater && (
+                      <div className="mt-3 grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => onAddWater(250)}
+                          className="flex items-center justify-center gap-1 rounded-lg border border-violet-500/20 bg-violet-500/10 px-2 py-2 text-[10px] font-black text-violet-300 transition hover:bg-violet-500/20"
+                        >
+                          <Plus className="h-3 w-3" />
+                          250 ml
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => onAddWater(500)}
+                          className="flex items-center justify-center gap-1 rounded-lg border border-violet-500/20 bg-violet-500/10 px-2 py-2 text-[10px] font-black text-violet-300 transition hover:bg-violet-500/20"
+                        >
+                          <Plus className="h-3 w-3" />
+                          500 ml
+                        </button>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <p className="mt-1 text-xs text-zinc-500">
+                    {item.completed
+                      ? "Concluído"
+                      : item.progress > 0
+                        ? `${Math.round(item.progress)}%`
+                        : "Pendente"}
+                  </p>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
-    </Card>
+    </section>
   );
 }

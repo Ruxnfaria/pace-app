@@ -192,7 +192,13 @@ const [generateError, setGenerateError] = useState('');
         if (!user) return;
       
         try {
-          const today = new Date().toISOString().split("T")[0];
+          const now = new Date();
+
+const today = [
+  now.getFullYear(),
+  String(now.getMonth() + 1).padStart(2, "0"),
+  String(now.getDate()).padStart(2, "0"),
+].join("-");
       
           // Procura SOMENTE a missão relacionada a treino
           const { data: mission, error: missionError } = await supabase
@@ -568,7 +574,7 @@ const [generateError, setGenerateError] = useState('');
   }`}
 >
   {allExercisesCompleted
-    ? "⚡ Finalizar Treino +XP"
+    ? "⚡ Finalizar Treino"
     : `🔒 Complete todos os exercícios (${completedExercises.length}/${(selectedWorkout?.exercises as Exercise[])?.length || 0})`}
 </button>
 </div>

@@ -16,7 +16,13 @@ export async function POST() {
       );
     }
 
-    const today = new Date().toISOString().split("T")[0];
+    const now = new Date();
+
+const today = [
+  now.getFullYear(),
+  String(now.getMonth() + 1).padStart(2, "0"),
+  String(now.getDate()).padStart(2, "0"),
+].join("-");
 
     const missions = [
       {
@@ -57,7 +63,9 @@ export async function POST() {
       },
     ];
 
-    for (const mission of missions) {
+    let createdCount = 0;
+
+for (const mission of missions) {
       const { data: existingMission, error: checkError } = await supabase
         .from("daily_missions")
         .select("id")
@@ -74,16 +82,18 @@ export async function POST() {
         const { error: insertError } = await supabase
           .from("daily_missions")
           .insert(mission);
-    
+      
         if (insertError) {
           throw insertError;
         }
+      
+        createdCount += 1;
       }
     }
 
     return NextResponse.json({
       success: true,
-      created: missions.length,
+      created: createdCount,
     });
   } catch (error: any) {
     console.error("[PRAXE] Erro ao gerar missões:", error);

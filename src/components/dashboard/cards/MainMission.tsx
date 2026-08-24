@@ -20,6 +20,31 @@ export function MainMission({
   progressPercent,
   onToggle,
 }: MainMissionProps) {
+  const normalizedTitle = mission.title
+  .normalize("NFD")
+  .replace(/[\u0300-\u036f]/g, "")
+  .toLowerCase();
+
+let missionHref = "/dashboard/missions";
+let missionAction = "Ver missão";
+
+if (
+  normalizedTitle.includes("treino") ||
+  normalizedTitle.includes("musculacao")
+) {
+  missionHref = "/dashboard/workouts";
+  missionAction = "Começar treino";
+} else if (
+  normalizedTitle.includes("refeicao") ||
+  normalizedTitle.includes("proteina") ||
+  normalizedTitle.includes("nutricao")
+) {
+  missionHref = "/dashboard/nutrition";
+  missionAction = "Ir para nutrição";
+} else if (normalizedTitle.includes("cardio")) {
+  missionHref = "/dashboard/missions";
+  missionAction = "Ver cardio";
+}
   return (
     <div className="relative overflow-hidden rounded-3xl border border-[#7c3aed]/40 bg-[#0d0d14] p-6 lg:p-8">
       <div className="pointer-events-none absolute right-0 top-0 h-full w-2/5 bg-gradient-to-l from-[#7c3aed]/10 to-transparent" />
@@ -58,7 +83,7 @@ export function MainMission({
               </p>
 
               <p className="mt-1 text-lg font-black text-[#a855f7]">
-                +{mission.xp_reward || 50} XP
+                +{mission.xp_reward || 50} Energia
               </p>
             </div>
 
@@ -84,11 +109,11 @@ export function MainMission({
   </button>
 ) : (
   <Link
-    href="/dashboard/workouts"
+  href={missionHref}
     className="mt-7 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#6d28d9] to-[#9333ea] px-6 text-sm font-black uppercase tracking-wide text-white shadow-[0_12px_35px_rgba(109,40,217,0.3)] transition-all hover:scale-[1.02] lg:w-auto"
   >
     <Play className="h-4 w-4 fill-current" />
-    Começar treino
+    {missionAction}
   </Link>
 )}
         </div>
