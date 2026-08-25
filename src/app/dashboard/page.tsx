@@ -59,21 +59,22 @@ function getMissionsByGoal(goal?: string | null, userId?: string, dateStr?: stri
 export default function DashboardPage() {
   const supabase = createClient();
   const { enqueueActions } = useRewardQueue();
-  const [userName, setUserName] = useState('Atleta');
+
+  const [userName, setUserName] = useState("Atleta");
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  
-  // Estados reais para armazenar os dados vindo do Supabase
+
   const [latestWorkout, setLatestWorkout] = useState<any>(null);
   const [latestNutrition, setLatestNutrition] = useState<any>(null);
   const [missions, setMissions] = useState<any[]>([]);
   const [completedMissionDates, setCompletedMissionDates] = useState<string[]>([]);
   const [rankingPosition, setRankingPosition] = useState<number | null>(null);
+
   const [waterConsumedMl, setWaterConsumedMl] = useState<number>(0);
+
   useEffect(() => {
     async function loadDashboardData() {
       const { data: { user } } = await supabase.auth.getUser();
-      const [waterConsumedMl, setWaterConsumedMl] = useState(0);
       
       if (user) {
         const now = new Date();
