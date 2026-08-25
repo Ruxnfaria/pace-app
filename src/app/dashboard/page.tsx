@@ -7,7 +7,6 @@ import { createClient } from "@/lib/supabase/client";
 
 
 import { MissionsList } from "@/components/dashboard/cards/MissionsList";
-import TodayGoal from "@/components/dashboard/cards/TodayGoal";
 import CoreHero from "@/components/dashboard/cards/CoreHero";
 import NextActionCard from "@/components/dashboard/cards/NextActionCard";
 import MissionOverviewCard from "@/components/dashboard/MissionOverviewCard";
