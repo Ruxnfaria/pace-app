@@ -24,7 +24,9 @@ type EnergyTodayProps = {
   waterConsumedMl?: number;
   waterGoalMl?: number;
   onAddWater?: (amount: number) => void;
-  cardioCompleted?: boolean;
+  cardioMinutes?: number;
+cardioGoalMinutes?: number;
+onAddCardio?: (minutes: number) => void | Promise<void>;
   sleepHours?: number;
   sleepGoalHours?: number;
   onSaveSleep?: (hours: number) => void | Promise<void>;
@@ -36,7 +38,9 @@ export default function EnergyToday({
   waterConsumedMl = 0,
   waterGoalMl = 2500,
   onAddWater,
-  cardioCompleted = false,
+  cardioMinutes = 0,
+cardioGoalMinutes = 30,
+onAddCardio,
   sleepHours = 0,
   sleepGoalHours = 8,
   onSaveSleep,
@@ -56,6 +60,15 @@ const sleepProgress = Math.min(
 );
 
 const sleepCompleted = sleepHours >= safeSleepGoal;
+
+const safeCardioGoal = Math.max(cardioGoalMinutes, 1);
+
+const cardioProgress = Math.min(
+  Math.max((cardioMinutes / safeCardioGoal) * 100, 0),
+  100
+);
+
+const cardioCompleted = cardioMinutes >= safeCardioGoal;
   const items: EnergyItem[] = [
     {
       id: "workout",
@@ -81,7 +94,7 @@ const sleepCompleted = sleepHours >= safeSleepGoal;
     {
       id: "cardio",
       label: "Cardio",
-      progress: cardioCompleted ? 100 : 0,
+      progress: cardioProgress,
       completed: cardioCompleted,
       icon: HeartPulse,
     },
@@ -138,6 +151,7 @@ const sleepCompleted = sleepHours >= safeSleepGoal;
           {items.map((item) => {
             const Icon = item.icon;
             const isWater = item.id === "water";
+            const isCardio = item.id === "cardio";
             const isSleep = item.id === "sleep";
 
             return (
@@ -200,6 +214,44 @@ const sleepCompleted = sleepHours >= safeSleepGoal;
         >
           <Plus className="h-3 w-3" />
           500 ml
+        </button>
+      </div>
+    )}
+    </>
+) : isCardio ? (
+  <>
+    <p className="mt-1 text-xs text-zinc-500">
+      {cardioMinutes} / {cardioGoalMinutes} min
+    </p>
+
+    <p className="mt-1 text-xs font-bold text-violet-400">
+      {Math.round(cardioProgress)}%
+    </p>
+
+    {!item.completed && onAddCardio && (
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={() => onAddCardio(10)}
+          className="rounded-lg border border-violet-500/20 bg-violet-500/10 px-2 py-2 text-[10px] font-black text-violet-300 transition hover:bg-violet-500/20"
+        >
+          +10 min
+        </button>
+
+        <button
+          type="button"
+          onClick={() => onAddCardio(20)}
+          className="rounded-lg border border-violet-500/20 bg-violet-500/10 px-2 py-2 text-[10px] font-black text-violet-300 transition hover:bg-violet-500/20"
+        >
+          +20 min
+        </button>
+
+        <button
+          type="button"
+          onClick={() => onAddCardio(30)}
+          className="col-span-2 rounded-lg border border-violet-500/20 bg-violet-500/10 px-2 py-2 text-[10px] font-black text-violet-300 transition hover:bg-violet-500/20"
+        >
+          +30 min
         </button>
       </div>
     )}

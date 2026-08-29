@@ -72,6 +72,7 @@ export default function DashboardPage() {
 
   const [waterConsumedMl, setWaterConsumedMl] = useState<number>(0);
   const [sleepHours, setSleepHours] = useState<number>(0);
+  const [cardioMinutes, setCardioMinutes] = useState<number>(0);
 
   useEffect(() => {
     async function loadDashboardData() {
@@ -115,6 +116,25 @@ if (waterError) {
 
   setWaterConsumedMl(totalWater);
 }
+
+// CARREGA O CARDIO DE HOJE
+const { data: cardioData, error: cardioError } = await supabase
+  .from("cardio_logs")
+  .select("minutes")
+  .eq("user_id", user.id)
+  .eq("cardio_date", todayWater);
+
+if (cardioError) {
+  console.error("[PRAXE] Erro ao carregar cardio:", cardioError);
+} else {
+  const totalCardio = (cardioData || []).reduce(
+    (sum, log) => sum + (Number(log.minutes) || 0),
+    0
+  );
+
+  setCardioMinutes(totalCardio);
+}
+
         const startDate = new Date();
 startDate.setDate(startDate.getDate() - 6);
 
@@ -339,6 +359,37 @@ console.log("MISSÕES GERADAS:", generatedMissions);
   }
 
   setSleepHours(hours);
+}
+
+async function handleAddCardio(minutes: number) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return;
+
+  const now = new Date();
+
+  const today = [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, "0"),
+    String(now.getDate()).padStart(2, "0"),
+  ].join("-");
+
+  const { error } = await supabase
+    .from("cardio_logs")
+    .insert({
+      user_id: user.id,
+      cardio_date: today,
+      minutes: minutes,
+    });
+
+  if (error) {
+    console.error("[PRAXE] Erro ao registrar cardio:", error);
+    return;
+  }
+
+  setCardioMinutes((current) => current + minutes);
 }
 
   async function handleToggleMission(id: string, currentStatus: boolean) {
@@ -683,11 +734,9 @@ const coreProgressPercent = Math.round(
   waterConsumedMl={waterConsumedMl}
 waterGoalMl={2500}
 onAddWater={handleAddWater}
-  cardioCompleted={missions.some(
-    (mission) =>
-      mission.completed &&
-      mission.title.toLowerCase().includes("cardio")
-  )}
+cardioMinutes={cardioMinutes}
+cardioGoalMinutes={30}
+onAddCardio={handleAddCardio}
  sleepHours={sleepHours}
 sleepGoalHours={8}
 onSaveSleep={handleSaveSleep}
