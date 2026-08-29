@@ -71,6 +71,7 @@ export default function DashboardPage() {
   const [rankingPosition, setRankingPosition] = useState<number | null>(null);
 
   const [waterConsumedMl, setWaterConsumedMl] = useState<number>(0);
+  const [sleepHours, setSleepHours] = useState<number>(0);
 
   useEffect(() => {
     async function loadDashboardData() {
@@ -84,6 +85,19 @@ const todayWater = [
   String(now.getMonth() + 1).padStart(2, "0"),
   String(now.getDate()).padStart(2, "0"),
 ].join("-");
+
+const { data: sleepData, error: sleepError } = await supabase
+  .from("sleep_logs")
+  .select("hours_slept")
+  .eq("user_id", user.id)
+  .eq("sleep_date", todayWater)
+  .maybeSingle();
+
+if (sleepError) {
+  console.error("[PRAXE] Erro ao carregar sono:", sleepError);
+} else {
+  setSleepHours(Number(sleepData?.hours_slept) || 0);
+}
 
 const { data: waterData, error: waterError } = await supabase
   .from("water_logs")
@@ -204,7 +218,7 @@ if (rankingData && profileData) {
         if (nutritionData) setLatestNutrition(nutritionData);
 
         // 4. BUSCA EM TEMPO REAL: Missões do dia de hoje
-        const todayStr = new Date().toISOString().split('T')[0];
+        const todayStr = todayWater;
         const { data: missionsData } = await supabase
           .from('daily_missions')
           .select('*')
@@ -269,6 +283,63 @@ console.log("MISSÕES GERADAS:", generatedMissions);
   
     setWaterConsumedMl((current) => current + amount);
   }
+  
+  async function handleSaveSleep(hours: number) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return;
+
+  const now = new Date();
+
+  const today = [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, "0"),
+    String(now.getDate()).padStart(2, "0"),
+  ].join("-");
+
+  const { data: existingSleep, error: checkError } = await supabase
+    .from("sleep_logs")
+    .select("id")
+    .eq("user_id", user.id)
+    .eq("sleep_date", today)
+    .maybeSingle();
+
+  if (checkError) {
+    console.error("[PRAXE] Erro ao verificar sono:", checkError);
+    return;
+  }
+
+  if (existingSleep) {
+    const { error } = await supabase
+      .from("sleep_logs")
+      .update({
+        hours_slept: hours,
+      })
+      .eq("id", existingSleep.id);
+
+    if (error) {
+      console.error("[PRAXE] Erro ao atualizar sono:", error);
+      return;
+    }
+  } else {
+    const { error } = await supabase
+      .from("sleep_logs")
+      .insert({
+        user_id: user.id,
+        sleep_date: today,
+        hours_slept: hours,
+      });
+
+    if (error) {
+      console.error("[PRAXE] Erro ao registrar sono:", error);
+      return;
+    }
+  }
+
+  setSleepHours(hours);
+}
 
   async function handleToggleMission(id: string, currentStatus: boolean) {
     const mission = missions.find((m) => m.id === id);
@@ -617,7 +688,9 @@ onAddWater={handleAddWater}
       mission.completed &&
       mission.title.toLowerCase().includes("cardio")
   )}
-  sleepCompleted={false}
+ sleepHours={sleepHours}
+sleepGoalHours={8}
+onSaveSleep={handleSaveSleep}
 />
 
 </section>

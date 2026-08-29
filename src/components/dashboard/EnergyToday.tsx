@@ -25,7 +25,9 @@ type EnergyTodayProps = {
   waterGoalMl?: number;
   onAddWater?: (amount: number) => void;
   cardioCompleted?: boolean;
-  sleepCompleted?: boolean;
+  sleepHours?: number;
+  sleepGoalHours?: number;
+  onSaveSleep?: (hours: number) => void | Promise<void>;
 };
 
 export default function EnergyToday({
@@ -35,7 +37,9 @@ export default function EnergyToday({
   waterGoalMl = 2500,
   onAddWater,
   cardioCompleted = false,
-  sleepCompleted = false,
+  sleepHours = 0,
+  sleepGoalHours = 8,
+  onSaveSleep,
 }: EnergyTodayProps) {
   const safeWaterGoal = Math.max(waterGoalMl, 1);
 
@@ -44,6 +48,14 @@ export default function EnergyToday({
     100
   );
 
+  const safeSleepGoal = Math.max(sleepGoalHours, 1);
+
+const sleepProgress = Math.min(
+  Math.max((sleepHours / safeSleepGoal) * 100, 0),
+  100
+);
+
+const sleepCompleted = sleepHours >= safeSleepGoal;
   const items: EnergyItem[] = [
     {
       id: "workout",
@@ -76,7 +88,7 @@ export default function EnergyToday({
     {
       id: "sleep",
       label: "Sono",
-      progress: sleepCompleted ? 100 : 0,
+      progress: sleepProgress,
       completed: sleepCompleted,
       icon: Moon,
     },
@@ -126,6 +138,7 @@ export default function EnergyToday({
           {items.map((item) => {
             const Icon = item.icon;
             const isWater = item.id === "water";
+            const isSleep = item.id === "sleep";
 
             return (
               <div
@@ -159,47 +172,106 @@ export default function EnergyToday({
                 </p>
 
                 {isWater ? (
-                  <>
-                    <p className="mt-1 text-xs text-zinc-500">
-                      {waterConsumedMl.toLocaleString("pt-BR")} /{" "}
-                      {waterGoalMl.toLocaleString("pt-BR")} ml
-                    </p>
+  <>
+    <p className="mt-1 text-xs text-zinc-500">
+      {waterConsumedMl.toLocaleString("pt-BR")} /{" "}
+      {waterGoalMl.toLocaleString("pt-BR")} ml
+    </p>
 
-                    <p className="mt-1 text-xs font-bold text-violet-400">
-                      {Math.round(waterProgress)}%
-                    </p>
+    <p className="mt-1 text-xs font-bold text-violet-400">
+      {Math.round(waterProgress)}%
+    </p>
 
-                    {!item.completed && onAddWater && (
-                      <div className="mt-3 grid grid-cols-2 gap-2">
-                        <button
-                          type="button"
-                          onClick={() => onAddWater(250)}
-                          className="flex items-center justify-center gap-1 rounded-lg border border-violet-500/20 bg-violet-500/10 px-2 py-2 text-[10px] font-black text-violet-300 transition hover:bg-violet-500/20"
-                        >
-                          <Plus className="h-3 w-3" />
-                          250 ml
-                        </button>
+    {!item.completed && onAddWater && (
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={() => onAddWater(250)}
+          className="flex items-center justify-center gap-1 rounded-lg border border-violet-500/20 bg-violet-500/10 px-2 py-2 text-[10px] font-black text-violet-300 transition hover:bg-violet-500/20"
+        >
+          <Plus className="h-3 w-3" />
+          250 ml
+        </button>
 
-                        <button
-                          type="button"
-                          onClick={() => onAddWater(500)}
-                          className="flex items-center justify-center gap-1 rounded-lg border border-violet-500/20 bg-violet-500/10 px-2 py-2 text-[10px] font-black text-violet-300 transition hover:bg-violet-500/20"
-                        >
-                          <Plus className="h-3 w-3" />
-                          500 ml
-                        </button>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <p className="mt-1 text-xs text-zinc-500">
-                    {item.completed
-                      ? "Concluído"
-                      : item.progress > 0
-                        ? `${Math.round(item.progress)}%`
-                        : "Pendente"}
-                  </p>
-                )}
+        <button
+          type="button"
+          onClick={() => onAddWater(500)}
+          className="flex items-center justify-center gap-1 rounded-lg border border-violet-500/20 bg-violet-500/10 px-2 py-2 text-[10px] font-black text-violet-300 transition hover:bg-violet-500/20"
+        >
+          <Plus className="h-3 w-3" />
+          500 ml
+        </button>
+      </div>
+    )}
+  </>
+) : isSleep ? (
+  <>
+    <p className="mt-1 text-xs text-zinc-500">
+      {sleepHours.toLocaleString("pt-BR")}h /{" "}
+      {sleepGoalHours.toLocaleString("pt-BR")}h
+    </p>
+
+    <p className="mt-1 text-xs font-bold text-violet-400">
+      {Math.round(sleepProgress)}%
+    </p>
+
+    {onSaveSleep && (
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={() => onSaveSleep(7)}
+          className="rounded-lg border border-violet-500/20 bg-violet-500/10 px-2 py-2 text-[10px] font-black text-violet-300 transition hover:bg-violet-500/20"
+        >
+          7h
+        </button>
+
+        <button
+          type="button"
+          onClick={() => onSaveSleep(8)}
+          className="rounded-lg border border-violet-500/20 bg-violet-500/10 px-2 py-2 text-[10px] font-black text-violet-300 transition hover:bg-violet-500/20"
+        >
+          8h
+        </button>
+
+        <button
+          type="button"
+          onClick={() => onSaveSleep(9)}
+          className="rounded-lg border border-violet-500/20 bg-violet-500/10 px-2 py-2 text-[10px] font-black text-violet-300 transition hover:bg-violet-500/20"
+        >
+          9h
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            const value = window.prompt(
+              "Quantas horas você dormiu? Exemplo: 7.5"
+            );
+
+            if (!value) return;
+
+            const hours = Number(value.replace(",", "."));
+
+            if (!Number.isNaN(hours) && hours > 0 && hours <= 24) {
+              onSaveSleep(hours);
+            }
+          }}
+          className="rounded-lg border border-white/[0.08] bg-white/[0.04] px-2 py-2 text-[10px] font-black text-zinc-300 transition hover:bg-white/[0.08]"
+        >
+          Outra
+        </button>
+      </div>
+    )}
+  </>
+) : (
+  <p className="mt-1 text-xs text-zinc-500">
+    {item.completed
+      ? "Concluído"
+      : item.progress > 0
+        ? `${Math.round(item.progress)}%`
+        : "Pendente"}
+  </p>
+)}
               </div>
             );
           })}
