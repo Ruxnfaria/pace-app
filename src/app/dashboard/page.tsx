@@ -73,6 +73,7 @@ export default function DashboardPage() {
   const [waterConsumedMl, setWaterConsumedMl] = useState<number>(0);
   const [sleepHours, setSleepHours] = useState<number>(0);
   const [cardioMinutes, setCardioMinutes] = useState<number>(0);
+  const [workoutCompletedToday, setWorkoutCompletedToday] = useState(false);
 
   useEffect(() => {
     async function loadDashboardData() {
@@ -133,6 +134,24 @@ if (cardioError) {
   );
 
   setCardioMinutes(totalCardio);
+}
+
+// CARREGA O TREINO CONCLUÍDO DE HOJE
+const { data: workoutLog, error: workoutLogError } = await supabase
+  .from("workout_logs")
+  .select("id")
+  .eq("user_id", user.id)
+  .eq("workout_date", todayWater)
+  .limit(1)
+  .maybeSingle();
+
+if (workoutLogError) {
+  console.error(
+    "[PRAXE] Erro ao carregar treino concluído:",
+    workoutLogError
+  );
+} else {
+  setWorkoutCompletedToday(Boolean(workoutLog));
 }
 
         const startDate = new Date();
@@ -721,11 +740,7 @@ const coreProgressPercent = Math.round(
 />
 
 <EnergyToday
-  workoutCompleted={missions.some(
-    (mission) =>
-      mission.completed &&
-      mission.title.toLowerCase().includes("treinar")
-  )}
+  workoutCompleted={workoutCompletedToday}
   proteinCompleted={missions.some(
     (mission) =>
       mission.completed &&

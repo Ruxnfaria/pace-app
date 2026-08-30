@@ -199,6 +199,36 @@ const today = [
   String(now.getMonth() + 1).padStart(2, "0"),
   String(now.getDate()).padStart(2, "0"),
 ].join("-");
+
+// Registra a conclusão real do treino
+if (selectedWorkout) {
+  const { data: existingWorkoutLog, error: workoutLogCheckError } =
+    await supabase
+      .from("workout_logs")
+      .select("id")
+      .eq("user_id", user.id)
+      .eq("workout_id", selectedWorkout.id)
+      .eq("workout_date", today)
+      .maybeSingle();
+
+  if (workoutLogCheckError) {
+    throw workoutLogCheckError;
+  }
+
+  if (!existingWorkoutLog) {
+    const { error: workoutLogError } = await supabase
+      .from("workout_logs")
+      .insert({
+        user_id: user.id,
+        workout_id: selectedWorkout.id,
+        workout_date: today,
+      });
+
+    if (workoutLogError) {
+      throw workoutLogError;
+    }
+  }
+}
       
           // Procura SOMENTE a missão relacionada a treino
           const { data: mission, error: missionError } = await supabase
