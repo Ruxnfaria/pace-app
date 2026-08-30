@@ -74,6 +74,8 @@ export default function DashboardPage() {
   const [sleepHours, setSleepHours] = useState<number>(0);
   const [cardioMinutes, setCardioMinutes] = useState<number>(0);
   const [workoutCompletedToday, setWorkoutCompletedToday] = useState(false);
+  const [proteinConsumedToday, setProteinConsumedToday] = useState<number>(0);
+const [proteinGoal, setProteinGoal] = useState<number>(180);
 
   useEffect(() => {
     async function loadDashboardData() {
@@ -152,6 +154,59 @@ if (workoutLogError) {
   );
 } else {
   setWorkoutCompletedToday(Boolean(workoutLog));
+}
+
+// CARREGA PROTEÍNA CONSUMIDA HOJE
+const { data: proteinLogs, error: proteinLogsError } = await supabase
+  .from("nutrition_logs")
+  .select("protein, logged_at")
+  .eq("user_id", user.id);
+
+if (proteinLogsError) {
+  console.error(
+    "[PRAXE] Erro ao carregar proteína consumida:",
+    proteinLogsError
+  );
+} else {
+  const todayProteinLogs = (proteinLogs || []).filter((log) => {
+    if (!log.logged_at) return false;
+
+    const logDate = new Date(log.logged_at);
+
+    const logDay = [
+      logDate.getFullYear(),
+      String(logDate.getMonth() + 1).padStart(2, "0"),
+      String(logDate.getDate()).padStart(2, "0"),
+    ].join("-");
+
+    return logDay === todayWater;
+  });
+
+  const totalProteinToday = todayProteinLogs.reduce(
+    (sum, log) => sum + (Number(log.protein) || 0),
+    0
+  );
+
+  setProteinConsumedToday(totalProteinToday);
+}
+
+// CARREGA META REAL DE PROTEÍNA
+const { data: proteinPlan, error: proteinPlanError } = await supabase
+  .from("nutrition_plans")
+  .select("protein")
+  .eq("user_id", user.id)
+  .eq("active", true)
+  .order("created_at", { ascending: false })
+  .limit(1)
+  .maybeSingle();
+
+if (proteinPlanError) {
+  console.error(
+    "[PRAXE] Erro ao carregar meta de proteína:",
+    proteinPlanError
+  );
+} else {
+  setProteinGoal(Number(proteinPlan?.protein) || 180);
 }
 
         const startDate = new Date();
@@ -741,11 +796,7 @@ const coreProgressPercent = Math.round(
 
 <EnergyToday
   workoutCompleted={workoutCompletedToday}
-  proteinCompleted={missions.some(
-    (mission) =>
-      mission.completed &&
-      mission.title.toLowerCase().includes("proteína")
-  )}
+  proteinCompleted={proteinConsumedToday >= proteinGoal}
   waterConsumedMl={waterConsumedMl}
 waterGoalMl={2500}
 onAddWater={handleAddWater}
