@@ -28,34 +28,7 @@ import {
   CheckCircle2,
   Circle,
 } from "lucide-react";
-function getMissionsByGoal(goal?: string | null, userId?: string, dateStr?: string) {
-  const normalizedGoal = (goal || "").toLowerCase();
 
-  const base = {
-    user_id: userId,
-    completed: false,
-    for_date: dateStr,
-    current_value: 0,
-  };
-
-  if (normalizedGoal.includes("emagrec")) {
-    return [
-      { ...base, title: "Ficar dentro da meta calórica", description: "Finalize o dia dentro das calorias planejadas.", category: "daily", xp_reward: 50, target_value: 1 },
-      { ...base, title: "Fazer cardio ou caminhada", description: "Complete pelo menos 30 minutos.", category: "daily", xp_reward: 40, target_value: 1 },
-      { ...base, title: "Treinar 3 vezes na semana", description: "Complete 3 treinos nesta semana.", category: "weekly", xp_reward: 150, target_value: 3 },
-      { ...base, title: "Fazer 2 cardios na semana", description: "Complete 2 sessões de cardio.", category: "weekly", xp_reward: 120, target_value: 2 },
-      { ...base, title: "Perder 2kg no mês", description: "Meta mensal de emagrecimento saudável.", category: "monthly", xp_reward: 300, target_value: 2 },
-    ];
-  }
-
-  return [
-    { ...base, title: "Treinar musculação hoje", description: "Complete o treino planejado.", category: "daily", xp_reward: 50, target_value: 1 },
-    { ...base, title: "Bater proteína do dia", description: "Consuma sua meta de proteína.", category: "daily", xp_reward: 40, target_value: 1 },
-    { ...base, title: "Treinar 5 vezes na semana", description: "Complete 5 treinos de musculação.", category: "weekly", xp_reward: 180, target_value: 5 },
-    { ...base, title: "Fazer 1 cardio leve na semana", description: "Cardio leve para saúde cardiovascular.", category: "weekly", xp_reward: 80, target_value: 1 },
-    { ...base, title: "Ganhar 1kg no mês", description: "Meta mensal de evolução em massa corporal.", category: "monthly", xp_reward: 300, target_value: 1 },
-  ];
-}
 export default function DashboardPage() {
   const supabase = createClient();
   const { enqueueActions } = useRewardQueue();
@@ -323,21 +296,36 @@ if (rankingData && profileData) {
           if (missionsData && missionsData.length > 0) {
             setMissions(missionsData);
           } else {
-            const generatedMissions = getMissionsByGoal(
-              profileData?.objetivo || profileData?.goal,
-              user.id,
-              todayStr
-            );
-            console.log("OBJETIVO:", profile?.objetivo || profile?.goal);
-console.log("MISSÕES GERADAS:", generatedMissions);
-            const { data: insertedMissions, error: insertError } = await supabase
-              .from("daily_missions")
-              .insert(generatedMissions)
-              .select("*");
-              console.log("ERRO AO INSERIR MISSÕES:", insertError);
-              console.log("MISSÕES INSERIDAS:", insertedMissions);
-            if (!insertError && insertedMissions) {
-              setMissions(insertedMissions);
+            try {
+              const response = await fetch("/api/missions/generate", {
+                method: "POST",
+              });
+          
+              if (!response.ok) {
+                console.error(
+                  "[PRAXE] Erro ao gerar missões:",
+                  await response.text()
+                );
+              } else {
+                const { data: generatedMissions, error: generatedMissionsError } =
+                  await supabase
+                    .from("daily_missions")
+                    .select("*")
+                    .eq("user_id", user.id)
+                    .eq("for_date", todayStr)
+                    .order("created_at", { ascending: true });
+          
+                if (generatedMissionsError) {
+                  console.error(
+                    "[PRAXE] Erro ao recarregar missões:",
+                    generatedMissionsError
+                  );
+                } else {
+                  setMissions(generatedMissions || []);
+                }
+              }
+            } catch (error) {
+              console.error("[PRAXE] Erro ao gerar missões:", error);
             }
           }
       }
