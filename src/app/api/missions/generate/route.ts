@@ -88,6 +88,31 @@ const proteinGoal = Number(activeNutritionPlan?.protein) || 180;
 
 const proteinCompletedToday = totalProteinToday >= proteinGoal;
 
+async function awardEnergy(amount: number) {
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("total_xp")
+    .eq("id", user!.id)
+    .single();
+
+  if (profileError) {
+    throw profileError;
+  }
+
+  const currentEnergy = Number(profile?.total_xp) || 0;
+
+  const { error: energyError } = await supabase
+    .from("profiles")
+    .update({
+      total_xp: currentEnergy + amount,
+    })
+    .eq("id", user!.id);
+
+  if (energyError) {
+    throw energyError;
+  }
+}
+
     const missions = [
       {
         user_id: user.id,
@@ -135,7 +160,7 @@ const proteinCompletedToday = totalProteinToday >= proteinGoal;
 for (const mission of missions) {
       const { data: existingMission, error: checkError } = await supabase
         .from("daily_missions")
-        .select("id")
+        .select("id, completed, completed_at")
         .eq("user_id", user.id)
         .eq("for_date", today)
         .eq("category", mission.category)
@@ -155,18 +180,66 @@ for (const mission of missions) {
         }
       
         createdCount += 1;
-      } else {
-        const { error: updateError } = await supabase
-          .from("daily_missions")
-          .update({
-            current_value: mission.current_value,
-            completed: mission.completed,
-            completed_at: mission.completed_at,
-          })
-          .eq("id", existingMission.id);
+
+        if (mission.completed) {
+          await awardEnergy(mission.xp_reward);
+        }
+      } 
+      else {
+        // Se a missão já foi concluída anteriormente,
+        // nunca volta para incompleta e preserva o completed_at original.
+        if (existingMission.completed) {
+          const { error: updateError } = await supabase
+            .from("daily_missions")
+            .update({
+              current_value: mission.current_value,
+            })
+            .eq("id", existingMission.id);
       
-        if (updateError) {
-          throw updateError;
+          if (updateError) {
+            throw updateError;
+          }
+      
+          continue;
+        }
+      
+        // Detecta a transição real: incompleta -> completa.
+        if (mission.completed) {
+          const { data: completedNow, error: completeError } = await supabase
+            .from("daily_missions")
+            .update({
+              current_value: mission.current_value,
+              completed: true,
+              completed_at: now.toISOString(),
+            })
+            .eq("id", existingMission.id)
+            .eq("completed", false)
+            .select("id")
+            .maybeSingle();
+      
+          if (completeError) {
+            throw completeError;
+          }
+      
+          if (completedNow) {
+            await awardEnergy(mission.xp_reward);
+          
+            console.log(
+              `[PRAXE] Missão concluída agora: ${mission.category} (+${mission.xp_reward} Energia)`
+            );
+          }
+        } else {
+          const { error: progressError } = await supabase
+            .from("daily_missions")
+            .update({
+              current_value: mission.current_value,
+            })
+            .eq("id", existingMission.id)
+            .eq("completed", false);
+      
+          if (progressError) {
+            throw progressError;
+          }
         }
       }
     }
