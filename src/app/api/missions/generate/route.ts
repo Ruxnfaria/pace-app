@@ -92,7 +92,7 @@ async function awardEnergy(amount: number) {
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .select("total_xp")
-    .eq("id", user!.id)
+    .eq("user_id", user!.id)
     .single();
 
   if (profileError) {
@@ -106,7 +106,7 @@ async function awardEnergy(amount: number) {
     .update({
       total_xp: currentEnergy + amount,
     })
-    .eq("id", user!.id);
+    .eq("user_id", user!.id)
 
   if (energyError) {
     throw energyError;
