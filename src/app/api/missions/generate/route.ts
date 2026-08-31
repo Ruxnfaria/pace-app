@@ -61,6 +61,10 @@ const todayProteinLogs = (nutritionLogs || []).filter((log) => {
   return logDay === today;
 });
 
+const mealsRegisteredToday = todayProteinLogs.length;
+
+const nutritionCompletedToday = mealsRegisteredToday >= 3;
+
 const totalProteinToday = todayProteinLogs.reduce(
   (sum, log) => sum + (Number(log.protein) || 0),
   0
@@ -105,10 +109,10 @@ const proteinCompletedToday = totalProteinToday >= proteinGoal;
           "Registre pelo menos 3 refeições durante o dia.",
         category: "nutrition",
         target_value: 3,
-        current_value: 0,
+        current_value: Math.min(mealsRegisteredToday, 3),
         xp_reward: 50,
-        completed: false,
-        completed_at: null,
+        completed: nutritionCompletedToday,
+        completed_at: nutritionCompletedToday ? now.toISOString() : null,
         for_date: today,
       },
       {
