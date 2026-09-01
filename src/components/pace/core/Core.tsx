@@ -23,6 +23,9 @@ export default function Core({
 }: CoreProps) {
   const appearance = CORE_APPEARANCE[rank];
 
+  const energyPrimary = "#8b5cf6";
+const energySecondary = "#f5d0fe";
+
   const progress = Math.max(0, Math.min(energy / 100, 1));
 
   const glow =
@@ -46,18 +49,18 @@ export default function Core({
       return (
         <div className="relative h-[340px] w-[340px]">
       
-          <Aura
-            primary={appearance.primary}
-            glow={glow}
-            intensity={auraIntensity}
-          />
+      <Aura
+  primary={energyPrimary}
+  glow={glow}
+  intensity={auraIntensity}
+/>
       
-          <Halo
-            primary={appearance.primary}
-            secondary={appearance.secondary}
-            glow={glow}
-            intensity={glow}
-          />
+<Halo
+  primary={energyPrimary}
+  secondary={energySecondary}
+  glow={glow}
+  intensity={glow}
+/>
       
       <BronzeFrame
   tier={shellTier}
@@ -78,20 +81,20 @@ export default function Core({
       
           {/* Corpo central do Núcleo */}
           <div className="absolute inset-0 z-20 flex items-center justify-center">
-            <Crystal
-              primary={appearance.primary}
-              secondary={appearance.secondary}
-              scale={crystalScale}
-              glow={glow}
-            />
+          <Crystal
+  primary={energyPrimary}
+  secondary={energySecondary}
+  scale={crystalScale}
+  glow={glow}
+/>
       
             <div className="absolute inset-0 flex items-center justify-center">
-              <Lightning
-                primary={appearance.primary}
-                secondary={appearance.secondary}
-                glow={glow}
-                scale={appearance.lightningScale}
-              />
+            <Lightning
+  primary={energyPrimary}
+  secondary={energySecondary}
+  glow={glow}
+  scale={appearance.lightningScale}
+/>
             </div>
           </div>
       
