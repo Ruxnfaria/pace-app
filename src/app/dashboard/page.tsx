@@ -182,40 +182,134 @@ if (proteinPlanError) {
   setProteinGoal(Number(proteinPlan?.protein) || 180);
 }
 
-        const startDate = new Date();
-startDate.setDate(startDate.getDate() - 6);
+      // CALENDÁRIO DE CONSISTÊNCIA
+// Um dia conta como ativo quando o usuário realiza
+// pelo menos uma atividade real dentro do PRAXE.
 
-const startDateStr = [
-  startDate.getFullYear(),
-  String(startDate.getMonth() + 1).padStart(2, "0"),
-  String(startDate.getDate()).padStart(2, "0"),
-].join("-");
+const activityWeekStart = new Date();
 
-const { data: completedHistory, error: completedHistoryError } =
-  await supabase
-    .from("daily_missions")
-    .select("for_date, completed")
+const activityCurrentDay = activityWeekStart.getDay();
+
+// Domingo = 0, Segunda = 1...
+const activityDaysSinceMonday =
+  activityCurrentDay === 0 ? 6 : activityCurrentDay - 1;
+
+activityWeekStart.setDate(
+  activityWeekStart.getDate() - activityDaysSinceMonday
+);
+
+activityWeekStart.setHours(0, 0, 0, 0);
+
+const activityStartDateStr = formatLocalDate(activityWeekStart);
+
+const [
+  workoutHistoryResult,
+  nutritionHistoryResult,
+  waterHistoryResult,
+  cardioHistoryResult,
+  sleepHistoryResult,
+] = await Promise.all([
+  supabase
+    .from("workout_logs")
+    .select("workout_date")
     .eq("user_id", user.id)
-    .eq("completed", true)
-    .gte("for_date", startDateStr)
-    .order("for_date", { ascending: true });
+    .gte("workout_date", activityStartDateStr),
 
-if (completedHistoryError) {
+  supabase
+    .from("nutrition_logs")
+    .select("logged_at")
+    .eq("user_id", user.id)
+    .gte("logged_at", activityWeekStart.toISOString()),
+
+  supabase
+    .from("water_logs")
+    .select("logged_date")
+    .eq("user_id", user.id)
+    .gte("logged_date", activityStartDateStr),
+
+  supabase
+    .from("cardio_logs")
+    .select("cardio_date")
+    .eq("user_id", user.id)
+    .gte("cardio_date", activityStartDateStr),
+
+  supabase
+    .from("sleep_logs")
+    .select("sleep_date")
+    .eq("user_id", user.id)
+    .gte("sleep_date", activityStartDateStr),
+]);
+
+if (workoutHistoryResult.error) {
   console.error(
-    "Erro ao carregar calendário:",
-    completedHistoryError
+    "[PRAXE] Erro ao carregar histórico de treino:",
+    workoutHistoryResult.error
   );
-} else {
-  const completedDates = Array.from(
-    new Set(
-      (completedHistory || [])
-        .map((mission) => mission.for_date)
-        .filter(Boolean)
-    )
-  );
-
-  setCompletedMissionDates(completedDates);
 }
+
+if (nutritionHistoryResult.error) {
+  console.error(
+    "[PRAXE] Erro ao carregar histórico de nutrição:",
+    nutritionHistoryResult.error
+  );
+}
+
+if (waterHistoryResult.error) {
+  console.error(
+    "[PRAXE] Erro ao carregar histórico de água:",
+    waterHistoryResult.error
+  );
+}
+
+if (cardioHistoryResult.error) {
+  console.error(
+    "[PRAXE] Erro ao carregar histórico de cardio:",
+    cardioHistoryResult.error
+  );
+}
+
+if (sleepHistoryResult.error) {
+  console.error(
+    "[PRAXE] Erro ao carregar histórico de sono:",
+    sleepHistoryResult.error
+  );
+}
+
+const activeDates = new Set<string>();
+
+(workoutHistoryResult.data || []).forEach((log) => {
+  if (log.workout_date) {
+    activeDates.add(log.workout_date);
+  }
+});
+
+(nutritionHistoryResult.data || []).forEach((log) => {
+  if (log.logged_at) {
+    activeDates.add(
+      formatLocalDate(new Date(log.logged_at))
+    );
+  }
+});
+
+(waterHistoryResult.data || []).forEach((log) => {
+  if (log.logged_date) {
+    activeDates.add(log.logged_date);
+  }
+});
+
+(cardioHistoryResult.data || []).forEach((log) => {
+  if (log.cardio_date) {
+    activeDates.add(log.cardio_date);
+  }
+});
+
+(sleepHistoryResult.data || []).forEach((log) => {
+  if (log.sleep_date) {
+    activeDates.add(log.sleep_date);
+  }
+});
+
+setCompletedMissionDates(Array.from(activeDates));
         // 1. Puxa os dados cadastrais do Perfil
         const { data: profileData } = await supabase
           .from('profiles')
@@ -609,27 +703,31 @@ const coreProgressPercent = Math.round(
         ].join("-");
       }
       
-      const weekDays = Array.from({ length: 7 }, (_, index) => {
-        const date = new Date(today);
-      
-        date.setDate(today.getDate() - (6 - index));
-      
-        const dateString = formatLocalDate(date);
-        const isToday = index === 6;
-      
-        return {
-          label: isToday
-            ? "Hoje"
-            : date
-                .toLocaleDateString("pt-BR", {
-                  weekday: "short",
-                })
-                .replace(".", ""),
-          day: date.getDate().toString(),
-          date: dateString,
-          checked: completedMissionDates.includes(dateString),
-        };
-      });
+      const monday = new Date(today);
+
+const currentDay = today.getDay();
+
+// Domingo = 0, Segunda = 1, Terça = 2...
+const daysSinceMonday = currentDay === 0 ? 6 : currentDay - 1;
+
+monday.setDate(today.getDate() - daysSinceMonday);
+
+const weekDays = Array.from({ length: 7 }, (_, index) => {
+  const date = new Date(monday);
+
+  date.setDate(monday.getDate() + index);
+
+  const dateString = formatLocalDate(date);
+  const todayString = formatLocalDate(today);
+
+  return {
+    label: ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"][index],
+    day: date.getDate().toString(),
+    date: dateString,
+    checked: completedMissionDates.includes(dateString),
+    isToday: dateString === todayString,
+  };
+});
       function getExerciseCount(exercises: unknown) {
         if (!exercises) return 0;
       
@@ -729,7 +827,7 @@ const coreProgressPercent = Math.round(
 
     <div className="grid grid-cols-7 gap-2">
       {weekDays.map((day) => {
-        const isToday = day.label === "Hoje";
+        const isToday = day.isToday;
 
         return (
           <div

@@ -53,16 +53,16 @@ const mobileItems = [
 
 const moreItems = [
   {
-    label: 'Mentoria Praxe',
-    description: 'Converse com a Mentoria PRAXE',
-    icon: MessageSquare,
-    href: '/dashboard/aria',
-  },
-  {
     label: 'Perfil',
     description: 'Seus dados e preferências',
     icon: User,
     href: '/dashboard/profile',
+  },
+  {
+    label: 'Mentoria Praxe',
+    description: 'Converse com a Mentoria PRAXE',
+    icon: MessageSquare,
+    href: '/dashboard/aria',
   },
   {
     label: 'Evolução',
