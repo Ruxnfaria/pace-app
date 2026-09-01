@@ -47,61 +47,164 @@ export default function BronzeFrame({
         </filter>
       </defs>
 
-      {/* Aro externo de fundo */}
-<circle
-  cx="160"
-  cy="160"
-  r="116"
-  fill="none"
-  stroke="url(#bronzeMetal)"
-  strokeWidth={tier === 3 ? 8 : tier === 2 ? 10 : 12}
-  opacity="0.25"
-/>
+      {tier === 3 && (
+  <>
+    {/* Corpo externo Bronze III */}
+    <path
+      d="
+        M160 28
+        L198 45
+        L226 72
+        L252 108
+        L270 160
+        L252 212
+        L226 248
+        L198 275
+        L160 292
+        L122 275
+        L94 248
+        L68 212
+        L50 160
+        L68 108
+        L94 72
+        L122 45
+        Z
+      "
+      fill="rgba(71, 28, 8, 0.35)"
+      stroke="url(#bronzeMetal)"
+      strokeWidth="7"
+      strokeLinejoin="round"
+      filter="url(#bronzeGlow)"
+    />
 
-{/* Aro externo de fundo */}
-<circle
-  cx="160"
-  cy="160"
-  r="116"
-  fill="none"
-  stroke="url(#bronzeMetal)"
-  strokeWidth={tier === 3 ? 8 : tier === 2 ? 10 : 12}
-  opacity="0.25"
-/>
+    {/* Segunda camada metálica */}
+    <path
+      d="
+        M160 52
+        L193 65
+        L220 91
+        L238 122
+        L248 160
+        L238 198
+        L220 229
+        L193 255
+        L160 268
+        L127 255
+        L100 229
+        L82 198
+        L72 160
+        L82 122
+        L100 91
+        L127 65
+        Z
+      "
+      fill="rgba(11, 9, 20, 0.82)"
+      stroke={primary}
+      strokeWidth="3"
+      opacity="0.95"
+    />
 
-{/* Progresso radial do Núcleo */}
-<circle
-  cx="160"
-  cy="160"
-  r={radius}
-  fill="none"
-  stroke={primary}
-  strokeWidth={tier === 3 ? 8 : tier === 2 ? 10 : 12}
-  strokeLinecap="round"
-  strokeDasharray={circumference}
-  strokeDashoffset={progressOffset}
-  transform="rotate(-90 160 160)"
-  opacity="1"
-  filter="url(#bronzeGlow)"
-  style={{
-    transition: "stroke-dashoffset 900ms ease",
-  }}
-/>
+    {/* Detalhes metálicos externos */}
+    <path
+      d="M160 25 L179 48 L160 67 L141 48 Z"
+      fill="url(#bronzeMetal)"
+      stroke={secondary}
+      strokeWidth="1.2"
+    />
 
-      {/* Aro interno */}
-      <circle
-        cx="160"
-        cy="160"
-        r="96"
-        fill="none"
-        stroke={primary}
-        strokeWidth={tier === 3 ? 2.5 : 3.5}
-        opacity="0.55"
-      />
+    <path
+      d="M160 295 L179 272 L160 253 L141 272 Z"
+      fill="url(#bronzeMetal)"
+      stroke={secondary}
+      strokeWidth="1.2"
+    />
+
+    <path
+      d="M46 160 L68 141 L87 160 L68 179 Z"
+      fill="url(#bronzeMetal)"
+      stroke={secondary}
+      strokeWidth="1.2"
+    />
+
+    <path
+      d="M274 160 L252 141 L233 160 L252 179 Z"
+      fill="url(#bronzeMetal)"
+      stroke={secondary}
+      strokeWidth="1.2"
+    />
+
+    {/* Aro interno onde fica a Energia */}
+    <circle
+      cx="160"
+      cy="160"
+      r="88"
+      fill="rgba(0,0,0,0.18)"
+      stroke="url(#bronzeMetal)"
+      strokeWidth="5"
+    />
+
+    <circle
+      cx="160"
+      cy="160"
+      r="78"
+      fill="none"
+      stroke={secondary}
+      strokeWidth="1.5"
+      opacity="0.35"
+    />
+  </>
+)}
+
+
+{/* Aro externo usado apenas no Bronze II e Bronze I */}
+{tier !== 3 && (
+  <circle
+    cx="160"
+    cy="160"
+    r="116"
+    fill="none"
+    stroke="url(#bronzeMetal)"
+    strokeWidth={tier === 2 ? 10 : 12}
+    opacity="0.25"
+  />
+)}
+
+{tier !== 3 && (
+  <circle
+    cx="160"
+    cy="160"
+    r={radius}
+    fill="none"
+    stroke={primary}
+    strokeWidth={tier === 2 ? 10 : 12}
+    strokeLinecap="round"
+    strokeDasharray={circumference}
+    strokeDashoffset={progressOffset}
+    transform="rotate(-90 160 160)"
+    opacity="1"
+    filter="url(#bronzeGlow)"
+    style={{
+      transition: "stroke-dashoffset 900ms ease",
+    }}
+  />
+)}
+
+{tier !== 3 && (
+  <circle
+    cx="160"
+    cy="160"
+    r="96"
+    fill="none"
+    stroke={primary}
+    strokeWidth="3.5"
+    opacity="0.55"
+  />
+)}
 
       {/* Detalhes cardeais */}
-      {[
-        { x: 160, y: 38, rotate: 0 },
+      {tier !== 3 &&
+  [
+    { x: 160, y: 38, rotate: 0 },
         { x: 282, y: 160, rotate: 90 },
         { x: 160, y: 282, rotate: 180 },
         { x: 38, y: 160, rotate: 270 },
