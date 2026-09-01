@@ -9,10 +9,8 @@ import {
   Dumbbell,
   Target,
   Apple,
-  TrendingUp,
   User,
   LogOut,
-  Award,
 } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/client";
@@ -20,12 +18,10 @@ import { cn } from "@/lib/utils";
 
 const items = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { label: "Mentoria Praxe", href: "/dashboard/aria", icon: MessageSquare },
+  { label: "Missões", href: "/dashboard/missions", icon: Target },
   { label: "Treinos", href: "/dashboard/workouts", icon: Dumbbell },
   { label: "Nutrição", href: "/dashboard/nutrition", icon: Apple },
-  { label: "Evolução", href: "/dashboard/progress", icon: TrendingUp },
-  { label: "Missões", href: "/dashboard/missions", icon: Target },
-  { label: "Conquistas", href: "/dashboard/badges", icon: Award },
+  { label: "Mentoria Praxe", href: "/dashboard/aria", icon: MessageSquare },
   { label: "Perfil", href: "/dashboard/profile", icon: User },
 ];
 
