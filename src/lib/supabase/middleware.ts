@@ -1,4 +1,5 @@
 import { createServerClient } from '@supabase/ssr'
+import type { User } from '@supabase/supabase-js'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function updateSession(request: NextRequest) {
@@ -14,24 +15,51 @@ export async function updateSession(request: NextRequest) {
         getAll() {
           return request.cookies.getAll()
         },
-        setAll(cookiesToSet) {
+        setAll(cookiesToSet, headers) {
           // Ajuste para o novo padrão de objeto de cookies do Next.js
-          cookiesToSet.forEach(({ name, value, options }) => 
-            request.cookies.set({ name, value, ...options })
+          cookiesToSet.forEach(({ name, value }) =>
+            request.cookies.set(name, value)
           )
+          const previousCookies = supabaseResponse.cookies.getAll()
+          const previousHeaders = new Headers(supabaseResponse.headers)
           supabaseResponse = NextResponse.next({
             request,
           })
+          previousCookies.forEach((cookie) => supabaseResponse.cookies.set(cookie))
+          for (const name of ['cache-control', 'expires', 'pragma']) {
+            const value = previousHeaders.get(name)
+            if (value) supabaseResponse.headers.set(name, value)
+          }
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set({ name, value, ...options })
+          )
+          Object.entries(headers ?? {}).forEach(([name, value]) =>
+            supabaseResponse.headers.set(name, value)
           )
         },
       },
     }
   )
 
-  // Recarrega a sessão de forma segura
-  await supabase.auth.getUser()
+  let user: User | null = null
+  let authError: unknown = null
+  try {
+    const result = await supabase.auth.getUser()
+    user = result.data.user
+    authError = result.error
+  } catch (error) {
+    authError = error
+  }
 
-  return supabaseResponse
+  // Redirects must retain refreshed cookies and the SDK's cache-control headers.
+  function preserveSession(response: NextResponse) {
+    supabaseResponse.cookies.getAll().forEach((cookie) => response.cookies.set(cookie))
+    for (const name of ['cache-control', 'expires', 'pragma']) {
+      const value = supabaseResponse.headers.get(name)
+      if (value) response.headers.set(name, value)
+    }
+    return response
+  }
+
+  return { supabase, user, authError, response: supabaseResponse, preserveSession }
 }

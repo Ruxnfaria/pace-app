@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { FitnessContextError } from '@/lib/fitness-context/model';
+import { buildWorkoutFitnessPrompt } from '@/lib/fitness-context/prompt';
+import { getUserFitnessContext } from '@/lib/fitness-context/server';
 import OpenAI from 'openai';
 
 const openai = new OpenAI({
@@ -16,28 +19,13 @@ export async function POST() {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
     }
 
-    // 2. Coleta dados físicos do perfil para montar a rotina perfeita
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('user_id', user.id)
-      .single();
-
-    if (!profile) {
-      return NextResponse.json({ error: 'Perfil não encontrado' }, { status: 404 });
-        }
+    // 2. Lê a fonte autoritativa do onboarding (V2) ou o legado (V1).
+    const fitnessContext = await getUserFitnessContext(supabase, user.id);
 
     // 3. Prompt de Engenharia com a identidade do Coach Zanetti e mapeamento de mídias
     const prompt = `Você é o Coach Lucas Zanetti, treinador de alta performance, especialista em cinesiologia e musculação da assessoria esportiva Praxe App.
 Crie uma rotina semanal de treinos de musculação de elite altamente personalizada para o seguinte atleta:
-- Nome do Atleta: ${profile.nome || 'Atleta'}
-- Objetivo Principal: ${profile.objetivo || 'Hipertrofia'}
-- Nível de Experiência: ${profile.nivel_experiencia || 'Intermediário'}
-- Dias disponíveis para treinar na semana: ${profile.dias_treino || 3} dias
-- Idade: ${profile.idade || 'Não informada'}
-- Sexo: ${profile.sexo || 'Não informado'}
-- Peso: ${profile.peso || 'Não informado'} kg
-- Altura: ${profile.altura || 'Não informada'} cm
+${buildWorkoutFitnessPrompt(fitnessContext)}
 
 Regras obrigatórias para a ficha de exercícios:
 1. Monte treinos dinâmicos, intensos e focados no objetivo real do atleta.
@@ -103,8 +91,15 @@ Você DEVE retornar OBRIGATORIAMENTE um objeto JSON puro (sem explicações fora
 
     return NextResponse.json({ success: true });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Erro no Workout Generator:', error);
-    return NextResponse.json({ error: error.message || 'Erro de servidor' }, { status: 500 });
+    if (error instanceof FitnessContextError) {
+      const status = error.code === 'PROFILE_NOT_FOUND' ? 404 : error.code === 'V2_INCOMPLETE' ? 409 : 500;
+      return NextResponse.json({ error: error.code }, { status });
+    }
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Erro de servidor' },
+      { status: 500 }
+    );
   }
 }

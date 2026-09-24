@@ -1,24 +1,29 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { createClient } from '@/lib/supabase/client';
-import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip } from 'recharts';
-import { TrendingUp, Plus, Scale, Ruler, Activity, Camera, X } from 'lucide-react';
-
-interface Measurement {
-  id: string;
-  weight: number;
-  waist: number;
-  hip: number;
-  chest: number;
-  measured_at: string;
-}
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
+import {
+  buildProgressSummary,
+  currentWeightUpdateTarget,
+  ProfileProgressError,
+  type FitnessDataSource,
+  type HealthProfile,
+  type LegacyFitnessProfile,
+  type MeasurementRecord,
+} from "@/lib/profile-progress/model";
+import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip } from "recharts";
+import { TrendingUp, Plus, Scale, Ruler, Activity, Camera, X } from "lucide-react";
 
 export default function ProgressPage() {
-  const supabase = createClient();
-  const [history, setHistory] = useState<Measurement[]>([]);
+  const supabase = useMemo(() => createClient(), []);
+  const [history, setHistory] = useState<MeasurementRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
+  const [source, setSource] = useState<FitnessDataSource | null>(null);
+  const [currentWeight, setCurrentWeight] = useState<number | null>(null);
+  const [weightChange, setWeightChange] = useState(0);
+  const [progressError, setProgressError] = useState<string | null>(null);
 
   // Campos do formulário
   const [weight, setWeight] = useState('');
@@ -26,121 +31,190 @@ export default function ProgressPage() {
   const [hip, setHip] = useState('');
   const [chest, setChest] = useState('');
 
-  async function loadProgressLogs() {
+  const loadProgressLogs = useCallback(async () => {
     setLoading(true);
-  
+
     const {
       data: { user },
+      error: userError,
     } = await supabase.auth.getUser();
-  
-    if (user) {
-      // Busca o peso atual salvo no perfil/onboarding
-      const { data: profileData } = await supabase
-        .from('profiles')
-        .select('peso')
-        .eq('user_id', user.id)
+
+    if (userError || !user) {
+      setProgressError("Não foi possível confirmar sua sessão.");
+      setLoading(false);
+      return;
+    }
+
+    const [profileResponse, measurementsResponse] = await Promise.all([
+      supabase
+        .from("profiles")
+        .select("onboarding_version,peso,altura,objetivo")
+        .eq("user_id", user.id)
+        .maybeSingle(),
+      supabase
+        .from("body_measurements")
+        .select("id,weight,waist,hip,chest,measured_at")
+        .eq("user_id", user.id)
+        .order("measured_at", { ascending: true }),
+    ]);
+
+    if (profileResponse.error || !profileResponse.data) {
+      console.error("Erro ao carregar perfil:", profileResponse.error);
+      setProgressError("Não foi possível carregar seu perfil agora.");
+      setLoading(false);
+      return;
+    }
+
+    if (measurementsResponse.error) {
+      console.error(
+        "Erro ao carregar histórico de medidas:",
+        measurementsResponse.error
+      );
+      setProgressError("Não foi possível carregar seu histórico de medidas.");
+      setLoading(false);
+      return;
+    }
+
+    const profile = profileResponse.data as LegacyFitnessProfile;
+    let health: HealthProfile | null = null;
+
+    if (profile.onboarding_version === 2) {
+      const healthResponse = await supabase
+        .from("user_health_profiles")
+        .select("weight_kg,height_cm,target_weight_kg,primary_goal")
+        .eq("user_id", user.id)
         .maybeSingle();
-  
-      // Busca o histórico real de medições
-      const { data } = await supabase
-        .from('body_measurements')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('measured_at', { ascending: true });
-  
-      if (data && data.length > 0) {
-        setHistory(
-          data.map((m) => ({
-            id: m.id,
-            weight: Number(m.weight) || 0,
-            waist: Number(m.waist) || 0,
-            hip: Number(m.hip) || 0,
-            chest: Number(m.chest) || 0,
-            measured_at: new Date(m.measured_at).toLocaleDateString(
-              'pt-BR',
-              {
-                day: '2-digit',
-                month: '2-digit',
-              }
-            ),
-          }))
-        );
-      } else if (profileData?.peso) {
-        // Se ainda não há histórico, usa o peso informado no onboarding
-        setHistory([
-          {
-            id: 'onboarding-initial-weight',
-            weight: Number(profileData.peso),
-            waist: 0,
-            hip: 0,
-            chest: 0,
-            measured_at: 'Inicial',
-          },
-        ]);
-      } else {
+
+      if (healthResponse.error) {
+        console.error("Erro ao carregar perfil de saúde:", healthResponse.error);
+        setProgressError("Não foi possível carregar seu peso atual agora.");
+        setLoading(false);
+        return;
+      }
+
+      health = healthResponse.data as HealthProfile | null;
+    }
+
+    const measurements = (measurementsResponse.data ?? []).map(
+      (measurement) => ({
+        id: measurement.id,
+        weight: Number(measurement.weight) || 0,
+        waist: Number(measurement.waist) || 0,
+        hip: Number(measurement.hip) || 0,
+        chest: Number(measurement.chest) || 0,
+        measuredAt: new Date(measurement.measured_at).toLocaleDateString(
+          "pt-BR",
+          { day: "2-digit", month: "2-digit" }
+        ),
+      })
+    );
+
+    try {
+      const summary = buildProgressSummary(profile, health, measurements);
+      setSource(summary.source);
+      setHistory(summary.history);
+      setCurrentWeight(summary.currentWeight);
+      setWeightChange(summary.weightChange);
+      setProgressError(null);
+    } catch (error) {
+      if (error instanceof ProfileProgressError) {
+        setSource("v2");
         setHistory([]);
+        setCurrentWeight(null);
+        setWeightChange(0);
+        setProgressError(
+          "Seu perfil de saúde precisa ser revisado antes de registrar novas medidas."
+        );
+      } else {
+        throw error;
       }
     }
-  
+
     setLoading(false);
-  }
+  }, [supabase]);
   
   useEffect(() => {
-    loadProgressLogs();
-  }, []);
+    const timeoutId = window.setTimeout(() => {
+      void loadProgressLogs();
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [loadProgressLogs]);
   
   async function handleSaveMeasurements(e: React.FormEvent) {
     e.preventDefault();
-  
+    if (!source || progressError) return;
+
+    const parsedWeight = Number.parseFloat(weight);
+    if (
+      !Number.isFinite(parsedWeight) ||
+      (source === "v2" && (parsedWeight <= 0 || parsedWeight > 500))
+    ) {
+      alert("Informe um peso válido.");
+      return;
+    }
+
+    setSaving(true);
+
     const {
       data: { user },
     } = await supabase.auth.getUser();
-  
-    if (!user) return;
-  
+
+    if (!user) {
+      setSaving(false);
+      return;
+    }
+
     // 1. Salva na tabela de medidas
     const { error: measurementError } = await supabase
-      .from('body_measurements')
+      .from("body_measurements")
       .insert({
         user_id: user.id,
-        weight: parseFloat(weight) || null,
-        waist: parseFloat(waist) || null,
-        hip: parseFloat(hip) || null,
-        chest: parseFloat(chest) || null,
+        weight: parsedWeight,
+        waist: Number.parseFloat(waist) || null,
+        hip: Number.parseFloat(hip) || null,
+        chest: Number.parseFloat(chest) || null,
       });
-  
+
     if (measurementError) {
       console.error(
         'Erro ao salvar medidas:',
         measurementError
       );
-      alert('Não foi possível salvar suas métricas.');
+      alert("Não foi possível salvar suas métricas.");
+      setSaving(false);
       return;
     }
-  
-    // 2. Atualiza também o peso atual no perfil principal
-    if (weight) {
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .update({
-          peso: parseFloat(weight),
-        })
-        .eq('user_id', user.id);
-  
-      if (profileError) {
-        console.error(
-          'Erro ao atualizar peso no perfil:',
-          profileError
-        );
-      }
+
+    // 2. Mantém o snapshot atual na fonte canônica da versão do perfil.
+    const target = currentWeightUpdateTarget(source);
+    const profileResponse = await supabase
+      .from(target.table)
+      .update({ [target.column]: parsedWeight })
+      .eq("user_id", user.id)
+      .select("user_id")
+      .maybeSingle();
+
+    if (profileResponse.error || !profileResponse.data) {
+      console.error(
+        "Erro ao atualizar peso atual:",
+        profileResponse.error ?? "nenhuma linha atualizada"
+      );
+      alert(
+        "A medição entrou no histórico, mas o peso atual não pôde ser atualizado. Tente novamente antes de registrar outra medição."
+      );
+      setSaving(false);
+      await loadProgressLogs();
+      return;
     }
-  
-    setWeight('');
-    setWaist('');
-    setHip('');
-    setChest('');
+
+    setWeight("");
+    setWaist("");
+    setHip("");
+    setChest("");
     setModalOpen(false);
-  
+    setSaving(false);
+
     await loadProgressLogs();
   }
 
@@ -148,16 +222,17 @@ export default function ProgressPage() {
   const ultimoRegistro =
   history.length > 0
     ? history[history.length - 1]
-    : { weight: 0, waist: 0, hip: 0, chest: 0, measured_at: "--" };
-
-const primeiroRegistro = history.length > 0 ? history[0] : null;
-
-const evolucaoTotal =
-  primeiroRegistro && history.length > 0
-    ? ultimoRegistro.weight - primeiroRegistro.weight
-    : 0;
+    : { weight: 0, waist: 0, hip: 0, chest: 0, measuredAt: "--" };
   return (
     <div className="p-6 lg:p-10 space-y-8">
+      {progressError && (
+        <div
+          role="alert"
+          className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200"
+        >
+          {progressError}
+        </div>
+      )}
       
       {/* HEADER */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -168,7 +243,8 @@ const evolucaoTotal =
         
         <button
           onClick={() => setModalOpen(true)}
-          className="flex items-center justify-center gap-2 py-3 px-5 rounded-xl bg-[#7c3aed] text-white text-xs font-black hover:bg-[#6d28d9] transition-all shadow-lg"
+          disabled={Boolean(progressError) || loading}
+          className="flex items-center justify-center gap-2 py-3 px-5 rounded-xl bg-[#7c3aed] text-white text-xs font-black hover:bg-[#6d28d9] transition-all shadow-lg disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Plus className="w-4 h-4" /> Registrar Métricas
         </button>
@@ -182,7 +258,7 @@ const evolucaoTotal =
     </p>
 
     <h3 className="text-3xl font-black text-white mt-2">
-      {ultimoRegistro.weight}
+      {currentWeight ?? "--"}
       <span className="text-sm text-zinc-500 ml-1">kg</span>
     </h3>
   </div>
@@ -193,8 +269,8 @@ const evolucaoTotal =
 </p>
 
 <h3 className="text-3xl font-black text-white mt-2">
-  {evolucaoTotal > 0 ? "+" : ""}
-  {evolucaoTotal.toFixed(1)}
+  {weightChange > 0 ? "+" : ""}
+  {weightChange.toFixed(1)}
   <span className="text-sm text-zinc-500 ml-1">kg</span>
 </h3>
   </div>
@@ -206,7 +282,7 @@ const evolucaoTotal =
 
     <h3 className="text-lg font-black text-white mt-2">
       {history.length > 0
-        ? history[history.length - 1].measured_at
+        ? history[history.length - 1].measuredAt
         : "--"}
     </h3>
   </div>
@@ -227,7 +303,7 @@ const evolucaoTotal =
           ) : (
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={history}>
-                <XAxis dataKey="measured_at" stroke="#52525b" fontSize={11} tickLine={false} axisLine={false} />
+                <XAxis dataKey="measuredAt" stroke="#52525b" fontSize={11} tickLine={false} axisLine={false} />
                 <YAxis stroke="#52525b" fontSize={11} tickLine={false} axisLine={false} domain={['dataMin - 2', 'dataMax + 2']} />
                 <Tooltip contentStyle={{ backgroundColor: '#111111', borderColor: '#1f1f1f', borderRadius: '12px', fontSize: '12px' }} />
                 <Line type="monotone" dataKey="weight" stroke="#7c3aed" strokeWidth={3} dot={{ fill: '#7c3aed' }} />
@@ -242,7 +318,7 @@ const evolucaoTotal =
         <div className="p-5 rounded-2xl bg-[#111111] border border-[#1f1f1f] space-y-2">
           <Scale className="w-4 h-4 text-purple-400" />
           <p className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider">Peso Atual</p>
-          <h3 className="text-xl font-black text-white">{ultimoRegistro.weight} <span className="text-xs font-bold text-zinc-500">kg</span></h3>
+          <h3 className="text-xl font-black text-white">{currentWeight ?? "--"} <span className="text-xs font-bold text-zinc-500">kg</span></h3>
         </div>
         <div className="p-5 rounded-2xl bg-[#111111] border border-[#1f1f1f] space-y-2">
           <Ruler className="w-4 h-4 text-orange-400" />
@@ -297,7 +373,7 @@ const evolucaoTotal =
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Peso (kg)</label>
-                <input type="number" step="0.1" required placeholder="0.0" value={weight} onChange={(e) => setWeight(e.target.value)} className="w-full px-3 py-2.5 rounded-xl bg-[#0a0a0a] border border-[#1f1f1f] text-white focus:outline-none focus:border-[#7c3aed] text-xs" />
+                <input type="number" step="0.1" min={source === "v2" ? 0.1 : undefined} max={source === "v2" ? 500 : undefined} required placeholder="0.0" value={weight} onChange={(e) => setWeight(e.target.value)} className="w-full px-3 py-2.5 rounded-xl bg-[#0a0a0a] border border-[#1f1f1f] text-white focus:outline-none focus:border-[#7c3aed] text-xs" />
               </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Cintura (cm)</label>
@@ -313,8 +389,8 @@ const evolucaoTotal =
               </div>
             </div>
 
-            <button type="submit" className="w-full py-3 rounded-xl bg-white text-black font-black text-xs hover:opacity-95 transition-all mt-2">
-              Salvar Registro
+            <button type="submit" disabled={saving} className="w-full py-3 rounded-xl bg-white text-black font-black text-xs hover:opacity-95 transition-all mt-2 disabled:cursor-not-allowed disabled:opacity-60">
+              {saving ? "Salvando..." : "Salvar Registro"}
             </button>
           </form>
         </div>
