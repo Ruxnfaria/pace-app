@@ -876,8 +876,6 @@ const weekDays = Array.from({ length: 7 }, (_, index) => {
   exerciseCount={latestWorkoutExerciseCount}
   duration={latestWorkout?.duration || 50}
   energyReward={120}
-  xpReward={50}
-  crystalReward={8}
 />
 
 <EnergyToday

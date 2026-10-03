@@ -142,7 +142,7 @@ const coreEnergy = Math.round(core.progressPercentage);
             <div className="absolute inset-0 opacity-[0.035] [background-image:linear-gradient(rgba(255,255,255,0.16)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.16)_1px,transparent_1px)] [background-size:44px_44px]" />
           </div>
       
-          <div className="relative grid grid-cols-1 gap-4 p-6 sm:p-7 lg:min-h-[460px] lg:grid-cols-[0.85fr_1.15fr] lg:grid-rows-[auto_1fr] lg:items-center lg:px-10 lg:py-8">
+          <div className="relative grid grid-cols-1 gap-4 p-6 sm:p-7 lg:min-h-[400px] lg:grid-cols-[0.85fr_1.15fr] lg:grid-rows-[auto_1fr] lg:items-center lg:gap-3 lg:px-8 lg:py-6">
       
             {/* Título do Núcleo */}
             <div className="relative z-10 order-1 lg:col-start-1 lg:row-start-1">
@@ -150,7 +150,7 @@ const coreEnergy = Math.round(core.progressPercentage);
                 {currentRank.coreName}
               </p>
       
-              <div className="mt-5 flex items-start gap-3">
+              <div className="mt-5 flex items-start gap-3 lg:mt-3">
                 <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-[#7c3aed]/35 bg-[#7c3aed]/10 shadow-[0_0_24px_rgba(124,58,237,0.18)]">
                   <Zap className="h-5 w-5 fill-[#a855f7] text-[#a855f7]" />
                 </div>
@@ -168,7 +168,7 @@ const coreEnergy = Math.round(core.progressPercentage);
             </div>
       
             {/* NÚCLEO — no mobile vem antes das informações */}
-            <div className="relative order-2 flex min-h-[330px] items-center justify-center overflow-visible sm:min-h-[370px] lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:min-h-[430px]">
+            <div className="relative order-2 flex min-h-[330px] items-center justify-center overflow-visible sm:min-h-[370px] lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:min-h-[390px]">
       
               <div className="absolute h-[310px] w-[310px] rounded-full bg-[#7c3aed]/10 blur-[75px] sm:h-[350px] sm:w-[350px]" />
       
@@ -208,7 +208,7 @@ const coreEnergy = Math.round(core.progressPercentage);
             <div className="relative z-10 order-3 flex flex-col lg:col-start-1 lg:row-start-2">
       
               {/* Progresso */}
-              <div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4">
+              <div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4 lg:p-3.5">
                 <div className="flex items-end justify-between gap-4">
                   <div>
                     <p className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500">
@@ -228,7 +228,7 @@ const coreEnergy = Math.round(core.progressPercentage);
                   </p>
                 </div>
       
-                <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/[0.07]">
+                <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/[0.07] lg:mt-3">
                   <div
                     className="h-full rounded-full bg-gradient-to-r from-[#7c3aed] via-[#9333ea] to-[#c084fc] shadow-[0_0_18px_rgba(168,85,247,0.55)] transition-all duration-700"
                     style={{ width: `${coreEnergy}%` }}
@@ -237,9 +237,9 @@ const coreEnergy = Math.round(core.progressPercentage);
               </div>
       
               {/* Estatísticas */}
-              <div className="mt-4 grid grid-cols-2 gap-3">
+              <div className="mt-4 grid grid-cols-2 gap-3 lg:mt-3">
       
-                <div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4">
+                <div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4 lg:p-3.5">
                   <p className="text-[10px] font-black uppercase tracking-[0.17em] text-zinc-500">
                     Rank atual
                   </p>
@@ -261,7 +261,7 @@ const coreEnergy = Math.round(core.progressPercentage);
                   </Link>
                 </div>
       
-                <div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4">
+                <div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4 lg:p-3.5">
                   <p className="text-[10px] font-black uppercase tracking-[0.17em] text-zinc-500">
                     Posição atual
                   </p>
@@ -286,7 +286,7 @@ const coreEnergy = Math.round(core.progressPercentage);
                     event.preventDefault();
                   }
                 }}
-                className={`mt-5 inline-flex min-h-14 w-full items-center justify-center gap-3 rounded-2xl px-6 text-sm font-black transition-all ${
+                className={`mt-5 inline-flex min-h-14 w-full items-center justify-center gap-3 rounded-2xl px-6 text-sm font-black transition-all lg:mt-4 lg:min-h-12 ${
                   allMissionsCompleted
                     ? "cursor-default border border-emerald-400/20 bg-emerald-400/10 text-emerald-300"
                     : "bg-gradient-to-r from-[#7c3aed] to-[#9333ea] text-white shadow-[0_12px_38px_rgba(124,58,237,0.28)] hover:-translate-y-0.5 hover:shadow-[0_18px_50px_rgba(124,58,237,0.38)]"

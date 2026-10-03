@@ -6,6 +6,7 @@ import { Apple, Plus, Loader2, X, Sparkles, Utensils, Check, ShoppingCart, Check
 import { useRewardQueue } from '@/components/gamification/RewardQueueProvider';
 import { GamificationActions } from '@/lib/gamification/actions';
 import { queueCoreEnergy } from "@/lib/gamification/coreEnergyPulse";
+import { getBrazilDate } from "@/lib/dates/brazilDate";
 
 interface MealLog {
   id: string;
@@ -126,12 +127,7 @@ async function analyzeMealWithAI() {
 }
 async function updateNutritionMissions(userId: string) {
   const now = new Date();
-
-const today = [
-  now.getFullYear(),
-  String(now.getMonth() + 1).padStart(2, "0"),
-  String(now.getDate()).padStart(2, "0"),
-].join("-");
+  const today = getBrazilDate(now);
 
   // Busca a meta real de proteína diretamente do plano ativo
   const { data: activePlan, error: planError } = await supabase
@@ -162,13 +158,7 @@ const today = [
   const todayLogs = (allLogs || []).filter((log) => {
     if (!log.logged_at) return false;
   
-    const logDate = new Date(log.logged_at);
-  
-    const logDay = [
-      logDate.getFullYear(),
-      String(logDate.getMonth() + 1).padStart(2, "0"),
-      String(logDate.getDate()).padStart(2, "0"),
-    ].join("-");
+    const logDay = getBrazilDate(new Date(log.logged_at));
   
     return logDay === today;
   });
