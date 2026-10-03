@@ -34,10 +34,20 @@ import {
 } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/client";
+import {
+  buildProfileFitnessUpdate,
+  ProfileProgressError,
+  resolveProfileFitnessFields,
+  runWithFreshFitnessSource,
+  type FitnessDataSource,
+  type HealthProfile,
+  type LegacyFitnessProfile,
+} from "@/lib/profile-progress/model";
 
 type ProfileData = {
   nome?: string | null;
   status_assinatura?: string | null;
+  onboarding_version?: number | null;
   peso?: number | null;
   altura?: number | null;
   objetivo?: string | null;
@@ -74,6 +84,9 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [fitnessSource, setFitnessSource] =
+    useState<FitnessDataSource | null>(null);
+  const [fitnessError, setFitnessError] = useState<string | null>(null);
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -128,6 +141,7 @@ const [weeklyXP, setWeeklyXP] = useState(0);
             `
               nome,
               status_assinatura,
+              onboarding_version,
               peso,
               altura,
               objetivo,
@@ -223,12 +237,63 @@ const [weeklyXP, setWeeklyXP] = useState(0);
         setStatus(
           profile.status_assinatura || "inativo"
         );
-        setWeight(profile.peso?.toString() || "");
-        setHeight(profile.altura?.toString() || "");
-        setGoal(profile.objetivo || "hipertrofia");
         setTotalXP(profile.total_xp || 0);
         setLevel(profile.level || 1);
         setStreak(profile.streak || 0);
+
+        const source =
+          profile.onboarding_version === 2 ? "v2" : "v1";
+        setFitnessSource(source);
+
+        let health: HealthProfile | null = null;
+        if (source === "v2") {
+          const healthResponse = await supabase
+            .from("user_health_profiles")
+            .select(
+              "weight_kg,height_cm,target_weight_kg,primary_goal"
+            )
+            .eq("user_id", user.id)
+            .maybeSingle();
+
+          if (healthResponse.error) {
+            console.error(
+              "Erro ao carregar perfil de saúde:",
+              healthResponse.error
+            );
+            setFitnessError(
+              "Não foi possível carregar seus dados de saúde agora. Seu nome e os demais dados da conta continuam disponíveis."
+            );
+          } else {
+            health = healthResponse.data as HealthProfile | null;
+          }
+        }
+
+        try {
+          const fitness = resolveProfileFitnessFields(
+            {
+              onboarding_version: profile.onboarding_version ?? null,
+              peso: profile.peso ?? null,
+              altura: profile.altura ?? null,
+              objetivo: profile.objetivo ?? null,
+            },
+            health
+          );
+          setWeight(fitness.weight?.toString() ?? "");
+          setHeight(fitness.height?.toString() ?? "");
+          setGoal(fitness.goal ?? "");
+          setFitnessError(null);
+        } catch (error) {
+          if (error instanceof ProfileProgressError) {
+            setWeight("");
+            setHeight("");
+            setGoal("");
+            setFitnessError(
+              "Seu perfil de saúde precisa ser revisado antes de exibir ou alterar dados físicos. Seu nome e os demais dados da conta continuam disponíveis."
+            );
+          } else {
+            throw error;
+          }
+        }
       }
       
       setCompletedMissions(
@@ -287,41 +352,143 @@ const [weeklyXP, setWeeklyXP] = useState(0);
         ? null
         : Number.parseFloat(height);
 
-    const { error } = await supabase
-      .from("profiles")
-      .update({
-        nome: name.trim(),
-        peso:
-          parsedWeight !== null &&
-          Number.isFinite(parsedWeight)
-            ? parsedWeight
-            : null,
-        altura:
-          parsedHeight !== null &&
-          Number.isFinite(parsedHeight)
-            ? parsedHeight
-            : null,
-        objetivo: goal,
-      })
-      .eq("user_id", user.id);
-
-    setSaving(false);
-
-    if (error) {
-      console.error(
-        "Erro ao salvar perfil:",
-        error
-      );
-
-      alert(
-        `Erro ao salvar perfil: ${error.message}`
-      );
-
+    if (!fitnessSource) {
+      setSaving(false);
       return;
     }
 
-    setEditing(false);
-    alert("Perfil atualizado com sucesso!");
+    const validWeight =
+      parsedWeight !== null && Number.isFinite(parsedWeight)
+        ? parsedWeight
+        : null;
+    const validHeight =
+      parsedHeight !== null && Number.isFinite(parsedHeight)
+        ? parsedHeight
+        : null;
+
+    try {
+      await runWithFreshFitnessSource({
+        loadedSource: fitnessSource,
+        readCurrent: async () => {
+          const currentProfileResponse = await supabase
+            .from("profiles")
+            .select("onboarding_version,peso,altura,objetivo")
+            .eq("user_id", user.id)
+            .maybeSingle();
+
+          if (currentProfileResponse.error || !currentProfileResponse.data) {
+            throw new ProfileProgressError(
+              "Não foi possível confirmar a versão atual do seu perfil. Nenhuma alteração foi salva.",
+              "READ_FAILED"
+            );
+          }
+
+          const currentProfile =
+            currentProfileResponse.data as LegacyFitnessProfile;
+          let currentHealth: HealthProfile | null = null;
+
+          if (currentProfile.onboarding_version === 2) {
+            const currentHealthResponse = await supabase
+              .from("user_health_profiles")
+              .select("weight_kg,height_cm,target_weight_kg,primary_goal")
+              .eq("user_id", user.id)
+              .maybeSingle();
+
+            if (currentHealthResponse.error) {
+              throw new ProfileProgressError(
+                "Não foi possível confirmar seu perfil de saúde. Nenhuma alteração foi salva.",
+                "READ_FAILED"
+              );
+            }
+
+            currentHealth = currentHealthResponse.data as HealthProfile | null;
+          }
+
+          return { profile: currentProfile, health: currentHealth };
+        },
+        write: async (currentSource) => {
+          if (
+            currentSource === "v2" &&
+            !fitnessError &&
+            (validWeight === null ||
+              validWeight <= 0 ||
+              validWeight > 500 ||
+              validHeight === null ||
+              validHeight <= 0 ||
+              validHeight > 300)
+          ) {
+            throw new ProfileProgressError(
+              "Informe um peso e uma altura válidos."
+            );
+          }
+
+          const fitnessUpdate = fitnessError
+            ? null
+            : buildProfileFitnessUpdate(currentSource, {
+                weight: validWeight,
+                height: validHeight,
+                goal,
+              });
+
+          const profileValues =
+            fitnessUpdate?.table === "profiles"
+              ? { nome: name.trim(), ...fitnessUpdate.values }
+              : { nome: name.trim() };
+
+          let profileUpdate = supabase
+            .from("profiles")
+            .update(profileValues)
+            .eq("user_id", user.id);
+
+          if (fitnessUpdate?.table === "profiles") {
+            // Close the V1→V2 TOCTOU window at the legacy write itself.
+            profileUpdate = profileUpdate.or(
+              "onboarding_version.is.null,onboarding_version.eq.1"
+            );
+          }
+
+          const profileResponse = await profileUpdate
+            .select("user_id")
+            .maybeSingle();
+
+          let saveError = profileResponse.error?.message ?? null;
+          if (!saveError && !profileResponse.data) {
+            saveError =
+              fitnessUpdate?.table === "profiles"
+                ? "A versão do perfil mudou antes da escrita. Recarregue a página."
+                : "O perfil autenticado não pôde ser atualizado.";
+          }
+
+          if (!saveError && fitnessUpdate?.table === "user_health_profiles") {
+            const healthResponse = await supabase
+              .from("user_health_profiles")
+              .update(fitnessUpdate.values)
+              .eq("user_id", user.id)
+              .select("user_id")
+              .maybeSingle();
+            saveError =
+              healthResponse.error?.message ??
+              (healthResponse.data
+                ? null
+                : "O perfil de saúde autenticado não pôde ser atualizado.");
+          }
+
+          if (saveError) throw new Error(saveError);
+        },
+      });
+
+      setSaving(false);
+      setEditing(false);
+      alert("Perfil atualizado com sucesso!");
+    } catch (error) {
+      setSaving(false);
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Não foi possível salvar o perfil.";
+      console.error("Erro ao salvar perfil:", error);
+      alert(`Erro ao salvar perfil: ${message}`);
+    }
   }
 
   const levelTitles: Record<number, string> = {
@@ -459,6 +626,12 @@ const [weeklyXP, setWeeklyXP] = useState(0);
     definicao: "Definição muscular",
     emagrecimento: "Emagrecimento",
     performance: "Performance",
+    hypertrophy: "Hipertrofia",
+    fat_loss: "Perda de gordura",
+    body_recomposition: "Recomposição corporal",
+    strength: "Força",
+    conditioning: "Condicionamento",
+    health: "Saúde",
   };
 
   const achievements: Achievement[] = [
@@ -503,6 +676,15 @@ const [weeklyXP, setWeeklyXP] = useState(0);
 
   return (
     <div className="mx-auto max-w-6xl space-y-8 p-6 lg:p-10">
+      {fitnessError && (
+        <div
+          role="alert"
+          className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200"
+        >
+          {fitnessError}
+        </div>
+      )}
+
       {/* PERFIL PRINCIPAL */}
       <section className="relative overflow-hidden rounded-3xl border border-[#7c3aed]/30 bg-gradient-to-br from-[#7c3aed]/25 via-[#111111] to-[#0a0a0a]">
         <div className="pointer-events-none absolute -right-20 -top-20 h-72 w-72 rounded-full bg-[#7c3aed]/20 blur-[100px]" />
@@ -954,12 +1136,16 @@ const [weeklyXP, setWeeklyXP] = useState(0);
                     <input
                       type="number"
                       step="0.1"
+                      min={fitnessSource === "v2" ? 0.1 : undefined}
+                      max={fitnessSource === "v2" ? 500 : undefined}
+                      required={fitnessSource === "v2" && !fitnessError}
+                      disabled={Boolean(fitnessError)}
                       value={weight}
                       placeholder="Exemplo: 66"
                       onChange={(event) =>
                         setWeight(event.target.value)
                       }
-                      className="w-full rounded-xl border border-[#1f1f1f] bg-[#0a0a0a] py-3 pl-10 pr-3 text-sm text-white outline-none transition-colors focus:border-[#7c3aed]"
+                      className="w-full rounded-xl border border-[#1f1f1f] bg-[#0a0a0a] py-3 pl-10 pr-3 text-sm text-white outline-none transition-colors focus:border-[#7c3aed] disabled:cursor-not-allowed disabled:text-zinc-600"
                     />
                   </div>
                 </div>
@@ -974,12 +1160,16 @@ const [weeklyXP, setWeeklyXP] = useState(0);
 
                     <input
                       type="number"
+                      min={fitnessSource === "v2" ? 0.1 : undefined}
+                      max={fitnessSource === "v2" ? 300 : undefined}
+                      required={fitnessSource === "v2" && !fitnessError}
+                      disabled={Boolean(fitnessError)}
                       value={height}
                       placeholder="Exemplo: 175"
                       onChange={(event) =>
                         setHeight(event.target.value)
                       }
-                      className="w-full rounded-xl border border-[#1f1f1f] bg-[#0a0a0a] py-3 pl-10 pr-3 text-sm text-white outline-none transition-colors focus:border-[#7c3aed]"
+                      className="w-full rounded-xl border border-[#1f1f1f] bg-[#0a0a0a] py-3 pl-10 pr-3 text-sm text-white outline-none transition-colors focus:border-[#7c3aed] disabled:cursor-not-allowed disabled:text-zinc-600"
                     />
                   </div>
                 </div>
@@ -990,29 +1180,45 @@ const [weeklyXP, setWeeklyXP] = useState(0);
                   Objetivo principal
                 </label>
 
-                <select
-                  value={goal}
-                  onChange={(event) =>
-                    setGoal(event.target.value)
-                  }
-                  className="mt-2 w-full rounded-xl border border-[#1f1f1f] bg-[#0a0a0a] px-3 py-3 text-sm text-white outline-none transition-colors focus:border-[#7c3aed]"
-                >
-                  <option value="hipertrofia">
-                    Hipertrofia
-                  </option>
+                {fitnessSource === "v2" ? (
+                  <>
+                    <input
+                      value={goalLabels[goal] || goal || "Indisponível"}
+                      readOnly
+                      disabled
+                      className="mt-2 w-full cursor-not-allowed rounded-xl border border-[#1f1f1f] bg-[#0a0a0a]/50 px-3 py-3 text-sm text-zinc-500"
+                    />
+                    {!fitnessError && (
+                      <p className="mt-2 text-xs text-zinc-500">
+                        Definido no seu perfil de treino.
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <select
+                    value={goal}
+                    onChange={(event) =>
+                      setGoal(event.target.value)
+                    }
+                    className="mt-2 w-full rounded-xl border border-[#1f1f1f] bg-[#0a0a0a] px-3 py-3 text-sm text-white outline-none transition-colors focus:border-[#7c3aed]"
+                  >
+                    <option value="hipertrofia">
+                      Hipertrofia
+                    </option>
 
-                  <option value="definicao">
-                    Definição muscular
-                  </option>
+                    <option value="definicao">
+                      Definição muscular
+                    </option>
 
-                  <option value="emagrecimento">
-                    Emagrecimento
-                  </option>
+                    <option value="emagrecimento">
+                      Emagrecimento
+                    </option>
 
-                  <option value="performance">
-                    Performance
-                  </option>
-                </select>
+                    <option value="performance">
+                      Performance
+                    </option>
+                  </select>
+                )}
               </div>
 
               <button

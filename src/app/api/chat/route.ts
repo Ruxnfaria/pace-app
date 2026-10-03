@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { FitnessContextError } from '@/lib/fitness-context/model';
+import { buildChatFitnessPrompt } from '@/lib/fitness-context/prompt';
+import { getUserFitnessContext } from '@/lib/fitness-context/server';
 import OpenAI from 'openai';
 
 const openai = new OpenAI({
@@ -9,6 +12,8 @@ const openai = new OpenAI({
 export async function POST(req: Request) {
   try {
     const { message, imageUrl } = await req.json();
+    const normalizedMessage =
+      typeof message === 'string' ? message.trim() : '';
     const supabase = await createClient();
 
     // 1. Validação de segurança e autenticação
@@ -17,24 +22,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
     }
 
-    if (!message && !imageUrl) {
+    if (!normalizedMessage && !imageUrl) {
       return NextResponse.json({ error: 'Conteúdo ausente' }, { status: 400 });
     }
 
-    // 2. Busca os dados reais do perfil
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('user_id', user.id)
-      .single();
-
-    const userContext = profile 
-      ? `\n\n[DADOS CADASTRAIS DO ALUNO CONECTADO - USE PARA BALIZAR SUA ESTRATÉGIA]:
-- Nome: ${profile.nome || 'Ruan'}
-- Peso atual: ${profile.peso ? profile.peso + ' kg' : '66 kg'}
-- Altura: ${profile.altura ? profile.altura + ' cm' : '175 cm'}
-- Objetivo principal: ${profile.objetivo || 'Hipertrofia'}`
-      : '\n\n[DADOS DO ALUNO]: Nome: Ruan, Peso: 66 kg, Objetivo: Hipertrofia';
+    // 2. Busca o contexto normalizado sem misturar fontes V1/V2.
+    const fitnessContext = await getUserFitnessContext(supabase, user.id);
+    const userContext = `\n\n${buildChatFitnessPrompt(fitnessContext)}`;
 
     // 3. MEMÓRIA: Recupera o histórico recente
     const { data: history } = await supabase
@@ -45,7 +39,7 @@ export async function POST(req: Request) {
       .limit(15);
 
     // 4. SALVA A MENSAGEM DO USUÁRIO NO BANCO
-    const messageToSave = message.trim() || "[Enviou uma imagem de acompanhamento físico]";
+    const messageToSave = normalizedMessage || "[Enviou uma imagem de acompanhamento físico]";
     await supabase.from('chat_messages').insert({
       user_id: user.id,
       sender: 'user',
@@ -165,9 +159,11 @@ PERSONAS DE ELITE:
     ];
 
     // 7. Monta a linha do tempo
-    const finalMessages: any[] = [{ role: 'system', content: systemPrompt }];
+    const finalMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+      { role: 'system', content: systemPrompt },
+    ];
     if (history) {
-      history.forEach((msg: any) => {
+      (history as Array<{ sender: string; content: string }>).forEach((msg) => {
         finalMessages.push({
           role: msg.sender === 'user' ? 'user' : 'assistant',
           content: msg.content
@@ -179,12 +175,12 @@ PERSONAS DE ELITE:
       finalMessages.push({
         role: 'user',
         content: [
-          { type: 'text', text: message || "Analise meus dados." },
+          { type: 'text', text: normalizedMessage || "Analise meus dados." },
           { type: 'image_url', image_url: { url: imageUrl } }
         ]
       });
     } else {
-      finalMessages.push({ role: 'user', content: message });
+      finalMessages.push({ role: 'user', content: normalizedMessage });
     }
 
     // 8. Chamada OpenAI
@@ -198,8 +194,6 @@ PERSONAS DE ELITE:
 
     const responseMessage = completion.choices[0].message;
     const toolCalls = responseMessage.tool_calls;
-
-    console.log("TOOL CALLS:", JSON.stringify(toolCalls, null, 2));
 
     // 9. PROCESSAMENTO DAS FERRAMENTAS (Salvando a lista de exercícios como string JSON no banco)
     if (toolCalls) {
@@ -266,8 +260,15 @@ PERSONAS DE ELITE:
 
     return NextResponse.json({ reply });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Erro crítico no ecossistema automatizado:', error);
-    return NextResponse.json({ error: error.message || 'Erro interno no servidor' }, { status: 500 });
+    if (error instanceof FitnessContextError) {
+      const status = error.code === 'PROFILE_NOT_FOUND' ? 404 : error.code === 'V2_INCOMPLETE' ? 409 : 500;
+      return NextResponse.json({ error: error.code }, { status });
+    }
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Erro interno no servidor' },
+      { status: 500 }
+    );
   }
 }
