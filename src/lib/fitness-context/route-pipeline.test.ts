@@ -375,9 +375,10 @@ test("/api/workouts/generate: pipeline real valida saída antes de persistir", a
       assert.doesNotMatch(prompt, /nutrition|supplement/i);
       return validWorkoutJson;
     },
-    persistWorkouts: async (_access, workouts) => {
+    persistWorkouts: async (_access, workouts, receivedContext) => {
       order.push("persist");
       assert.equal(workouts[0].exercises[0].name, "Supino");
+      assert.equal(receivedContext, context);
     },
   });
   assert.deepEqual(order, ["auth", "context", "openai-mock", "persist"]);

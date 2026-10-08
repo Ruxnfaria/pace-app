@@ -127,7 +127,8 @@ type WorkoutRouteOptions<TClient> = {
   invokeOpenAI: (fitnessPrompt: string) => Promise<string>;
   persistWorkouts: (
     access: FitnessRouteAccess<TClient>,
-    workouts: readonly GeneratedWorkout[]
+    workouts: readonly GeneratedWorkout[],
+    context: UserFitnessContext
   ) => Promise<void>;
 };
 
@@ -137,8 +138,11 @@ export async function runWorkoutGenerationRoute<TClient>(
   await runFitnessRoutePipeline({
     requireActiveSubscription: options.requireActiveSubscription,
     loadFitnessContext: options.loadFitnessContext,
-    validate: buildWorkoutFitnessPrompt,
-    invokeOpenAI: async (fitnessPrompt, access) => {
+    validate: (context) => ({
+      context,
+      fitnessPrompt: buildWorkoutFitnessPrompt(context),
+    }),
+    invokeOpenAI: async ({ context, fitnessPrompt }, access) => {
       let content: string;
       try {
         content = await options.invokeOpenAI(fitnessPrompt);
@@ -149,7 +153,7 @@ export async function runWorkoutGenerationRoute<TClient>(
 
       const workouts = parseGeneratedWorkouts(content);
       try {
-        await options.persistWorkouts(access, workouts);
+        await options.persistWorkouts(access, workouts, context);
       } catch (error) {
         if (error instanceof FitnessRouteServiceError) throw error;
         throw new FitnessRouteServiceError("PERSISTENCE_FAILED", 503, error);
