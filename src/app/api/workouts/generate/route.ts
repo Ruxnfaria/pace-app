@@ -5,6 +5,11 @@ import { AccessError, requireActiveSubscription } from "@/lib/auth/require-activ
 import { FitnessContextError } from "@/lib/fitness-context/model";
 import { FitnessRouteServiceError, runWorkoutGenerationRoute } from "@/lib/fitness-context/route-pipeline";
 import { getUserFitnessContext } from "@/lib/fitness-context/server";
+import {
+  persistGeneratedWorkoutPlan,
+  type WorkoutRpcClient,
+} from "@/lib/workouts/persistence";
+import { isWorkoutPersistenceV2Enabled } from "@/lib/workouts/runtime-policy";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -33,6 +38,8 @@ Todos os campos são obrigatórios. Não inclua links, GIFs, vídeos ou qualquer
 
 export async function POST() {
   try {
+    const persistenceV2Enabled = isWorkoutPersistenceV2Enabled();
+    let responsePayload: Record<string, unknown> = { success: true };
     await runWorkoutGenerationRoute({
       requireActiveSubscription: async () => {
         const { supabase, user } = await requireActiveSubscription();
@@ -50,24 +57,38 @@ export async function POST() {
         if (!content) throw new Error("Empty OpenAI response");
         return content;
       },
-      persistWorkouts: async (access, workouts) => {
-        const { error: deleteError } = await access.client
-          .from("workouts")
-          .delete()
-          .eq("user_id", access.userId);
-        if (deleteError) throw deleteError;
+      persistWorkouts: async (access, workouts, context) => {
+        const persistence = await persistGeneratedWorkoutPlan({
+          persistenceV2Enabled,
+          client: access.client as unknown as WorkoutRpcClient,
+          workouts,
+          training: context.training,
+          persistLegacy: async () => {
+            const { error: deleteError } = await access.client
+              .from("workouts")
+              .delete()
+              .eq("user_id", access.userId);
+            if (deleteError) throw deleteError;
 
-        for (const workout of workouts) {
-          const { error } = await access.client.from("workouts").insert({
-            user_id: access.userId,
-            title: workout.name,
-            exercises: workout.exercises,
-          });
-          if (error) throw error;
+            for (const workout of workouts) {
+              const { error } = await access.client.from("workouts").insert({
+                user_id: access.userId,
+                title: workout.name,
+                exercises: workout.exercises,
+              });
+              if (error) throw error;
+            }
+          },
+        });
+        if (persistence.mode === "v2") {
+          responsePayload = { success: true, persistence: "v2", ...persistence.result };
         }
       },
     });
-    return NextResponse.json({ success: true }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json(
+      responsePayload,
+      { headers: { "Cache-Control": "no-store" } }
+    );
   } catch (error: unknown) {
     if (error instanceof AccessError) return NextResponse.json({ error: error.code }, { status: error.status, headers: { "Cache-Control": "no-store" } });
     if (error instanceof FitnessContextError) return NextResponse.json({ error: error.code }, { status: error.code === "READ_FAILED" ? 503 : 409, headers: { "Cache-Control": "no-store" } });

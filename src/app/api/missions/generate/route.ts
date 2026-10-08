@@ -3,10 +3,19 @@ import { createClient } from "@/lib/supabase/server";
 import { getBrazilDate } from "@/lib/dates/brazilDate";
 import { recordStreakActivity } from "@/lib/gamification/streaks";
 import {
+  isWorkoutPersistenceV2Enabled,
+  resolveWorkoutMissionCompletedToday,
+} from "@/lib/workouts/runtime-policy";
+import {
   syncDailyMissionChests,
   syncMonthlyMissionChest,
   syncWeeklyMissionChest,
 } from "@/lib/rewards/server";
+import {
+  applyNewGeneratedMissionCompletion,
+  insertNewGeneratedMissionAfterInvariant,
+  reconcileExistingGeneratedMission,
+} from "./mission-containment";
 
 export async function POST() {
   try {
@@ -25,20 +34,23 @@ export async function POST() {
 
     const now = new Date();
     const today = getBrazilDate(now);
+    const workoutPersistenceV2Enabled = isWorkoutPersistenceV2Enabled();
 
-const { data: workoutLog, error: workoutLogError } = await supabase
-  .from("workout_logs")
-  .select("id")
-  .eq("user_id", user.id)
-  .eq("workout_date", today)
-  .limit(1)
-  .maybeSingle();
+const workoutCompletedToday = await resolveWorkoutMissionCompletedToday({
+  persistenceV2Enabled: workoutPersistenceV2Enabled,
+  loadLegacyWorkoutCompletion: async () => {
+    const { data: workoutLog, error: workoutLogError } = await supabase
+      .from("workout_logs")
+      .select("id")
+      .eq("user_id", user.id)
+      .eq("workout_date", today)
+      .limit(1)
+      .maybeSingle();
 
-if (workoutLogError) {
-  throw workoutLogError;
-}
-
-const workoutCompletedToday = Boolean(workoutLog);
+    if (workoutLogError) throw workoutLogError;
+    return Boolean(workoutLog);
+  },
+});
 
 const { data: nutritionLogs, error: nutritionLogsError } = await supabase
   .from("nutrition_logs")
@@ -171,22 +183,39 @@ for (const mission of missions) {
       let existingMission = foundMission;
 
       if (!existingMission) {
-        const { data: insertedMission, error: insertError } = await supabase
-          .from("daily_missions")
-          .insert(mission)
-          .select("id, completed, completed_at")
-          .single();
+        const { data: insertedMission, error: insertError } =
+          await insertNewGeneratedMissionAfterInvariant({
+            persistenceV2Enabled: workoutPersistenceV2Enabled,
+            category: mission.category,
+            currentValue: mission.current_value,
+            completed: mission.completed,
+            completedAt: mission.completed_at,
+            insert: () => supabase
+              .from("daily_missions")
+              .insert(mission)
+              .select("id, completed, completed_at")
+              .single(),
+          });
 
         if (!insertError && insertedMission) {
           createdCount += 1;
 
-          if (mission.completed) {
-            await awardEnergy(mission.xp_reward);
-            await syncDailyMissionChests(user.id, today);
-            await syncWeeklyMissionChest(user.id, today);
-            await syncMonthlyMissionChest(user.id, today);
-            await recordStreakActivity(user.id);
-          }
+          await applyNewGeneratedMissionCompletion({
+            persistenceV2Enabled: workoutPersistenceV2Enabled,
+            category: mission.category,
+            completed: mission.completed,
+            effects: {
+              awardEnergy: () => awardEnergy(mission.xp_reward),
+              syncChests: async () => {
+                await syncDailyMissionChests(user.id, today);
+                await syncWeeklyMissionChest(user.id, today);
+                await syncMonthlyMissionChest(user.id, today);
+              },
+              recordStreak: async () => {
+                await recordStreakActivity(user.id);
+              },
+            },
+          });
 
           continue;
         }
@@ -225,25 +254,23 @@ for (const mission of missions) {
         existingMission = concurrentlyCreatedMission;
       }
 
-        // Se a missão já foi concluída anteriormente,
-        // nunca volta para incompleta e preserva o completed_at original.
-        if (existingMission.completed) {
-          const { error: updateError } = await supabase
+      await reconcileExistingGeneratedMission({
+        persistenceV2Enabled: workoutPersistenceV2Enabled,
+        category: mission.category,
+        existingCompleted: existingMission.completed,
+        missionCompleted: mission.completed,
+        updateCurrentValue: async () => {
+          const { error: progressError } = await supabase
             .from("daily_missions")
             .update({
               current_value: mission.current_value,
             })
-            .eq("id", existingMission.id);
+            .eq("id", existingMission.id)
+            .eq("completed", false);
 
-          if (updateError) {
-            throw updateError;
-          }
-
-          continue;
-        }
-
-        // Detecta a transição real: incompleta -> completa.
-        if (mission.completed) {
+          if (progressError) throw progressError;
+        },
+        completeMission: async () => {
           const { data: completedNow, error: completeError } = await supabase
             .from("daily_missions")
             .update({
@@ -256,39 +283,26 @@ for (const mission of missions) {
             .select("id")
             .maybeSingle();
 
-          if (completeError) {
-            throw completeError;
-          }
-
-          if (completedNow) {
-            await awardEnergy(mission.xp_reward);
+          if (completeError) throw completeError;
+          return Boolean(completedNow);
+        },
+        effects: {
+          awardEnergy: () => awardEnergy(mission.xp_reward),
+          syncChests: async () => {
             await syncDailyMissionChests(user.id, today);
             await syncWeeklyMissionChest(user.id, today);
             await syncMonthlyMissionChest(user.id, today);
+          },
+          recordStreak: async () => {
             await recordStreakActivity(user.id);
 
             console.log(
               `[PRAXE] Missão concluída agora: ${mission.category} (+${mission.xp_reward} Energia)`
             );
-          }
-        } else {
-          const { error: progressError } = await supabase
-            .from("daily_missions")
-            .update({
-              current_value: mission.current_value,
-            })
-            .eq("id", existingMission.id)
-            .eq("completed", false);
-
-          if (progressError) {
-            throw progressError;
-          }
-        }
+          },
+        },
+      });
     }
-
-    await syncDailyMissionChests(user.id, today);
-    await syncWeeklyMissionChest(user.id, today);
-    await syncMonthlyMissionChest(user.id, today);
 
     return NextResponse.json({
       success: true,

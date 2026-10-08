@@ -5,6 +5,7 @@ import { AccessError, requireActiveSubscription } from "@/lib/auth/require-activ
 import { FitnessContextError } from "@/lib/fitness-context/model";
 import { FitnessRouteServiceError, type FitnessRouteAccess } from "@/lib/fitness-context/route-pipeline";
 import { getUserFitnessContext } from "@/lib/fitness-context/server";
+import { getChatWorkoutSaveContainment, isWorkoutPersistenceV2Enabled } from "@/lib/workouts/runtime-policy";
 import { ChatRequestValidationError, handleChatPost, type ChatPersistenceCommand } from "./handler";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -17,8 +18,16 @@ const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
 
 type SupabaseAccess = Awaited<ReturnType<typeof requireActiveSubscription>>["supabase"];
 
-async function persistCommand(access: FitnessRouteAccess<SupabaseAccess>, command: ChatPersistenceCommand): Promise<void> {
+async function persistCommand(
+  access: FitnessRouteAccess<SupabaseAccess>,
+  command: ChatPersistenceCommand
+): Promise<void | { notice: string }> {
   if (command.type === "workout") {
+    const containment = getChatWorkoutSaveContainment(isWorkoutPersistenceV2Enabled());
+    if (containment.blocked) {
+      // Design separately reviewed append/custom workout persistence RPC before re-enabling Chat save.
+      return { notice: containment.notice };
+    }
     const { error } = await access.client.from("workouts").insert({ user_id: access.userId, title: command.title, exercises: JSON.stringify(command.exercises) });
     if (error) throw error;
     return;

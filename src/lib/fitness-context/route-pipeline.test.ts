@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { buildLegacyFitnessContext, buildV22FitnessContext, type LegacyProfileRow, type V22ContextRows } from "./model.ts";
 import { handleChatPost } from "../../app/api/chat/handler.ts";
+import { CHAT_WORKOUT_SAVE_UNAVAILABLE, getChatWorkoutSaveContainment } from "../workouts/runtime-policy.ts";
 import {
   FitnessRouteServiceError,
   parseGeneratedWorkouts,
@@ -432,4 +433,129 @@ test("/api/chat aceita FitnessContext V2.2 e minimiza escopo nutricional", async
   });
   assert.equal(response.status, 200); assert.match(receivedPrompt, /currentEatingRoutine|physicalActivity|walking/);
   assert.doesNotMatch(receivedPrompt, /equipment|aerobicSafetyLimitation/);
+});
+test("/api/chat retorna aviso controlado quando salvar treino está contido", async () => {
+  const notices: string[] = [];
+  let savedAssistant = "";
+  const response = await handleChatPost(new Request("http://localhost/api/chat", {
+    method: "POST",
+    body: JSON.stringify({ message: "monte um treino" }),
+  }), {
+    requireActiveSubscription: async () => ({ client: {}, userId: "id" }),
+    loadFitnessContext: async () => context,
+    loadHistory: async () => [],
+    persistUserMessage: async () => {},
+    invokeOpenAI: async () => ({
+      content: "Treino salvo.",
+      toolCalls: [{
+        id: "workout-1",
+        type: "function",
+        function: {
+          name: "salvar_treino",
+          arguments: JSON.stringify({
+            title: "Treino A",
+            exercises: [{ name: "Supino", sets: "4", reps: "10", rest: "60s", tip: "Controle" }],
+          }),
+        },
+      }],
+    }),
+    persistCommand: async (_access, command) => {
+      assert.equal(command.type, "workout");
+      const notice = "Salvar treino está temporariamente indisponível.";
+      notices.push(notice);
+      return { notice };
+    },
+    persistAssistantMessage: async (_access, message) => { savedAssistant = message; },
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(notices, ["Salvar treino está temporariamente indisponível."]);
+  assert.equal(savedAssistant, notices[0]);
+  assert.deepEqual(await response.json(), { reply: notices[0] });
+});
+
+test("/api/chat preserva outras ações quando salvar treino está contido", async () => {
+  const commands: string[] = [];
+  const response = await handleChatPost(new Request("http://localhost/api/chat", {
+    method: "POST",
+    body: JSON.stringify({ message: "crie uma missão" }),
+  }), {
+    requireActiveSubscription: async () => ({ client: {}, userId: "id" }),
+    loadFitnessContext: async () => context,
+    loadHistory: async () => [],
+    persistUserMessage: async () => {},
+    invokeOpenAI: async () => ({
+      content: "Missão criada.",
+      toolCalls: [{
+        id: "mission-1",
+        type: "function",
+        function: {
+          name: "salvar_missao_diaria",
+          arguments: JSON.stringify({ title: "Caminhar 20 minutos" }),
+        },
+      }],
+    }),
+    persistCommand: async (_access, command) => { commands.push(command.type); },
+    persistAssistantMessage: async () => {},
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(commands, ["daily_mission"]);
+  assert.deepEqual(await response.json(), { reply: "Missão criada." });
+});
+
+test("/api/chat bloqueia treino e executa outra tool na mesma completion", async () => {
+  const commands: string[] = [];
+  const workoutWrites: string[] = [];
+  const notice = CHAT_WORKOUT_SAVE_UNAVAILABLE;
+  const response = await handleChatPost(new Request("http://localhost/api/chat", {
+    method: "POST",
+    body: JSON.stringify({ message: "monte um treino e uma missão" }),
+  }), {
+    requireActiveSubscription: async () => ({ client: {}, userId: "id" }),
+    loadFitnessContext: async () => context,
+    loadHistory: async () => [],
+    persistUserMessage: async () => {},
+    invokeOpenAI: async () => ({
+      content: "Plano preparado.",
+      toolCalls: [
+        {
+          id: "workout-mixed",
+          type: "function",
+          function: {
+            name: "salvar_treino",
+            arguments: JSON.stringify({
+              title: "Treino A",
+              exercises: [{ name: "Supino", sets: "4", reps: "10", rest: "60s", tip: "Controle" }],
+            }),
+          },
+        },
+        {
+          id: "mission-mixed",
+          type: "function",
+          function: {
+            name: "salvar_missao_diaria",
+            arguments: JSON.stringify({ title: "Caminhar 20 minutos" }),
+          },
+        },
+      ],
+    }),
+    persistCommand: async (_access, command) => {
+      commands.push(command.type);
+      if (command.type === "workout") {
+        const containment = getChatWorkoutSaveContainment(true);
+        if (containment.blocked) return { notice: containment.notice };
+        workoutWrites.push(command.title);
+        return undefined;
+      }
+      assert.equal(command.type, "daily_mission");
+      return undefined;
+    },
+    persistAssistantMessage: async () => {},
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(commands, ["workout", "daily_mission"]);
+  assert.deepEqual(workoutWrites, []);
+  assert.deepEqual(await response.json(), { reply: notice });
 });

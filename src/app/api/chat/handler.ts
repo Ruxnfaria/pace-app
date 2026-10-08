@@ -56,7 +56,7 @@ type ChatHandlerDependencies<TClient> = {
   persistCommand: (
     access: FitnessRouteAccess<TClient>,
     command: ChatPersistenceCommand
-  ) => Promise<void>;
+  ) => Promise<void | { notice: string }>;
   persistAssistantMessage: (
     access: FitnessRouteAccess<TClient>,
     message: string
@@ -327,16 +327,20 @@ export async function handleChatPost<TClient>(
         commands.push(command);
       }
 
+      const notices: string[] = [];
       for (const command of commands) {
         try {
-          await dependencies.persistCommand(access, command);
+          const result = await dependencies.persistCommand(access, command);
+          if (result?.notice && !notices.includes(result.notice)) notices.push(result.notice);
         } catch (error) {
           throw new FitnessRouteServiceError("PERSISTENCE_FAILED", 503, error);
         }
       }
 
-      const reply = nonEmptyString(completion.content, 50_000) ??
-        "Ficha técnica montada e disponibilizada no seu painel.";
+      const reply = notices.length
+        ? notices.join("\n\n")
+        : nonEmptyString(completion.content, 50_000) ??
+          "Ficha técnica montada e disponibilizada no seu painel.";
       try {
         await dependencies.persistAssistantMessage(access, reply);
       } catch (error) {
