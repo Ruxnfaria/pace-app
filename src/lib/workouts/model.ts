@@ -25,6 +25,57 @@ export type Workout = {
   createdAt: string;
 };
 export type WorkoutLog = { id: string; workoutId: string; workoutDate: string };
+export type WorkoutScheduleOccurrence = {
+  id: string;
+  scheduledForDate: string;
+  sourceWorkoutId: string | null;
+  workoutTitle: string;
+};
+export type WorkoutWeeklyScheduleRow = {
+  isoWeekday: Weekday;
+  originalWorkoutId: string | null;
+  workoutId: string | null;
+  effectiveFromDate: string;
+  materializedThroughDate: string;
+};
+export type WorkoutSession = {
+  id: string;
+  status: "in_progress" | "completed" | "abandoned";
+  workoutId: string | null;
+  scheduleOccurrenceId: string | null;
+  scheduledForDate: string | null;
+  workoutTitle: string;
+  startedAt: string;
+  completedAt: string | null;
+  note: string | null;
+};
+export type WorkoutSessionExercise = {
+  id: string;
+  sessionId: string;
+  exerciseKey: string | null;
+  name: string;
+  position: number;
+  sets: string;
+  reps: string;
+  rest: string | null;
+  tip: string | null;
+  completedAt: string | null;
+};
+export type DurableWorkoutHistoryItem = {
+  kind: "durable";
+  session: WorkoutSession & { status: "completed"; completedAt: string };
+  exercises: WorkoutSessionExercise[];
+  workoutLogId: string;
+  durationSeconds: number;
+};
+export type LegacyWorkoutHistoryItem = {
+  kind: "legacy";
+  id: string;
+  workoutId: string | null;
+  workoutDate: string;
+  currentWorkoutTitle: string | null;
+};
+export type WorkoutHistoryItem = DurableWorkoutHistoryItem | LegacyWorkoutHistoryItem;
 export type TrainingScheduleProfile = {
   trainingDaysPerWeek: number | null;
   availableWeekdays: number[] | null;
@@ -156,3 +207,31 @@ export function getDurationLabel(profile: TrainingScheduleProfile | null): strin
 
 export const getWeekdayLabel = (day: Weekday | null): string | null =>
   WEEKDAYS.find((item) => item.value === day)?.label ?? null;
+
+export function getSessionDurationSeconds(startedAt: string, completedAt: string): number {
+  const duration = Math.floor((Date.parse(completedAt) - Date.parse(startedAt)) / 1000);
+  return Number.isFinite(duration) && duration >= 0 ? duration : 0;
+}
+
+export function getPreviousWorkoutNote(
+  history: DurableWorkoutHistoryItem[],
+  workoutId: string | null
+): string | null {
+  if (!workoutId) return null;
+  return history
+    .filter((item) => item.session.workoutId === workoutId && item.session.note)
+    .sort((left, right) => right.session.completedAt.localeCompare(left.session.completedAt))[0]
+    ?.session.note ?? null;
+}
+
+export function getPendingWorkoutPresentation(
+  occurrence: WorkoutScheduleOccurrence
+): Workout {
+  return {
+    id: occurrence.sourceWorkoutId ?? occurrence.id,
+    title: occurrence.workoutTitle,
+    exercises: [],
+    rawText: null,
+    createdAt: `${occurrence.scheduledForDate}T12:00:00.000Z`,
+  };
+}

@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  buildWeeklySchedule, getDurationLabel, getNextWorkoutState, normalizeWorkout,
+  buildWeeklySchedule, getDurationLabel, getNextWorkoutState, getPendingWorkoutPresentation,
+  getPreviousWorkoutNote,
+  getSessionDurationSeconds, normalizeWorkout,
   type Workout,
 } from "./model.ts";
 
@@ -49,4 +51,34 @@ test("expõe somente duração planejada existente", () => {
     sessionDurationMin: 60, sessionDurationIsPlus: false, sessionDurationRange: null }), "60 min");
   assert.equal(getDurationLabel({ trainingDaysPerWeek: 3, availableWeekdays: null, preferredWeekdays: [1,3,5],
     sessionDurationMin: null, sessionDurationIsPlus: null, sessionDurationRange: "45_60" }), "45–60 min");
+});
+
+test("calcula duração real da sessão concluída sem aceitar intervalo inválido", () => {
+  assert.equal(getSessionDurationSeconds("2026-10-08T12:00:00.000Z", "2026-10-08T12:32:10.000Z"), 1930);
+  assert.equal(getSessionDurationSeconds("2026-10-08T13:00:00.000Z", "2026-10-08T12:00:00.000Z"), 0);
+  assert.equal(getSessionDurationSeconds("invalid", "2026-10-08T12:00:00.000Z"), 0);
+});
+
+test("recupera a nota anterior apenas do mesmo workout sobrevivente", () => {
+  const history = [{
+    kind: "durable" as const,
+    session: { id: "session-old", status: "completed" as const, workoutId: "workout-1", scheduleOccurrenceId: null, scheduledForDate: null, workoutTitle: "Snapshot antigo", startedAt: "2026-10-01T12:00:00.000Z", completedAt: "2026-10-01T13:00:00.000Z", note: "Aumentar carga" },
+    exercises: [], workoutLogId: "log-1", durationSeconds: 3600,
+  }];
+  assert.equal(getPreviousWorkoutNote(history, "workout-1"), "Aumentar carga");
+  assert.equal(getPreviousWorkoutNote(history, "workout-deleted"), null);
+  assert.equal(getPreviousWorkoutNote(history, null), null);
+});
+
+test("pending usa o título snapshot e não a definição live renomeada", () => {
+  const live = workout("workout-1", "Título renomeado");
+  const pending = getPendingWorkoutPresentation({
+    id: "occurrence-1",
+    scheduledForDate: "2026-10-07",
+    sourceWorkoutId: live.id,
+    workoutTitle: "Título snapshot",
+  });
+  assert.equal(pending.id, live.id);
+  assert.equal(pending.title, "Título snapshot");
+  assert.deepEqual(pending.exercises, []);
 });

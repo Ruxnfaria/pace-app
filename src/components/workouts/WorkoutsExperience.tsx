@@ -10,6 +10,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useRewardQueue } from "@/components/gamification/RewardQueueProvider";
 import { ExerciseMedia } from "@/components/workouts/ExerciseMedia";
+import WorkoutsExperienceV2 from "@/components/workouts/WorkoutsExperienceV2";
 import { getBrazilDate } from "@/lib/dates/brazilDate";
 import { GamificationActions } from "@/lib/gamification/actions";
 import { queueCoreEnergy } from "@/lib/gamification/coreEnergyPulse";
@@ -45,7 +46,15 @@ function Modal({ title, eyebrow, close, children }: { title: string; eyebrow: st
   );
 }
 
-export default function WorkoutsExperience() {
+export default function WorkoutsExperience({
+  persistenceV2Enabled = false,
+}: {
+  persistenceV2Enabled?: boolean;
+}) {
+  return persistenceV2Enabled ? <WorkoutsExperienceV2 /> : <LegacyWorkoutsExperience />;
+}
+
+function LegacyWorkoutsExperience() {
   const supabase = useMemo(() => createClient(), []);
   const { enqueueActions } = useRewardQueue();
   const [workouts, setWorkouts] = useState<Workout[]>([]);
