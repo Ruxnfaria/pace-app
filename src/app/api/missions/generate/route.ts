@@ -1,5 +1,12 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getBrazilDate } from "@/lib/dates/brazilDate";
+import { recordStreakActivity } from "@/lib/gamification/streaks";
+import {
+  syncDailyMissionChests,
+  syncMonthlyMissionChest,
+  syncWeeklyMissionChest,
+} from "@/lib/rewards/server";
 
 export async function POST() {
   try {
@@ -17,12 +24,7 @@ export async function POST() {
     }
 
     const now = new Date();
-
-const today = [
-  now.getFullYear(),
-  String(now.getMonth() + 1).padStart(2, "0"),
-  String(now.getDate()).padStart(2, "0"),
-].join("-");
+    const today = getBrazilDate(now);
 
 const { data: workoutLog, error: workoutLogError } = await supabase
   .from("workout_logs")
@@ -52,11 +54,7 @@ const todayProteinLogs = (nutritionLogs || []).filter((log) => {
 
   const logDate = new Date(log.logged_at);
 
-  const logDay = [
-    logDate.getFullYear(),
-    String(logDate.getMonth() + 1).padStart(2, "0"),
-    String(logDate.getDate()).padStart(2, "0"),
-  ].join("-");
+  const logDay = getBrazilDate(logDate);
 
   return logDay === today;
 });
@@ -158,34 +156,75 @@ async function awardEnergy(amount: number) {
     let createdCount = 0;
 
 for (const mission of missions) {
-      const { data: existingMission, error: checkError } = await supabase
+      const { data: foundMission, error: checkError } = await supabase
         .from("daily_missions")
         .select("id, completed, completed_at")
         .eq("user_id", user.id)
         .eq("for_date", today)
         .eq("category", mission.category)
         .maybeSingle();
-    
+
       if (checkError) {
         throw checkError;
       }
-    
+
+      let existingMission = foundMission;
+
       if (!existingMission) {
-        const { error: insertError } = await supabase
+        const { data: insertedMission, error: insertError } = await supabase
           .from("daily_missions")
-          .insert(mission);
-      
-        if (insertError) {
+          .insert(mission)
+          .select("id, completed, completed_at")
+          .single();
+
+        if (!insertError && insertedMission) {
+          createdCount += 1;
+
+          if (mission.completed) {
+            await awardEnergy(mission.xp_reward);
+            await syncDailyMissionChests(user.id, today);
+            await syncWeeklyMissionChest(user.id, today);
+            await syncMonthlyMissionChest(user.id, today);
+            await recordStreakActivity(user.id);
+          }
+
+          continue;
+        }
+
+        if (!insertError) {
+          throw new Error(
+            `Missão ${mission.category} inserida sem registro retornado`
+          );
+        }
+
+        if (insertError.code !== "23505") {
           throw insertError;
         }
-      
-        createdCount += 1;
 
-        if (mission.completed) {
-          await awardEnergy(mission.xp_reward);
+        const {
+          data: concurrentlyCreatedMission,
+          error: concurrentReadError,
+        } = await supabase
+          .from("daily_missions")
+          .select("id, completed, completed_at")
+          .eq("user_id", user.id)
+          .eq("for_date", today)
+          .eq("category", mission.category)
+          .maybeSingle();
+
+        if (concurrentReadError) {
+          throw concurrentReadError;
         }
-      } 
-      else {
+
+        if (!concurrentlyCreatedMission) {
+          throw new Error(
+            `Missão ${mission.category} não encontrada após conflito de unicidade`
+          );
+        }
+
+        existingMission = concurrentlyCreatedMission;
+      }
+
         // Se a missão já foi concluída anteriormente,
         // nunca volta para incompleta e preserva o completed_at original.
         if (existingMission.completed) {
@@ -195,14 +234,14 @@ for (const mission of missions) {
               current_value: mission.current_value,
             })
             .eq("id", existingMission.id);
-      
+
           if (updateError) {
             throw updateError;
           }
-      
+
           continue;
         }
-      
+
         // Detecta a transição real: incompleta -> completa.
         if (mission.completed) {
           const { data: completedNow, error: completeError } = await supabase
@@ -216,14 +255,18 @@ for (const mission of missions) {
             .eq("completed", false)
             .select("id")
             .maybeSingle();
-      
+
           if (completeError) {
             throw completeError;
           }
-      
+
           if (completedNow) {
             await awardEnergy(mission.xp_reward);
-          
+            await syncDailyMissionChests(user.id, today);
+            await syncWeeklyMissionChest(user.id, today);
+            await syncMonthlyMissionChest(user.id, today);
+            await recordStreakActivity(user.id);
+
             console.log(
               `[PRAXE] Missão concluída agora: ${mission.category} (+${mission.xp_reward} Energia)`
             );
@@ -236,24 +279,27 @@ for (const mission of missions) {
             })
             .eq("id", existingMission.id)
             .eq("completed", false);
-      
+
           if (progressError) {
             throw progressError;
           }
         }
-      }
     }
+
+    await syncDailyMissionChests(user.id, today);
+    await syncWeeklyMissionChest(user.id, today);
+    await syncMonthlyMissionChest(user.id, today);
 
     return NextResponse.json({
       success: true,
       created: createdCount,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("[PRAXE] Erro ao gerar missões:", error);
 
     return NextResponse.json(
       {
-        error: error?.message || "Erro interno",
+        error: error instanceof Error ? error.message : "Erro interno",
       },
       { status: 500 }
     );
