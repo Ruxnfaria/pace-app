@@ -45,6 +45,8 @@ const prerequisiteMigrations = [
 
 const installMigration = '20261004000300_add_praxe_workout_persistence.sql';
 const reconciliationMigration = '20261005000100_reconcile_praxe_workout_phase1_dormant_acl.sql';
+const concurrencyHardeningMigration =
+  '20261008000100_harden_praxe_workout_active_session_concurrency.sql';
 const postApplyAudit = 'audit_praxe_workout_persistence_postapply_READONLY.sql';
 const expectedProductionRecorderRawMd5 = '66a1d1b6ad6cdfd150ef06026410320c';
 const expectedProductionEnergyRawMd5 = '4a1deeecb318df2dd76a30a1cd4acb74';
@@ -345,6 +347,22 @@ function assertDormantState(rows) {
   }
 }
 
+async function setAuthenticatedUser(db, userId) {
+  await db.query(
+    "select pg_catalog.set_config('request.jwt.claim.sub', $1, false)",
+    [userId],
+  );
+}
+
+async function startSession(db, workoutId, requestId) {
+  const result = await db.query(
+    'select * from public.start_workout_session($1, null, $2)',
+    [workoutId, requestId],
+  );
+  assert.equal(result.rows.length, 1, 'start_workout_session result cardinality');
+  return result.rows[0];
+}
+
 test('Workout Phase-1 ACL reconciliation remains local, dormant and idempotent', async () => {
   assertNoExternalConfiguration();
   await assertHarnessIsLoopbackOnly();
@@ -469,6 +487,195 @@ test('Workout Phase-1 ACL reconciliation remains local, dormant and idempotent',
     assert.equal(activation.details.workout_runtime_activation_state, 'DORMANT');
     assert.equal(activation.details.expected_user_facing_rpcs, 11);
 
+    const concurrencyUserId = '10000000-0000-4000-8000-000000000001';
+    const concurrencyWorkoutId = '20000000-0000-4000-8000-000000000001';
+    await db.query('insert into auth.users (id) values ($1)', [concurrencyUserId]);
+    await db.query(
+      `insert into public.workouts (id, user_id, title, exercises)
+       values ($1, $2, 'Concurrency workout', $3)`,
+      [
+        concurrencyWorkoutId,
+        concurrencyUserId,
+        JSON.stringify([{ id: 'squat', name: 'Squat', sets: '3', reps: '10' }]),
+      ],
+    );
+
+    await db.query(
+      `insert into public.workout_sessions
+         (user_id, workout_id, workout_title, client_request_id)
+       values
+         ($1, $2, 'Duplicate A', '30000000-0000-4000-8000-000000000001'),
+         ($1, $2, 'Duplicate B', '30000000-0000-4000-8000-000000000002')`,
+      [concurrencyUserId, concurrencyWorkoutId],
+    );
+    await assert.rejects(
+      applyMigration(db, concurrencyHardeningMigration),
+      /multiple in-progress sessions; reconcile them explicitly before retrying/,
+      'Hardening preflight must reject legacy active-session multiplicity',
+    );
+    await db.query('rollback');
+    await db.query(
+      'delete from public.workout_sessions where user_id = $1',
+      [concurrencyUserId],
+    );
+
+    await applyMigration(db, concurrencyHardeningMigration);
+    const hardeningState = await readWorkoutFunctionState(db);
+    assertDormantState(hardeningState);
+    const hardenedStart = hardeningState.find(
+      (row) => row.signature === 'start_workout_session(uuid,uuid,uuid)',
+    );
+    assert.notEqual(
+      hardenedStart.definition_md5,
+      firstReconciliationState.find(
+        (row) => row.signature === 'start_workout_session(uuid,uuid,uuid)',
+      ).definition_md5,
+      'Hardening must replace only the start RPC body',
+    );
+    const hardeningIndex = await db.query(`
+      select i.indisunique, i.indisvalid, i.indisready,
+             pg_catalog.pg_get_expr(i.indpred, i.indrelid) as predicate
+      from pg_catalog.pg_index i
+      join pg_catalog.pg_class c on c.oid = i.indexrelid
+      where c.oid = 'public.workout_sessions_one_in_progress_per_user_unique'::regclass
+    `);
+    assert.deepEqual(hardeningIndex.rows, [{
+      indisunique: true,
+      indisvalid: true,
+      indisready: true,
+      predicate: "(status = 'in_progress'::text)",
+    }]);
+
+    await applyMigration(db, concurrencyHardeningMigration);
+    const secondHardeningState = await readWorkoutFunctionState(db);
+    assertDormantState(secondHardeningState);
+    assert.deepEqual(
+      secondHardeningState,
+      hardeningState,
+      'A second hardening application must preserve definitions and dormant ACLs',
+    );
+
+    await db.query(
+      `insert into public.workout_sessions
+         (user_id, workout_id, workout_title, client_request_id)
+       values ($1, $2, 'Unique-index probe', $3)`,
+      [
+        concurrencyUserId,
+        concurrencyWorkoutId,
+        '70000000-0000-4000-8000-000000000001',
+      ],
+    );
+    await assert.rejects(
+      db.query(
+        `insert into public.workout_sessions
+           (user_id, workout_id, workout_title, client_request_id)
+         values ($1, $2, 'Unique-index conflict', $3)`,
+        [
+          concurrencyUserId,
+          concurrencyWorkoutId,
+          '70000000-0000-4000-8000-000000000002',
+        ],
+      ),
+      /workout_sessions_one_in_progress_per_user_unique/,
+      'Partial unique index must reject a second in-progress session',
+    );
+    await db.query(
+      'delete from public.workout_sessions where user_id = $1',
+      [concurrencyUserId],
+    );
+
+    const firstClient = await local.connect();
+    const secondClient = await local.connect();
+    await Promise.all([
+      setAuthenticatedUser(firstClient, concurrencyUserId),
+      setAuthenticatedUser(secondClient, concurrencyUserId),
+    ]);
+
+    const differentRequestStarts = await Promise.all([
+      startSession(
+        firstClient,
+        concurrencyWorkoutId,
+        '40000000-0000-4000-8000-000000000001',
+      ),
+      startSession(
+        secondClient,
+        concurrencyWorkoutId,
+        '40000000-0000-4000-8000-000000000002',
+      ),
+    ]);
+    assert.equal(differentRequestStarts[0].session_id, differentRequestStarts[1].session_id);
+    assert.deepEqual(
+      differentRequestStarts.map((row) => row.replayed).sort(),
+      [false, true],
+    );
+    const activeAfterDifferentRequests = await db.query(
+      `select pg_catalog.count(*)::integer as count
+       from public.workout_sessions
+       where user_id = $1 and status = 'in_progress'`,
+      [concurrencyUserId],
+    );
+    assert.equal(activeAfterDifferentRequests.rows[0].count, 1);
+
+    await setAuthenticatedUser(db, concurrencyUserId);
+    await db.query(
+      'select * from public.abandon_workout_session($1)',
+      [differentRequestStarts[0].session_id],
+    );
+
+    const sharedRequestId = '50000000-0000-4000-8000-000000000001';
+    const sameRequestStarts = await Promise.all([
+      startSession(firstClient, concurrencyWorkoutId, sharedRequestId),
+      startSession(secondClient, concurrencyWorkoutId, sharedRequestId),
+    ]);
+    assert.equal(sameRequestStarts[0].session_id, sameRequestStarts[1].session_id);
+    assert.deepEqual(sameRequestStarts.map((row) => row.replayed).sort(), [false, true]);
+    const activeAfterSameRequest = await db.query(
+      `select pg_catalog.count(*)::integer as count
+       from public.workout_sessions
+       where user_id = $1 and status = 'in_progress'`,
+      [concurrencyUserId],
+    );
+    assert.equal(activeAfterSameRequest.rows[0].count, 1);
+
+    const exerciseRows = await db.query(
+      `select id from public.workout_session_exercises
+       where session_id = $1 order by exercise_position`,
+      [sameRequestStarts[0].session_id],
+    );
+    assert.equal(exerciseRows.rows.length, 1);
+    await db.query(
+      'select * from public.set_workout_session_exercise_completion($1, $2, true)',
+      [sameRequestStarts[0].session_id, exerciseRows.rows[0].id],
+    );
+    await db.query(
+      'select * from public.complete_workout_session($1)',
+      [sameRequestStarts[0].session_id],
+    );
+    const afterCompletion = await startSession(
+      db,
+      concurrencyWorkoutId,
+      '60000000-0000-4000-8000-000000000001',
+    );
+    assert.notEqual(afterCompletion.session_id, sameRequestStarts[0].session_id);
+    assert.equal(afterCompletion.status, 'in_progress');
+    await db.query(
+      'select * from public.abandon_workout_session($1)',
+      [afterCompletion.session_id],
+    );
+
+    const hardenedAudit = await db.query(await readMigration(postApplyAudit));
+    assert.deepEqual(
+      hardenedAudit.rows.filter((row) => row.status !== 'PASS'),
+      [],
+      JSON.stringify(hardenedAudit.rows, null, 2),
+    );
+    assert.equal(
+      hardenedAudit.rows.find(
+        (row) => row.check_name === 'workout_runtime_activation_state',
+      ).details.workout_runtime_activation_state,
+      'DORMANT',
+    );
+
     const finalDependencyState = assertCheckpointState(await readDependencyState(db));
     assert.equal(
       finalDependencyState.recorder.raw_md5,
@@ -501,6 +708,15 @@ test('Workout Phase-1 ACL reconciliation remains local, dormant and idempotent',
       },
       workout_functions: firstReconciliationState.length,
       second_reconciliation_exact_no_op: true,
+      active_session_hardening: {
+        duplicate_preflight_rejected: true,
+        direct_duplicate_insert_rejected: true,
+        second_application_exact_no_op: true,
+        different_request_concurrency_single_session: true,
+        same_request_concurrency_single_session: true,
+        abandoned_and_completed_sessions_release_exclusivity: true,
+        dormant_acl_preserved: true,
+      },
       audit_checks: audit.rows.map(({ check_name, status }) => ({ check_name, status })),
       workout_runtime_activation_state:
         activation.details.workout_runtime_activation_state,
