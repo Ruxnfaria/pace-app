@@ -185,6 +185,165 @@ test("/api/chat: falha de contexto impede histórico, persistência e OpenAI", a
   assert.equal(downstreamCalls, 0);
 });
 
+function chatRequest(body: unknown): Request {
+  return new Request("http://localhost/api/chat", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+function chatDependencies(
+  toolCalls: readonly {
+    id: string;
+    type: "function";
+    function: { name: string; arguments: string };
+  }[] = []
+) {
+  const commandWrites: string[] = [];
+  let openAICalls = 0;
+  let assistantWrites = 0;
+  return {
+    commandWrites,
+    get openAICalls() { return openAICalls; },
+    get assistantWrites() { return assistantWrites; },
+    dependencies: {
+      requireActiveSubscription: async () => ({ client: {}, userId: "id" }),
+      loadFitnessContext: async () => context,
+      loadHistory: async () => [],
+      persistUserMessage: async () => {},
+      invokeOpenAI: async () => {
+        openAICalls += 1;
+        return { content: "Resposta", toolCalls };
+      },
+      persistCommand: async (_access: unknown, command: { type: string }) => {
+        commandWrites.push(command.type);
+      },
+      persistAssistantMessage: async () => { assistantWrites += 1; },
+    },
+  };
+}
+
+test("/api/chat aceita URLs públicas HTTP/HTTPS com path, query e IPv6", async () => {
+  for (const imageUrl of [
+    "https://example.com/image.jpg",
+    "http://example.com/image.png",
+    "https://cdn.example.com/assets/image.jpg?size=large&fit=cover",
+    "https://[2606:4700:4700::1111]/image.jpg",
+  ]) {
+    const state = chatDependencies();
+    const response = await handleChatPost(
+      chatRequest({ imageUrl }),
+      state.dependencies
+    );
+    assert.equal(response.status, 200, imageUrl);
+    assert.equal(state.openAICalls, 1, imageUrl);
+  }
+});
+
+test("/api/chat rejeita URLs com credenciais, hosts locais e endereços não públicos", async () => {
+  for (const imageUrl of [
+    "http://user:pass@example.com/a.jpg",
+    "https://user@example.com/a.jpg",
+    "http://localhost/a.jpg",
+    "http://api.localhost/a.jpg",
+    "http://device.local/a.jpg",
+    "http://127.0.0.1/a.jpg",
+    "http://10.0.0.1/a.jpg",
+    "http://172.16.0.1/a.jpg",
+    "http://192.168.1.1/a.jpg",
+    "http://169.254.1.1/a.jpg",
+    "http://0.0.0.1/a.jpg",
+    "http://[::]/a.jpg",
+    "http://[::1]/a.jpg",
+    "http://[fc00::1]/a.jpg",
+    "http://[fd00::1]/a.jpg",
+    "http://[fe80::1]/a.jpg",
+    "http://[fec0::1]/a.jpg",
+    "http://[fed0::1]/a.jpg",
+    "http://[ff02::1]/a.jpg",
+    "http://[::ffff:127.0.0.1]/a.jpg",
+    "file:///secret",
+    "not a url",
+  ]) {
+    const state = chatDependencies();
+    await assert.rejects(
+      handleChatPost(chatRequest({ imageUrl }), state.dependencies),
+      (error) => error instanceof Error && error.name === "ChatRequestValidationError",
+      imageUrl
+    );
+    assert.equal(state.openAICalls, 0, imageUrl);
+    assert.deepEqual(state.commandWrites, [], imageUrl);
+  }
+});
+
+const validMissionToolCall = {
+  id: "call-mission",
+  type: "function" as const,
+  function: {
+    name: "salvar_missao_diaria",
+    arguments: JSON.stringify({ title: "Caminhar por 20 minutos" }),
+  },
+};
+const validWorkoutToolCall = {
+  id: "call-workout",
+  type: "function" as const,
+  function: {
+    name: "salvar_treino",
+    arguments: JSON.stringify({
+      title: "Treino A",
+      exercises: [{ name: "Supino", sets: "4", reps: "10", rest: "60s", tip: "Controle" }],
+    }),
+  },
+};
+const unknownToolCall = {
+  id: "call-unknown",
+  type: "function" as const,
+  function: { name: "ferramenta_desconhecida", arguments: "{}" },
+};
+
+for (const [name, toolCalls] of [
+  ["válido seguido de inválido", [validMissionToolCall, unknownToolCall]],
+  ["inválido seguido de válido", [unknownToolCall, validMissionToolCall]],
+  ["desconhecido entre válidos", [validMissionToolCall, unknownToolCall, validWorkoutToolCall]],
+  ["JSON malformado após válido", [validMissionToolCall, {
+    id: "call-malformed",
+    type: "function" as const,
+    function: { name: "salvar_missao_diaria", arguments: "{" },
+  }]],
+  ["shape malformado após válido", [validMissionToolCall, {
+    id: "",
+    type: "function" as const,
+    function: { name: "salvar_missao_diaria", arguments: "{}" },
+  }]],
+  ["id duplicado com payload malformado", [validMissionToolCall, {
+    id: validMissionToolCall.id,
+    type: "function" as const,
+    function: { name: "salvar_missao_diaria", arguments: "{" },
+  }]],
+] as const) {
+  test(`/api/chat valida o lote antes de escrever: ${name}`, async () => {
+    const state = chatDependencies(toolCalls);
+    await assert.rejects(
+      handleChatPost(chatRequest({ message: "Monte meu plano" }), state.dependencies),
+      (error) => error instanceof FitnessRouteServiceError && error.code === "INVALID_AI_RESPONSE"
+    );
+    assert.deepEqual(state.commandWrites, []);
+    assert.equal(state.assistantWrites, 0);
+  });
+}
+
+test("/api/chat persiste lote totalmente válido na ordem original", async () => {
+  const state = chatDependencies([validMissionToolCall, validWorkoutToolCall]);
+  const response = await handleChatPost(
+    chatRequest({ message: "Monte meu plano" }),
+    state.dependencies
+  );
+  assert.equal(response.status, 200);
+  assert.deepEqual(state.commandWrites, ["daily_mission", "workout"]);
+  assert.equal(state.assistantWrites, 1);
+});
+
 const validWorkoutJson = JSON.stringify({
   workouts: [{
     name: "Treino A",

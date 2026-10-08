@@ -63,7 +63,12 @@ type ChatHandlerDependencies<TClient> = {
   ) => Promise<void>;
 };
 
-export class ChatRequestValidationError extends Error {}
+export class ChatRequestValidationError extends Error {
+  constructor() {
+    super("INVALID_REQUEST");
+    this.name = "ChatRequestValidationError";
+  }
+}
 
 function json(data: unknown, status = 200): Response {
   return Response.json(data, {
@@ -78,6 +83,42 @@ function nonEmptyString(value: unknown, maxLength: number): string | null {
   return normalized.length > 0 && normalized.length <= maxLength ? normalized : null;
 }
 
+function isPrivateIpv4(hostname: string): boolean {
+  const octets = hostname.split(".").map(Number);
+  if (
+    octets.length !== 4 ||
+    octets.some((value) => !Number.isInteger(value) || value < 0 || value > 255)
+  ) {
+    return false;
+  }
+  const [first, second] = octets;
+  return (
+    first === 0 ||
+    first === 10 ||
+    first === 127 ||
+    (first === 169 && second === 254) ||
+    (first === 172 && second >= 16 && second <= 31) ||
+    (first === 192 && second === 168)
+  );
+}
+
+function isPrivateIpv6(hostname: string): boolean {
+  const normalized = hostname.startsWith("[") && hostname.endsWith("]")
+    ? hostname.slice(1, -1).toLowerCase()
+    : hostname.toLowerCase();
+  if (!normalized.includes(":")) return false;
+  return (
+    normalized === "::" ||
+    normalized === "::1" ||
+    normalized.startsWith("fc") ||
+    normalized.startsWith("fd") ||
+    /^fe[89ab]/.test(normalized) ||
+    /^fe[c-f]/.test(normalized) ||
+    normalized.startsWith("ff") ||
+    normalized.startsWith("::ffff:")
+  );
+}
+
 function optionalImageUrl(value: unknown): string {
   if (value === undefined || value === null || value === "") return "";
   const raw = nonEmptyString(value, 2_048);
@@ -88,7 +129,19 @@ function optionalImageUrl(value: unknown): string {
   } catch {
     throw new ChatRequestValidationError();
   }
-  if (url.protocol !== "https:" && url.protocol !== "http:") {
+  const hostname = url.hostname.toLowerCase();
+  const privateHostname =
+    hostname === "localhost" ||
+    hostname.endsWith(".localhost") ||
+    hostname.endsWith(".local") ||
+    isPrivateIpv6(hostname) ||
+    isPrivateIpv4(hostname);
+  if (
+    (url.protocol !== "https:" && url.protocol !== "http:") ||
+    url.username ||
+    url.password ||
+    privateHostname
+  ) {
     throw new ChatRequestValidationError();
   }
   return url.toString();
@@ -114,7 +167,15 @@ function numberField(value: Record<string, unknown>, key: string): number {
   return parsed;
 }
 
-function parseCommand(toolCall: ChatToolCall): ChatPersistenceCommand | null {
+function parseCommand(toolCall: ChatToolCall): ChatPersistenceCommand {
+  if (
+    toolCall.type !== "function" ||
+    !nonEmptyString(toolCall.id, 200) ||
+    typeof toolCall.function?.arguments !== "string"
+  ) {
+    throw new FitnessRouteServiceError("INVALID_AI_RESPONSE", 502);
+  }
+
   let args: unknown;
   try {
     args = JSON.parse(toolCall.function.arguments);
@@ -178,7 +239,7 @@ function parseCommand(toolCall: ChatToolCall): ChatPersistenceCommand | null {
   if (toolCall.function.name === "salvar_missao_diaria") {
     return { type: "daily_mission", title: stringField(value, "title", 200) };
   }
-  return null;
+  throw new FitnessRouteServiceError("INVALID_AI_RESPONSE", 502);
 }
 
 function buildSystemPrompt(fitnessPrompt: string): string {
@@ -258,11 +319,15 @@ export async function handleChatPost<TClient>(
       }
 
       const seenToolCalls = new Set<string>();
+      const commands: ChatPersistenceCommand[] = [];
       for (const toolCall of completion.toolCalls ?? []) {
+        const command = parseCommand(toolCall);
         if (seenToolCalls.has(toolCall.id)) continue;
         seenToolCalls.add(toolCall.id);
-        const command = parseCommand(toolCall);
-        if (!command) continue;
+        commands.push(command);
+      }
+
+      for (const command of commands) {
         try {
           await dependencies.persistCommand(access, command);
         } catch (error) {
