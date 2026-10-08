@@ -4,16 +4,22 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import {
   buildLegacyFitnessContext,
-  buildV2FitnessContext,
+  buildV21FitnessContext,
+  buildV22FitnessContext,
   FitnessContextError,
+  parseCompletionReceipt,
+  parseLegacyProfileRow,
+  parseV21ContextRows,
+  parseV22ContextRows,
   type LegacyProfileRow,
   type UserFitnessContext,
-  type V2ContextRows,
 } from "./model";
 
 const PROFILE_FIELDS = [
   "nome",
   "onboarding_version",
+  "onboarding_completed",
+  "onboarding_completed_at",
   "objetivo",
   "nivel_experiencia",
   "dias_treino",
@@ -24,13 +30,13 @@ const PROFILE_FIELDS = [
 ].join(",");
 
 function assertQuerySucceeded(
-  table: string,
+  _table: string,
   error: { message: string } | null
 ): void {
   if (error) {
     throw new FitnessContextError(
       "READ_FAILED",
-      `Falha ao ler ${table}: ${error.message}`
+      "Falha ao ler os dados necessários para o contexto fitness."
     );
   }
 }
@@ -54,10 +60,19 @@ export async function getUserFitnessContext(
     );
   }
 
-  const profile = profileResponse.data as unknown as LegacyProfileRow;
+  const profile: LegacyProfileRow = parseLegacyProfileRow(profileResponse.data);
   if (profile.onboarding_version !== 2) {
     return buildLegacyFitnessContext(profile);
   }
+
+  const receiptResponse = await supabase
+    .from("onboarding_completion_receipts")
+    .select("onboarding_version,payload_schema_version,canonicalization_version,completed_at")
+    .eq("user_id", userId)
+    .eq("onboarding_version", 2)
+    .maybeSingle();
+  assertQuerySucceeded("onboarding_completion_receipts", receiptResponse.error);
+  const receipt = parseCompletionReceipt(receiptResponse.data, profile);
 
   const [
     healthResponse,
@@ -79,21 +94,21 @@ export async function getUserFitnessContext(
     supabase
       .from("training_profiles")
       .select(
-        "primary_goal,priority_muscles,training_experience,exercise_confidence,recent_training_break,initial_training_level,training_days_per_week,available_weekdays,session_duration_min,session_duration_is_plus,training_location,other_location_label,available_equipment,other_equipment_label,pain_or_limitation,affected_body_areas"
+        "onboarding_payload_schema_version,primary_goal,priority_muscles,training_experience,exercise_confidence,recent_training_break,initial_training_level,training_days_per_week,available_weekdays,preferred_weekdays,session_duration_min,session_duration_is_plus,session_duration_range,training_location,other_location_label,available_equipment,other_equipment_label,pain_or_limitation,affected_body_areas,aerobic_practice_frequency,aerobic_safety_limitation"
       )
       .eq("user_id", userId)
       .maybeSingle(),
     supabase
       .from("nutrition_profiles")
       .select(
-        "meals_per_day,meal_schedule_flexibility,food_preparation_style,food_budget_style,dietary_pattern,dietary_pattern_other_label,has_food_restrictions,uses_supplements,accepts_eggs,accepts_dairy"
+        "onboarding_payload_schema_version,meals_per_day,meal_schedule_flexibility,food_preparation_style,food_budget_style,available_meal_moments,food_preparation_availability,current_eating_routine,dietary_pattern,dietary_pattern_other_label,has_food_restrictions,uses_supplements,accepts_eggs,accepts_dairy"
       )
       .eq("user_id", userId)
       .maybeSingle(),
     supabase
       .from("training_profile_activities")
       .select(
-        "activity_code,other_activity_label,schedule_type,available_weekdays,sessions_per_week"
+        "onboarding_payload_schema_version,activity_code,other_activity_label,schedule_type,available_weekdays,sessions_per_week,duration_range,intensity"
       )
       .eq("user_id", userId)
       .order("activity_code"),
@@ -134,7 +149,7 @@ export async function getUserFitnessContext(
     assertQuerySucceeded(table, error);
   }
 
-  return buildV2FitnessContext(profile, {
+  const rawRows = {
     health: healthResponse.data,
     training: trainingResponse.data,
     nutrition: nutritionResponse.data,
@@ -143,5 +158,10 @@ export async function getUserFitnessContext(
     dislikedFoods: dislikedFoodsResponse.data ?? [],
     preferredFoods: preferredFoodsResponse.data ?? [],
     supplements: supplementsResponse.data ?? [],
-  } as unknown as V2ContextRows);
+  };
+
+  if (receipt.payload_schema_version === 2) {
+    return buildV21FitnessContext(profile, parseV21ContextRows(rawRows));
+  }
+  return buildV22FitnessContext(profile, parseV22ContextRows(rawRows));
 }
