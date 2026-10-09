@@ -1,0 +1,89 @@
+{
+  "repaired_versions": [
+    {
+      "version": "20260907000100",
+      "git_file": "20260907000100_reward_system_foundation.sql",
+      "schema_effect": "Reward foundation catalog is already present.",
+      "literal_file_executed_in_production": "unknown",
+      "semantic_equivalence": "requires_full_foundation_catalog_audit_before_production",
+      "repair_status": "applied",
+      "reason": "Synthetic rehearsal models the historical reward foundation as already present.",
+      "evidence": "Production catalog presence plus downstream Energy and Workout preflight evidence."
+    },
+    {
+      "version": "20260909000200",
+      "git_file": "20260909000200_user_streaks.sql",
+      "schema_effect": "Streak foundation is present; the recorder was later replaced by the approved sync definition.",
+      "literal_file_executed_in_production": "unknown",
+      "semantic_equivalence": "requires_full_foundation_catalog_audit_before_production",
+      "repair_status": "applied",
+      "reason": "Synthetic rehearsal models the historical streak foundation as already present.",
+      "evidence": "public.user_streaks exists and the final recorder fingerprint is authenticated."
+    },
+    {
+      "version": "20260911000100",
+      "git_file": "20260911000100_add_current_mission_unique_index.sql",
+      "schema_effect": "The partial unique current-mission index is already present.",
+      "literal_file_executed_in_production": "unknown",
+      "semantic_equivalence": "requires_exact_index_catalog_audit_before_production",
+      "repair_status": "applied",
+      "reason": "Synthetic rehearsal models the historical mission integrity index as already present.",
+      "evidence": "Production catalog confirms daily_missions_current_category_unique exists."
+    },
+    {
+      "version": "20261004000100",
+      "git_file": "20261004000100_restore_complete_mission_with_energy_and_contain_legacy_toggle.sql",
+      "schema_effect": "Final Energy successor and reviewed ACL state are present.",
+      "literal_file_executed_in_production": true,
+      "semantic_equivalence": true,
+      "repair_status": "applied",
+      "reason": "The migration was manually applied after its dependency was reconciled.",
+      "evidence": "Production pg_get_functiondef raw MD5 4a1deeecb318df2dd76a30a1cd4acb74."
+    },
+    {
+      "version": "20261004000200",
+      "git_file": "20261004000200_sync_streak_recorder_to_profile_compatibility.sql",
+      "schema_effect": "Final streak recorder with profile compatibility sync is present.",
+      "literal_file_executed_in_production": true,
+      "semantic_equivalence": true,
+      "repair_status": "applied",
+      "reason": "The migration was manually applied and audited before the successful Energy remediation.",
+      "evidence": "Production pg_get_functiondef raw MD5 66a1d1b6ad6cdfd150ef06026410320c."
+    },
+    {
+      "version": "20261004000300",
+      "git_file": "20261004000300_add_praxe_workout_persistence.sql",
+      "schema_effect": "Workout Phase-1 schema and functions are present with DORMANT ACL.",
+      "literal_file_executed_in_production": "earlier_grant_bearing_revision_then_manual_revoke",
+      "semantic_equivalence": true,
+      "repair_status": "applied",
+      "reason": "The committed migration expresses the audited final state, while Production reached it through install plus manual revoke.",
+      "evidence": "Production post-apply catalog audit confirms six tables, 17 functions, and DORMANT ACL."
+    },
+    {
+      "version": "20261005000100",
+      "git_file": "20261005000100_reconcile_praxe_workout_phase1_dormant_acl.sql",
+      "schema_effect": "The exact DORMANT ACL effect is already present.",
+      "literal_file_executed_in_production": false,
+      "semantic_equivalence": true,
+      "repair_status": "applied-equivalent",
+      "execution_provenance": "manual ACL revoke equivalent",
+      "reason": "Repair models the catalog effect without claiming verbatim migration execution.",
+      "evidence": "Catalog postconditions PASS; PUBLIC, anon, authenticated, and service_role lack EXECUTE on all 17 functions."
+    }
+  ],
+  "pending_versions": [
+    {
+      "version": "20261008000100",
+      "git_file": "20261008000100_harden_praxe_workout_active_session_concurrency.sql",
+      "status": "pending_until_real_local_application",
+      "evidence": "Production and initial synthetic state lack workout_sessions_one_in_progress_per_user_unique."
+    }
+  ],
+  "separate_provenance_gap": {
+    "version": "20260907000200",
+    "git_file": "20260907000200_chest_engine.sql",
+    "ledger_status": "not_repaired",
+    "reason": "open_user_chest proves a Production schema effect but not provenance of this specific untracked historical source file."
+  }
+}
