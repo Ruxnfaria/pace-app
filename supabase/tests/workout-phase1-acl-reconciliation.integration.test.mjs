@@ -47,6 +47,8 @@ const installMigration = '20261004000300_add_praxe_workout_persistence.sql';
 const reconciliationMigration = '20261005000100_reconcile_praxe_workout_phase1_dormant_acl.sql';
 const concurrencyHardeningMigration =
   '20261008000100_harden_praxe_workout_active_session_concurrency.sql';
+const runtimeAclActivationMigration =
+  '20261009204704_activate_praxe_workout_runtime_acl.sql';
 const postApplyAudit = 'audit_praxe_workout_persistence_postapply_READONLY.sql';
 const expectedProductionRecorderRawMd5 = '66a1d1b6ad6cdfd150ef06026410320c';
 const expectedProductionEnergyRawMd5 = '4a1deeecb318df2dd76a30a1cd4acb74';
@@ -320,7 +322,22 @@ async function readWorkoutFunctionState(db) {
              ) acl
              where acl.privilege_type = 'EXECUTE'
                and (acl.grantee = 0 or acl.grantee <> function_record.proowner)
-           ) as unexpected_non_owner_execute
+           ) as unexpected_non_owner_execute,
+           coalesce((
+             select pg_catalog.array_agg(
+               case when acl.grantee = 0 then 'PUBLIC'
+                    else pg_catalog.pg_get_userbyid(acl.grantee)::text end
+               order by acl.grantee
+             )
+             from pg_catalog.aclexplode(
+               coalesce(
+                 function_record.proacl,
+                 pg_catalog.acldefault('f', function_record.proowner)
+               )
+             ) acl
+             where acl.privilege_type = 'EXECUTE'
+               and acl.grantee <> function_record.proowner
+           ), array[]::text[]) as non_owner_execute_grantees
     from resolved
     left join pg_catalog.pg_proc function_record on function_record.oid = resolved.oid
     order by resolved.signature
@@ -347,6 +364,101 @@ function assertDormantState(rows) {
   }
 }
 
+function assertActivatedState(rows) {
+  assert.equal(rows.length, 17);
+  for (const row of rows) {
+    assert.equal(row.exists_now, true, `${row.signature} must exist`);
+    assert.equal(row.owner, 'postgres', `${row.signature} owner`);
+    assert.equal(row.public_execute, false, `${row.signature} PUBLIC EXECUTE`);
+    assert.equal(row.anon_execute, false, `${row.signature} anon EXECUTE`);
+    assert.equal(row.service_execute, false, `${row.signature} service_role EXECUTE`);
+    if (expectedPublicRpcs.has(row.signature)) {
+      assert.equal(row.security_definer, true, `${row.signature} SECURITY DEFINER`);
+      assert.ok(['search_path=', 'search_path=""'].includes(row.configuration),
+        `${row.signature} empty search_path`);
+      assert.equal(row.authenticated_execute, true,
+        `${row.signature} authenticated EXECUTE`);
+      assert.deepEqual(row.non_owner_execute_grantees, ['authenticated'],
+        `${row.signature} exact non-owner EXECUTE allowlist`);
+    } else {
+      assert.equal(row.authenticated_execute, false,
+        `${row.signature} helper authenticated EXECUTE`);
+      assert.deepEqual(row.non_owner_execute_grantees, [],
+        `${row.signature} helper owner-only EXECUTE`);
+    }
+  }
+}
+
+function stableWorkoutFunctionMetadata(rows) {
+  return rows.map(({
+    signature,
+    exists_now,
+    owner,
+    security_definer,
+    configuration,
+    definition_md5,
+  }) => ({
+    signature,
+    exists_now,
+    owner,
+    security_definer,
+    configuration,
+    definition_md5,
+  }));
+}
+
+async function readUnrelatedAclState(db) {
+  const functions = await db.query(`
+    with target_oids(oid) as (
+      select pg_catalog.to_regprocedure('public.' || signature)::oid
+      from unnest($1::text[]) signature
+    )
+    select function_record.oid::text as oid,
+           function_record.proname::text as name,
+           coalesce(function_record.proacl::text, '') as acl
+    from pg_catalog.pg_proc function_record
+    join pg_catalog.pg_namespace namespace
+      on namespace.oid = function_record.pronamespace
+    where namespace.nspname = 'public'
+      and not exists (
+        select 1 from target_oids where target_oids.oid = function_record.oid
+      )
+    order by function_record.oid
+  `, [expectedFunctions]);
+  const tables = await db.query(`
+    select relation.oid::text as oid,
+           relation.relname::text as name,
+           coalesce(relation.relacl::text, '') as acl
+    from pg_catalog.pg_class relation
+    join pg_catalog.pg_namespace namespace
+      on namespace.oid = relation.relnamespace
+    where namespace.nspname = 'public'
+      and relation.relkind in ('r', 'p', 'v', 'm')
+    order by relation.oid
+  `);
+  const policies = await db.query(`
+    select policy.oid::text as oid,
+           policy.polrelid::text as relation_oid,
+           policy.polname::text as name,
+           policy.polcmd::text as command,
+           policy.polpermissive as permissive,
+           policy.polroles::text as roles,
+           pg_catalog.pg_get_expr(policy.polqual, policy.polrelid)::text as using_expression,
+           pg_catalog.pg_get_expr(policy.polwithcheck, policy.polrelid)::text
+             as check_expression
+    from pg_catalog.pg_policy policy
+    join pg_catalog.pg_class relation on relation.oid = policy.polrelid
+    join pg_catalog.pg_namespace namespace on namespace.oid = relation.relnamespace
+    where namespace.nspname = 'public'
+    order by policy.oid
+  `);
+  return {
+    functions: functions.rows,
+    tables: tables.rows,
+    policies: policies.rows,
+  };
+}
+
 async function setAuthenticatedUser(db, userId) {
   await db.query(
     "select pg_catalog.set_config('request.jwt.claim.sub', $1, false)",
@@ -363,7 +475,7 @@ async function startSession(db, workoutId, requestId) {
   return result.rows[0];
 }
 
-test('Workout Phase-1 ACL reconciliation remains local, dormant and idempotent', async () => {
+test('Workout ACL reconciliation and activation remain local and idempotent', async () => {
   assertNoExternalConfiguration();
   await assertHarnessIsLoopbackOnly();
   const productionSnapshots = await readAuthenticatedProductionSnapshots();
@@ -688,6 +800,49 @@ test('Workout Phase-1 ACL reconciliation remains local, dormant and idempotent',
       'Workout migrations must preserve the Energy fingerprint',
     );
 
+    const preActivationCatalogState = await readUnrelatedAclState(db);
+    const preActivationIndex = await db.query(`
+      select pg_catalog.pg_get_indexdef(
+        'public.workout_sessions_one_in_progress_per_user_unique'::regclass
+      ) as definition
+    `);
+
+    await applyMigration(db, runtimeAclActivationMigration);
+    const activatedState = await readWorkoutFunctionState(db);
+    assertActivatedState(activatedState);
+    assert.deepEqual(
+      stableWorkoutFunctionMetadata(activatedState),
+      stableWorkoutFunctionMetadata(hardeningState),
+      'ACL activation must not change Workout function definitions or security metadata',
+    );
+    assert.deepEqual(
+      await readUnrelatedAclState(db),
+      preActivationCatalogState,
+      'ACL activation must not change unrelated function/table ACLs or policies',
+    );
+    const postActivationIndex = await db.query(`
+      select pg_catalog.pg_get_indexdef(
+        'public.workout_sessions_one_in_progress_per_user_unique'::regclass
+      ) as definition
+    `);
+    assert.deepEqual(postActivationIndex.rows, preActivationIndex.rows,
+      'ACL activation must preserve the Migration G index');
+
+    const activatedDependencies = assertCheckpointState(await readDependencyState(db));
+    assert.equal(activatedDependencies.recorder.raw_md5, expectedProductionRecorderRawMd5);
+    assert.equal(activatedDependencies.energy.raw_md5, expectedProductionEnergyRawMd5);
+
+    await applyMigration(db, runtimeAclActivationMigration);
+    const secondActivatedState = await readWorkoutFunctionState(db);
+    assertActivatedState(secondActivatedState);
+    assert.deepEqual(secondActivatedState, activatedState,
+      'A second ACL activation must be an exact ACL/catalog no-op');
+    assert.deepEqual(
+      await readUnrelatedAclState(db),
+      preActivationCatalogState,
+      'A second ACL activation must preserve unrelated ACLs and policies',
+    );
+
     console.log('WORKOUT_PHASE1_LOCAL_RESULT_START');
     console.log(JSON.stringify({
       postgres_version: endpoint.rows[0].server_version,
@@ -717,9 +872,20 @@ test('Workout Phase-1 ACL reconciliation remains local, dormant and idempotent',
         abandoned_and_completed_sessions_release_exclusivity: true,
         dormant_acl_preserved: true,
       },
+      runtime_acl_activation: {
+        public_rpcs_authenticated_only: expectedPublicRpcs.size,
+        helpers_owner_only: expectedFunctions.length - expectedPublicRpcs.size,
+        second_application_exact_no_op: true,
+        function_definitions_preserved: true,
+        unrelated_function_acls_preserved: true,
+        table_acls_preserved: true,
+        policies_preserved: true,
+        migration_g_index_preserved: true,
+      },
       audit_checks: audit.rows.map(({ check_name, status }) => ({ check_name, status })),
-      workout_runtime_activation_state:
+      pre_activation_workout_runtime_activation_state:
         activation.details.workout_runtime_activation_state,
+      post_activation_workout_runtime_activation_state: 'AUTHENTICATED_ONLY',
     }, null, 2));
     console.log('WORKOUT_PHASE1_LOCAL_RESULT_END');
   } finally {
