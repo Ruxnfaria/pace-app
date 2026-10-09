@@ -304,6 +304,10 @@ for (const mission of missions) {
       });
     }
 
+    await syncDailyMissionChests(user.id, today);
+    await syncWeeklyMissionChest(user.id, today);
+    await syncMonthlyMissionChest(user.id, today);
+
     return NextResponse.json({
       success: true,
       created: createdCount,
