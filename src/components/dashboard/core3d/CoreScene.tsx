@@ -29,6 +29,7 @@ const FISSURE_FRAGMENT_SHADER = `
   uniform sampler2D uMap;
   uniform vec3 uColor;
   uniform float uOpacity;
+  uniform float uTime;
   varying vec2 vUv;
 
   void main() {
@@ -36,7 +37,8 @@ const FISSURE_FRAGMENT_SHADER = `
     float luminance = dot(surface, vec3(0.2126, 0.7152, 0.0722));
     float warmth = max(surface.r - surface.b * 0.9, 0.0);
     float fissure = smoothstep(0.24, 0.68, luminance) * smoothstep(0.08, 0.42, warmth);
-    float alpha = fissure * uOpacity;
+    float flow = 0.86 + sin(vUv.y * 21.0 - vUv.x * 9.0 + uTime * 1.7) * 0.14;
+    float alpha = fissure * flow * uOpacity;
 
     if (alpha < 0.01) discard;
     gl_FragColor = vec4(uColor * (0.8 + fissure * 0.65), alpha);
@@ -51,6 +53,28 @@ function getEnergyGainEnvelope(progress: number) {
   if (progress <= 0.22) return progress / 0.22;
   if (progress <= 0.48) return 1;
   return Math.max(0, 1 - (progress - 0.48) / 0.52);
+}
+
+function createGlowTexture() {
+  const size = 64;
+  const data = new Uint8Array(size * size * 4);
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      const offset = (y * size + x) * 4;
+      const dx = (x + 0.5) / size * 2 - 1;
+      const dy = (y + 0.5) / size * 2 - 1;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      const alpha = Math.pow(Math.max(0, 1 - distance), 2.4);
+      data[offset] = 255;
+      data[offset + 1] = 255;
+      data[offset + 2] = 255;
+      data[offset + 3] = Math.round(alpha * 255);
+    }
+  }
+  const texture = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.needsUpdate = true;
+  return texture;
 }
 
 function supportsWebGL() {
@@ -84,7 +108,6 @@ function CoreSphere({ rankId, intensity, absorbing, reducedMotion }: CoreScenePr
   const surface = useRef<THREE.Group>(null);
   const material = useRef<THREE.MeshStandardMaterial>(null);
   const fissures = useRef<THREE.ShaderMaterial>(null);
-  const atmosphere = useRef<THREE.MeshBasicMaterial>(null);
   const pointerTarget = useRef({ x: 0, y: 0 });
   const hovered = useRef(false);
   const gainStartedAt = useRef<number | null>(null);
@@ -104,6 +127,7 @@ function CoreSphere({ rankId, intensity, absorbing, reducedMotion }: CoreScenePr
       uMap: { value: surfaceTexture },
       uColor: { value: new THREE.Color(theme.secondary) },
       uOpacity: { value: 0.34 },
+      uTime: { value: 0 },
     }),
     [surfaceTexture, theme.secondary],
   );
@@ -143,17 +167,7 @@ function CoreSphere({ rankId, intensity, absorbing, reducedMotion }: CoreScenePr
         Math.min(energyFlow * (1 + gainEnvelope * 0.82), 0.72),
         absorbing ? 0.18 : 0.055,
       );
-    }
-
-    if (atmosphere.current) {
-      const atmosphericPulse = reducedMotion
-        ? 0.18 + visualPower * 0.07
-        : 0.18 + visualPower * 0.07 + Math.sin(state.clock.elapsedTime * 1.45) * 0.04;
-      atmosphere.current.opacity = THREE.MathUtils.lerp(
-        atmosphere.current.opacity,
-        atmosphericPulse * (1 + gainEnvelope * 0.85),
-        0.08,
-      );
+      fissures.current.uniforms.uTime.value = reducedMotion ? 0 : state.clock.elapsedTime;
     }
 
     if (group.current) {
@@ -227,19 +241,6 @@ function CoreSphere({ rankId, intensity, absorbing, reducedMotion }: CoreScenePr
           />
         </mesh>
       </group>
-      <mesh scale={1.045}>
-        <sphereGeometry args={[1, 64, 48]} />
-        <meshBasicMaterial
-          ref={atmosphere}
-          color={theme.primary}
-          side={THREE.BackSide}
-          transparent
-          opacity={0.19 + getVisualPower(intensity, theme) * 0.075}
-          blending={THREE.AdditiveBlending}
-          depthWrite={false}
-          depthTest
-        />
-      </mesh>
     </group>
   );
 }
@@ -268,9 +269,9 @@ function CoreOrbits({ rankId, intensity, absorbing, reducedMotion }: CoreScenePr
   const visualPower = getVisualPower(intensity, theme);
   const curves = useMemo(
     () => [
-      createOrbitCurve(1.58, 1.18, 0.48, -0.16),
-      createOrbitCurve(1.76, 1.29, -0.62, 0.42),
-      createOrbitCurve(1.86, 1.36, 0.76, 0.68),
+      createOrbitCurve(1.68, 1.3, 0.48, -0.16),
+      createOrbitCurve(1.84, 1.42, -0.62, 0.42),
+      createOrbitCurve(1.96, 1.5, 0.76, 0.68),
     ],
     [],
   );
@@ -294,11 +295,11 @@ function CoreOrbits({ rankId, intensity, absorbing, reducedMotion }: CoreScenePr
   const orbit = (curve: THREE.CatmullRomCurve3, opacity: number, thickness: number) => (
     <group>
       <mesh>
-        <tubeGeometry args={[curve, 144, thickness * 2.7, 8, true]} />
+        <tubeGeometry args={[curve, 144, thickness * 1.9, 8, true]} />
         <meshBasicMaterial
           color={theme.primary}
           transparent
-          opacity={Math.min(opacity * 0.18 * (absorbing ? 1.7 : 1), 0.28)}
+          opacity={Math.min(opacity * 0.11 * (absorbing ? 1.7 : 1), 0.18)}
           blending={THREE.AdditiveBlending}
           depthWrite={false}
           depthTest
@@ -323,21 +324,21 @@ function CoreOrbits({ rankId, intensity, absorbing, reducedMotion }: CoreScenePr
   return (
     <>
       <group ref={first}>
-        {orbit(curves[0], 0.58 + visualPower * 0.22, 0.012)}
+        {orbit(curves[0], 0.58 + visualPower * 0.22, 0.0085)}
         <mesh ref={firstEnergy}>
           <sphereGeometry args={[0.028, 10, 8]} />
           <meshBasicMaterial color={theme.secondary} toneMapped={false} />
         </mesh>
       </group>
       <group ref={second}>
-        {orbit(curves[1], 0.3 + visualPower * 0.15, 0.007)}
+        {orbit(curves[1], 0.3 + visualPower * 0.15, 0.005)}
         <mesh ref={secondEnergy}>
           <sphereGeometry args={[0.018, 8, 6]} />
           <meshBasicMaterial color={theme.secondary} toneMapped={false} />
         </mesh>
       </group>
       {theme.orbitCount === 3 && (
-        <group ref={third}>{orbit(curves[2], 0.18 + visualPower * 0.12, 0.0045)}</group>
+        <group ref={third}>{orbit(curves[2], 0.14 + visualPower * 0.1, 0.0035)}</group>
       )}
     </>
   );
@@ -484,16 +485,30 @@ function EnergyArcs({ rankId, intensity, absorbing, reducedMotion }: CoreScenePr
 }
 
 function EnergyFlash({ rankId, intensity, absorbing, reducedMotion }: CoreSceneProps) {
-  const shell = useRef<THREE.MeshBasicMaterial>(null);
+  const glow = useRef<THREE.Sprite>(null);
+  const glowMaterial = useRef<THREE.SpriteMaterial>(null);
   const light = useRef<THREE.PointLight>(null);
   const theme = CORE_THEMES[rankId];
   const visualPower = getVisualPower(intensity, theme);
+  const glowTexture = useMemo(() => createGlowTexture(), []);
+
+  useEffect(() => () => glowTexture.dispose(), [glowTexture]);
 
   useFrame((state) => {
     const idlePulse = reducedMotion ? 1 : 0.9 + Math.sin(state.clock.elapsedTime * 1.3) * 0.1;
-    if (shell.current) {
+    if (glowMaterial.current) {
       const target = (0.07 + visualPower * 0.035) * idlePulse + (absorbing ? 0.22 : 0);
-      shell.current.opacity = THREE.MathUtils.lerp(shell.current.opacity, target, absorbing ? 0.22 : 0.07);
+      glowMaterial.current.opacity = THREE.MathUtils.lerp(
+        glowMaterial.current.opacity,
+        target,
+        absorbing ? 0.22 : 0.07,
+      );
+    }
+    if (glow.current) {
+      const targetScale = 3.35 + visualPower * 0.12 + (absorbing && !reducedMotion ? 0.34 : 0);
+      const currentScale = glow.current.scale.x;
+      const nextScale = THREE.MathUtils.lerp(currentScale, targetScale, absorbing ? 0.16 : 0.055);
+      glow.current.scale.set(nextScale, nextScale, 1);
     }
     if (light.current) {
       const target = (2.5 + visualPower * 2.6) * idlePulse + (absorbing ? 8.5 : 0);
@@ -504,12 +519,11 @@ function EnergyFlash({ rankId, intensity, absorbing, reducedMotion }: CoreSceneP
   return (
     <>
       <pointLight ref={light} position={[0, 0, 2.05]} color={theme.secondary} intensity={2} distance={7} />
-      <mesh scale={1.38}>
-        <sphereGeometry args={[1, 48, 36]} />
-        <meshBasicMaterial
-          ref={shell}
+      <sprite ref={glow} position={[0, 0, -0.72]} scale={[3.4, 3.4, 1]} renderOrder={0}>
+        <spriteMaterial
+          ref={glowMaterial}
+          map={glowTexture}
           color={theme.secondary}
-          side={THREE.BackSide}
           transparent
           opacity={0.04}
           blending={THREE.AdditiveBlending}
@@ -517,7 +531,7 @@ function EnergyFlash({ rankId, intensity, absorbing, reducedMotion }: CoreSceneP
           depthTest
           toneMapped={false}
         />
-      </mesh>
+      </sprite>
     </>
   );
 }
