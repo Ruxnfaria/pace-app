@@ -89,6 +89,7 @@ export default function DashboardLayout({
 
   const supabase = createClient();
   const isDashboardHome = pathname === '/dashboard';
+  const usesCompactAppShell = isDashboardHome || pathname === '/dashboard/missions';
 
   const moreIsActive = moreItems.some(
     (item) =>
@@ -121,11 +122,11 @@ export default function DashboardLayout({
     <RewardQueueProvider>
       <div className="min-h-screen bg-[#0a0a0a] text-white">
         {/* Sidebar Desktop */}
-        {!isDashboardHome && <Sidebar />}
+        {!usesCompactAppShell && <Sidebar />}
 
         {/* Conteúdo */}
-        <main className={cn("pb-24", !isDashboardHome && "lg:pl-64 lg:pb-0")}>
-          <div className={cn("mx-auto", isDashboardHome ? "max-w-[460px]" : "max-w-7xl")}>
+        <main className={cn("pb-24", !usesCompactAppShell && "lg:pl-64 lg:pb-0")}>
+          <div className={cn("mx-auto", usesCompactAppShell ? "max-w-[460px]" : "max-w-7xl")}>
             {children}
           </div>
         </main>
@@ -144,7 +145,7 @@ export default function DashboardLayout({
         <div
           className={cn(
             "fixed bottom-20 left-1/2 right-auto z-[60] w-full max-w-[460px] -translate-x-1/2 px-3 transition-all duration-300",
-            !isDashboardHome && "lg:hidden",
+            !usesCompactAppShell && "lg:hidden",
             moreOpen
               ? "translate-y-0 opacity-100"
               : "pointer-events-none translate-y-6 opacity-0"
@@ -236,7 +237,7 @@ export default function DashboardLayout({
         </div>
 
         {/* Navegação Mobile */}
-        <nav className={cn("fixed bottom-0 left-1/2 right-auto z-[70] w-full max-w-[460px] -translate-x-1/2 border-t backdrop-blur-xl", isDashboardHome ? "h-[66px] border-white/[0.06] bg-[#0b0b0b]/96 px-3" : "h-20 border-white/[0.08] bg-[#101014]/95 px-2 lg:hidden")}>
+        <nav className={cn("fixed bottom-0 left-1/2 right-auto z-[70] w-full max-w-[460px] -translate-x-1/2 border-t backdrop-blur-xl", usesCompactAppShell ? "h-[66px] border-white/[0.06] bg-[#0b0b0b]/96 px-3" : "h-20 border-white/[0.08] bg-[#101014]/95 px-2 lg:hidden")}>
           <div className="grid h-full grid-cols-5">
             {mobileItems.map((item) => {
               const Icon = item.icon;
@@ -256,16 +257,16 @@ export default function DashboardLayout({
                   <div
                     className={cn(
                       "relative flex items-center justify-center rounded-2xl transition-all",
-                      isDashboardHome ? "h-11 w-11" : "h-14 w-14",
+                      usesCompactAppShell ? "h-11 w-11" : "h-14 w-14",
                       isActive
-                        ? isDashboardHome
+                        ? usesCompactAppShell
                           ? "text-[#ff6a00]"
                           : "bg-[#7c3aed] text-white shadow-lg shadow-violet-950/40"
                         : "text-zinc-500"
                     )}
                   >
-                    <Icon className={cn(isDashboardHome ? "h-[21px] w-[21px]" : "h-6 w-6")} />
-                    {isDashboardHome && isActive && <span className="absolute -bottom-0.5 h-1 w-1 rounded-full bg-[#ff6a00]" />}
+                    <Icon className={cn(usesCompactAppShell ? "h-[21px] w-[21px]" : "h-6 w-6")} />
+                    {usesCompactAppShell && isActive && <span className="absolute -bottom-0.5 h-1 w-1 rounded-full bg-[#ff6a00]" />}
                   </div>
                 </Link>
               );
@@ -280,16 +281,16 @@ export default function DashboardLayout({
               <div
                 className={cn(
                   "relative flex items-center justify-center rounded-2xl transition-all",
-                  isDashboardHome ? "h-11 w-11" : "h-12 w-12",
+                  usesCompactAppShell ? "h-11 w-11" : "h-12 w-12",
                   moreOpen || moreIsActive
-                    ? isDashboardHome
+                    ? usesCompactAppShell
                       ? "text-[#ff6a00]"
                       : "bg-[#7c3aed] text-white shadow-lg shadow-violet-950/40"
                     : "text-zinc-500"
                 )}
               >
-                <MoreHorizontal className={cn(isDashboardHome ? "h-6 w-6" : "h-7 w-7")} />
-                {isDashboardHome && (moreOpen || moreIsActive) && <span className="absolute -bottom-0.5 h-1 w-1 rounded-full bg-[#ff6a00]" />}
+                <MoreHorizontal className={cn(usesCompactAppShell ? "h-6 w-6" : "h-7 w-7")} />
+                {usesCompactAppShell && (moreOpen || moreIsActive) && <span className="absolute -bottom-0.5 h-1 w-1 rounded-full bg-[#ff6a00]" />}
               </div>
             </button>
           </div>

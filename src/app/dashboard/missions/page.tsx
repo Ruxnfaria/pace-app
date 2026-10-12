@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { Target, Shield, CheckCircle2, Sparkles, Calendar } from 'lucide-react';
+import { Target, CheckCircle2, Sparkles, Calendar } from 'lucide-react';
 import Link from 'next/link';
-import { useRewardQueue } from '@/components/gamification/RewardQueueProvider';
-import { GamificationActions } from '@/lib/gamification/actions';
 import { getCoreRankProgress } from '@/lib/gamification/coreStages';
+import { getBrazilDate, getBrazilMonthRangeFromDate } from '@/lib/dates/brazilDate';
+import MissionsExperience, { type ChestView, type MissionView } from '@/components/missions/MissionsExperience';
 
 interface Mission {
   id: string;
@@ -15,18 +15,23 @@ interface Mission {
   for_date: string;
   xp_reward: number;
   current_value: number;
-target_value: number;
+  target_value: number;
+  description: string | null;
+  category: string | null;
 }
 
+type UserChest = { status: 'granted' | 'opened'; source_id: string | null };
+
 export default function MissionsPage() {
-  const supabase = createClient();
-  const { enqueueActions } = useRewardQueue();
+  const supabase = useMemo(() => createClient(), []);
   const [missions, setMissions] = useState<Mission[]>([]);
   const [loading, setLoading] = useState(true);
   const [userXp, setUserXp] = useState(0);
+  const [streak, setStreak] = useState(0);
+  const [userChests, setUserChests] = useState<UserChest[]>([]);
 
 
-  async function loadMissionsAndData() {
+  const loadMissionsAndData = useCallback(async () => {
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
@@ -36,15 +41,18 @@ export default function MissionsPage() {
       // 1. Busca Energia real do perfil do usuário
       const { data: profile } = await supabase
         .from('profiles')
-        .select('total_xp')
+        .select('total_xp, streak')
         .eq('user_id', user.id)
         .single();
-        if (profile) setUserXp(profile.total_xp || 0);
+        if (profile) {
+          setUserXp(profile.total_xp || 0);
+          setStreak(Math.max(0, Number(profile.streak) || 0));
+        }
 
       // 2. Busca todas as missões da tabela correta (daily_missions)
       const { data: missionsData } = await supabase
         .from('daily_missions')
-        .select('id, title, completed, for_date, xp_reward, current_value, target_value')
+        .select('id, title, description, category, completed, for_date, xp_reward, current_value, target_value')
         .eq('user_id', user.id)
         .order('for_date', { ascending: false })
         .order('created_at', { ascending: false });
@@ -58,24 +66,66 @@ export default function MissionsPage() {
             xp_reward: m.xp_reward || 50,
             current_value: m.current_value || 0,
             target_value: m.target_value || 1,
+            description: m.description,
+            category: m.category,
           })));
         }
+
+      const { data: chestsData } = await supabase
+        .from('user_chests')
+        .select('status, source_id')
+        .eq('user_id', user.id);
+      setUserChests((chestsData ?? []) as UserChest[]);
     }
     setLoading(false);
-  }
+  }, [supabase]);
 
   useEffect(() => {
-    loadMissionsAndData();
-  }, []);  
+    const timer = window.setTimeout(() => void loadMissionsAndData(), 0);
+    return () => window.clearTimeout(timer);
+  }, [loadMissionsAndData]);
 
   const coreProgress = getCoreRankProgress(userXp);
   const currentRank = coreProgress.currentRank;
   const nextRank = coreProgress.nextRank;
   const progressoEnergia = Math.round(coreProgress.progressPercentage);
+  const today = getBrazilDate();
+  const month = getBrazilMonthRangeFromDate(today);
+  const todayMissions = missions.filter((mission) => mission.for_date === today).reverse();
+  const completedToday = todayMissions.filter((mission) => mission.completed).length;
+  const activeDays = new Set(
+    missions
+      .filter((mission) => mission.completed && mission.for_date >= month.startDate && mission.for_date <= today)
+      .map((mission) => mission.for_date),
+  ).size;
+  const missionViews: MissionView[] = todayMissions.map((mission) => ({
+    id: mission.id,
+    title: mission.title,
+    description: mission.description,
+    category: mission.category,
+    completed: mission.completed,
+    xpReward: mission.xp_reward,
+    currentValue: mission.current_value,
+    targetValue: mission.target_value,
+  }));
+  const chest = (sourceId: string, progress: number, target: number): ChestView => ({
+    status: userChests.find((item) => item.source_id === sourceId)?.status ?? 'locked',
+    progress,
+    target,
+  });
 
   return (
-    <div className="p-6 lg:p-10 space-y-8">
-      
+    <>
+      <MissionsExperience
+        loading={loading}
+        streak={streak}
+        missions={missionViews}
+        common={chest(`daily-common:${today}`, completedToday, 2)}
+        rare={chest(`daily-rare:${today}`, completedToday, 3)}
+        epic={chest(`monthly:${month.monthId}`, activeDays, 20)}
+      />
+    <div className="hidden">
+
       {/* HEADER */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="space-y-1">
@@ -84,7 +134,7 @@ export default function MissionsPage() {
   Cumpra os objetivos diários para gerar Energia e fortalecer seu Núcleo.
 </p>
         </div>
-        
+
         <Link
           href="/dashboard/aria"
           className="flex items-center justify-center gap-2 py-3 px-5 rounded-xl bg-[#7c3aed] text-white text-xs font-black hover:bg-[#6d28d9] transition-all shadow-lg"
@@ -112,8 +162,8 @@ export default function MissionsPage() {
 </span>
           </div>
           <div className="w-full bg-[#1f1f1f] h-3 rounded-full overflow-hidden relative shadow-inner">
-            <div 
-              className="h-full bg-gradient-to-r from-[#7c3aed] to-purple-500 rounded-full transition-all duration-500" 
+            <div
+              className="h-full bg-gradient-to-r from-[#7c3aed] to-purple-500 rounded-full transition-all duration-500"
               style={{ width: `${progressoEnergia}%` }}
             />
           </div>
@@ -139,11 +189,11 @@ export default function MissionsPage() {
         ) : (
           <div className="grid grid-cols-1 gap-2">
             {missions.map((mission) => (
-              <div 
+              <div
                 key={mission.id}
                 className={`p-4 rounded-xl bg-[#111111] border transition-all flex items-center justify-between gap-4 ${
-                  mission.completed 
-                    ? 'border-green-500/10 bg-gradient-to-r from-[#111111] to-green-500/5 opacity-60' 
+                  mission.completed
+                    ? 'border-green-500/10 bg-gradient-to-r from-[#111111] to-green-500/5 opacity-60'
                     : 'border-[#1f1f1f]'
                 }`}
               >
@@ -179,5 +229,6 @@ export default function MissionsPage() {
       </div>
 
     </div>
+    </>
   );
 }
