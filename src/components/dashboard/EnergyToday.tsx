@@ -8,6 +8,7 @@ import {
   Moon,
   Utensils,
   Plus,
+  type LucideIcon,
 } from "lucide-react";
 
 type EnergyItem = {
@@ -15,7 +16,7 @@ type EnergyItem = {
   label: string;
   progress: number;
   completed: boolean;
-  icon: React.ElementType;
+  icon: LucideIcon;
 };
 
 type EnergyTodayProps = {
