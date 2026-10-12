@@ -236,7 +236,7 @@ export default function DashboardLayout({
         </div>
 
         {/* Navegação Mobile */}
-        <nav className={cn("fixed bottom-0 left-1/2 right-auto z-[70] h-[74px] w-full max-w-[460px] -translate-x-1/2 border-t border-white/[0.08] bg-[#0d0d0d]/95 px-2 backdrop-blur-xl", !isDashboardHome && "lg:hidden")}>
+        <nav className={cn("fixed bottom-0 left-1/2 right-auto z-[70] w-full max-w-[460px] -translate-x-1/2 border-t backdrop-blur-xl", isDashboardHome ? "h-[66px] border-white/[0.06] bg-[#0b0b0b]/96 px-3" : "h-20 border-white/[0.08] bg-[#101014]/95 px-2 lg:hidden")}>
           <div className="grid h-full grid-cols-5">
             {mobileItems.map((item) => {
               const Icon = item.icon;
@@ -250,19 +250,22 @@ export default function DashboardLayout({
                   key={item.href}
                   href={item.href}
                   onClick={() => setMoreOpen(false)}
+                  aria-label={item.label}
                   className="flex items-center justify-center"
                 >
                   <div
                     className={cn(
-                      "flex h-14 w-14 items-center justify-center rounded-2xl transition-all",
+                      "relative flex items-center justify-center rounded-2xl transition-all",
+                      isDashboardHome ? "h-11 w-11" : "h-14 w-14",
                       isActive
                         ? isDashboardHome
-                          ? "bg-[#ff6a00] text-white shadow-lg shadow-orange-950/30"
+                          ? "text-[#ff6a00]"
                           : "bg-[#7c3aed] text-white shadow-lg shadow-violet-950/40"
                         : "text-zinc-500"
                     )}
                   >
-                    <Icon className="h-6 w-6" />
+                    <Icon className={cn(isDashboardHome ? "h-[21px] w-[21px]" : "h-6 w-6")} />
+                    {isDashboardHome && isActive && <span className="absolute -bottom-0.5 h-1 w-1 rounded-full bg-[#ff6a00]" />}
                   </div>
                 </Link>
               );
@@ -276,15 +279,17 @@ export default function DashboardLayout({
             >
               <div
                 className={cn(
-                  "flex h-12 w-12 items-center justify-center rounded-2xl transition-all",
+                  "relative flex items-center justify-center rounded-2xl transition-all",
+                  isDashboardHome ? "h-11 w-11" : "h-12 w-12",
                   moreOpen || moreIsActive
                     ? isDashboardHome
-                      ? "bg-[#ff6a00] text-white shadow-lg shadow-orange-950/30"
+                      ? "text-[#ff6a00]"
                       : "bg-[#7c3aed] text-white shadow-lg shadow-violet-950/40"
                     : "text-zinc-500"
                 )}
               >
-                <MoreHorizontal className="h-7 w-7" />
+                <MoreHorizontal className={cn(isDashboardHome ? "h-6 w-6" : "h-7 w-7")} />
+                {isDashboardHome && (moreOpen || moreIsActive) && <span className="absolute -bottom-0.5 h-1 w-1 rounded-full bg-[#ff6a00]" />}
               </div>
             </button>
           </div>

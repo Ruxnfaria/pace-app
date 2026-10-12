@@ -3,14 +3,14 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
-import { Check, ChevronRight, Circle, Flame, Target } from "lucide-react";
+import { Apple, Check, ChevronRight, Circle, Droplets, Dumbbell, Flame, Target } from "lucide-react";
 
 import CoreHero from "@/components/dashboard/cards/CoreHero";
 import { getCoreRankProgress } from "@/lib/gamification/coreStages";
 import { createClient } from "@/lib/supabase/client";
 
 type DashboardProfile = { total_xp?: number | null; level?: number | null; streak?: number | null };
-type DashboardMission = { id: string; title: string; description?: string | null; completed: boolean; xp_reward?: number | null };
+type DashboardMission = { id: string; title: string; description?: string | null; category?: string | null; completed: boolean; xp_reward?: number | null };
 
 const WEEKDAY_LABELS = ["SEG", "TER", "QUA", "QUI", "SEX", "SÁB", "DOM"];
 
@@ -31,6 +31,13 @@ function getWeekDates() {
   });
 }
 
+function getMissionIcon(category?: string | null) {
+  if (category === "workout") return Dumbbell;
+  if (category === "water") return Droplets;
+  if (category === "nutrition") return Apple;
+  return Target;
+}
+
 export default function DashboardPage() {
   const supabase = useMemo(() => createClient(), []);
   const [profile, setProfile] = useState<DashboardProfile | null>(null);
@@ -47,7 +54,7 @@ export default function DashboardPage() {
       const weekStart = getWeekDates()[0].date;
       const [profileResult, missionsResult, workoutsResult, nutritionResult, waterResult, cardioResult, sleepResult] = await Promise.all([
         supabase.from("profiles").select("total_xp, level, streak").eq("user_id", user.id).maybeSingle(),
-        supabase.from("daily_missions").select("id, title, description, completed, xp_reward").eq("user_id", user.id).eq("for_date", today).order("created_at", { ascending: true }),
+        supabase.from("daily_missions").select("id, title, description, category, completed, xp_reward").eq("user_id", user.id).eq("for_date", today).order("created_at", { ascending: true }),
         supabase.from("workout_logs").select("workout_date").eq("user_id", user.id).gte("workout_date", weekStart),
         supabase.from("nutrition_logs").select("logged_at").eq("user_id", user.id).gte("logged_at", `${weekStart}T00:00:00`),
         supabase.from("water_logs").select("logged_date").eq("user_id", user.id).gte("logged_date", weekStart),
@@ -60,7 +67,7 @@ export default function DashboardPage() {
       if (todayMissions.length === 0) {
         const response = await fetch("/api/missions/generate", { method: "POST" });
         if (response.ok) {
-          const refreshed = await supabase.from("daily_missions").select("id, title, description, completed, xp_reward").eq("user_id", user.id).eq("for_date", today).order("created_at", { ascending: true });
+          const refreshed = await supabase.from("daily_missions").select("id, title, description, category, completed, xp_reward").eq("user_id", user.id).eq("for_date", today).order("created_at", { ascending: true });
           todayMissions = refreshed.data ?? [];
         }
       }
@@ -117,11 +124,14 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      <section className="mt-6" aria-labelledby="missions-title">
-        <div className="flex items-center justify-between"><h2 id="missions-title" className="text-lg font-semibold tracking-[-0.03em] text-white">Missões de hoje</h2><Link href="/dashboard/missions" className="flex min-h-9 items-center gap-0.5 text-[11px] font-semibold text-zinc-500 transition hover:text-white">Ver todas <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" /></Link></div>
-        <div className="mt-2.5 space-y-2.5">
-          {visibleMissions.map((mission) => <Link key={mission.id} href="/dashboard/missions" className={`flex min-h-[68px] items-center gap-3.5 rounded-[21px] bg-[#f2efe9] px-3.5 py-3 text-[#101010] transition active:scale-[0.99] motion-reduce:transition-none ${mission.completed ? "opacity-75" : ""}`}><span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${mission.completed ? "bg-[#ff6a00] text-white" : "bg-black/[0.06] text-black"}`}>{mission.completed ? <Check className="h-[18px] w-[18px] stroke-[3]" aria-hidden="true" /> : <Target className="h-[18px] w-[18px]" aria-hidden="true" />}</span><span className="min-w-0 flex-1"><span className={`block truncate text-[13px] font-bold ${mission.completed ? "line-through decoration-black/40" : ""}`}>{mission.title}</span><span className="mt-0.5 block text-[11px] font-semibold text-[#d55200]">+{mission.xp_reward ?? 0} Energia{mission.completed ? " · Concluída" : ""}</span></span><ChevronRight className="h-4 w-4 shrink-0 text-black/30" aria-hidden="true" /></Link>)}
-          {visibleMissions.length === 0 && <p className="rounded-2xl border border-white/[0.07] px-4 py-3 text-center text-xs text-zinc-500">Nenhuma missão disponível hoje.</p>}
+      <section className="mt-5 w-full" aria-labelledby="missions-title">
+        <div className="flex items-center justify-between"><h2 id="missions-title" className="text-lg font-semibold tracking-[-0.03em] text-white">Missões de hoje</h2><Link href="/dashboard/missions" className="flex min-h-9 items-center gap-0.5 text-[11px] font-medium text-zinc-500 transition hover:text-zinc-200">Ver todas <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" /></Link></div>
+        <div className="mt-2 space-y-2">
+          {visibleMissions.map((mission) => {
+            const MissionIcon = getMissionIcon(mission.category);
+            return <Link key={mission.id} href="/dashboard/missions" aria-label={`${mission.title}, ${mission.completed ? "concluída" : `${mission.xp_reward ?? 0} Energia`}`} className={`flex min-h-[66px] w-full items-center gap-3.5 rounded-[22px] bg-[#f5f2ec] px-4 py-3 text-[#111] transition active:scale-[0.99] motion-reduce:transition-none ${mission.completed ? "bg-[#e9e5de]" : ""}`}><span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${mission.completed ? "bg-[#ff6a00] text-white" : "bg-transparent text-black"}`}>{mission.completed ? <Check className="h-[18px] w-[18px] stroke-[3]" aria-hidden="true" /> : <MissionIcon className="h-5 w-5 stroke-[2.2]" aria-hidden="true" />}</span><span className="min-w-0 flex-1"><span className={`block truncate text-[13px] font-bold ${mission.completed ? "text-black/55" : "text-black"}`}>{mission.title}</span><span className={`mt-0.5 block text-[11px] font-semibold ${mission.completed ? "text-[#bd570e]" : "text-[#d55200]"}`}>{mission.completed ? "Concluída hoje" : `+${mission.xp_reward ?? 0} Energia`}</span></span><ChevronRight className="h-4 w-4 shrink-0 text-black/25" aria-hidden="true" /></Link>;
+          })}
+          {visibleMissions.length === 0 && <p className="px-1 py-2 text-left text-xs text-zinc-500">Nenhuma missão disponível hoje.</p>}
         </div>
       </section>
     </main>
