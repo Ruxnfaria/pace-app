@@ -1,1021 +1,131 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
+import { Check, ChevronRight, Circle, Flame, Target } from "lucide-react";
 
+import CoreHero from "@/components/dashboard/cards/CoreHero";
+import { getCoreRankProgress } from "@/lib/gamification/coreStages";
 import { createClient } from "@/lib/supabase/client";
 
+type DashboardProfile = { total_xp?: number | null; level?: number | null; streak?: number | null };
+type DashboardMission = { id: string; title: string; description?: string | null; completed: boolean; xp_reward?: number | null };
 
-import { MissionsList } from "@/components/dashboard/cards/MissionsList";
-import CoreHero from "@/components/dashboard/cards/CoreHero";
-import NextActionCard from "@/components/dashboard/cards/NextActionCard";
-import MissionOverviewCard from "@/components/dashboard/MissionOverviewCard";
-import BottomSummary from "@/components/dashboard/BottomSummary";
-import { useRewardQueue } from "@/components/gamification/RewardQueueProvider";
-import { GamificationActions } from "@/lib/gamification/actions";
-import EnergyToday from "@/components/dashboard/EnergyToday";
-import {
-  didCoreStageChange,
-  getCoreRankProgress,
-} from "@/lib/gamification/coreStages";
+const WEEKDAY_LABELS = ["SEG", "TER", "QUA", "QUI", "SEX", "SÁB", "DOM"];
 
-import {
-  Zap,
-  Play,
-  MessageSquare,
-  ArrowRight,
-  ClipboardList,
-  CheckCircle2,
-  Circle,
-} from "lucide-react";
+function formatLocalDate(date: Date) {
+  return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0")].join("-");
+}
+
+function getWeekDates() {
+  const today = new Date();
+  const monday = new Date(today);
+  const day = today.getDay();
+  monday.setDate(today.getDate() - (day === 0 ? 6 : day - 1));
+  monday.setHours(0, 0, 0, 0);
+  return WEEKDAY_LABELS.map((label, index) => {
+    const date = new Date(monday);
+    date.setDate(monday.getDate() + index);
+    return { label, date: formatLocalDate(date) };
+  });
+}
 
 export default function DashboardPage() {
-  const supabase = createClient();
-  const { enqueueActions } = useRewardQueue();
-
-  const [userName, setUserName] = useState("Atleta");
-  const [profile, setProfile] = useState<any>(null);
+  const supabase = useMemo(() => createClient(), []);
+  const [profile, setProfile] = useState<DashboardProfile | null>(null);
+  const [missions, setMissions] = useState<DashboardMission[]>([]);
+  const [activeDates, setActiveDates] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
 
-  const [latestWorkout, setLatestWorkout] = useState<any>(null);
-  const [latestNutrition, setLatestNutrition] = useState<any>(null);
-  const [missions, setMissions] = useState<any[]>([]);
-  const [completedMissionDates, setCompletedMissionDates] = useState<string[]>([]);
-  const [rankingPosition, setRankingPosition] = useState<number | null>(null);
-
-  const [waterConsumedMl, setWaterConsumedMl] = useState<number>(0);
-  const [sleepHours, setSleepHours] = useState<number>(0);
-  const [cardioMinutes, setCardioMinutes] = useState<number>(0);
-  const [workoutCompletedToday, setWorkoutCompletedToday] = useState(false);
-  const [proteinConsumedToday, setProteinConsumedToday] = useState<number>(0);
-const [proteinGoal, setProteinGoal] = useState<number>(180);
-
   useEffect(() => {
-    async function loadDashboardData() {
+    let cancelled = false;
+    async function loadDashboard() {
       const { data: { user } } = await supabase.auth.getUser();
-      
-      if (user) {
-        const now = new Date();
-
-const todayWater = [
-  now.getFullYear(),
-  String(now.getMonth() + 1).padStart(2, "0"),
-  String(now.getDate()).padStart(2, "0"),
-].join("-");
-
-const { data: sleepData, error: sleepError } = await supabase
-  .from("sleep_logs")
-  .select("hours_slept")
-  .eq("user_id", user.id)
-  .eq("sleep_date", todayWater)
-  .maybeSingle();
-
-if (sleepError) {
-  console.error("[PRAXE] Erro ao carregar sono:", sleepError);
-} else {
-  setSleepHours(Number(sleepData?.hours_slept) || 0);
-}
-
-const { data: waterData, error: waterError } = await supabase
-  .from("water_logs")
-  .select("amount_ml")
-  .eq("user_id", user.id)
-  .eq("logged_date", todayWater);
-
-if (waterError) {
-  console.error("[PRAXE] Erro ao carregar água:", waterError);
-} else {
-  const totalWater = (waterData || []).reduce(
-    (sum, log) => sum + (Number(log.amount_ml) || 0),
-    0
-  );
-
-  setWaterConsumedMl(totalWater);
-}
-
-// CARREGA O CARDIO DE HOJE
-const { data: cardioData, error: cardioError } = await supabase
-  .from("cardio_logs")
-  .select("minutes")
-  .eq("user_id", user.id)
-  .eq("cardio_date", todayWater);
-
-if (cardioError) {
-  console.error("[PRAXE] Erro ao carregar cardio:", cardioError);
-} else {
-  const totalCardio = (cardioData || []).reduce(
-    (sum, log) => sum + (Number(log.minutes) || 0),
-    0
-  );
-
-  setCardioMinutes(totalCardio);
-}
-
-// CARREGA O TREINO CONCLUÍDO DE HOJE
-const { data: workoutLog, error: workoutLogError } = await supabase
-  .from("workout_logs")
-  .select("id")
-  .eq("user_id", user.id)
-  .eq("workout_date", todayWater)
-  .limit(1)
-  .maybeSingle();
-
-if (workoutLogError) {
-  console.error(
-    "[PRAXE] Erro ao carregar treino concluído:",
-    workoutLogError
-  );
-} else {
-  setWorkoutCompletedToday(Boolean(workoutLog));
-}
-
-// CARREGA PROTEÍNA CONSUMIDA HOJE
-const { data: proteinLogs, error: proteinLogsError } = await supabase
-  .from("nutrition_logs")
-  .select("protein, logged_at")
-  .eq("user_id", user.id);
-
-if (proteinLogsError) {
-  console.error(
-    "[PRAXE] Erro ao carregar proteína consumida:",
-    proteinLogsError
-  );
-} else {
-  const todayProteinLogs = (proteinLogs || []).filter((log) => {
-    if (!log.logged_at) return false;
-
-    const logDate = new Date(log.logged_at);
-
-    const logDay = [
-      logDate.getFullYear(),
-      String(logDate.getMonth() + 1).padStart(2, "0"),
-      String(logDate.getDate()).padStart(2, "0"),
-    ].join("-");
-
-    return logDay === todayWater;
-  });
-
-  const totalProteinToday = todayProteinLogs.reduce(
-    (sum, log) => sum + (Number(log.protein) || 0),
-    0
-  );
-
-  setProteinConsumedToday(totalProteinToday);
-}
-
-// CARREGA META REAL DE PROTEÍNA
-const { data: proteinPlan, error: proteinPlanError } = await supabase
-  .from("nutrition_plans")
-  .select("protein")
-  .eq("user_id", user.id)
-  .eq("active", true)
-  .order("created_at", { ascending: false })
-  .limit(1)
-  .maybeSingle();
-
-if (proteinPlanError) {
-  console.error(
-    "[PRAXE] Erro ao carregar meta de proteína:",
-    proteinPlanError
-  );
-} else {
-  setProteinGoal(Number(proteinPlan?.protein) || 180);
-}
-
-      // CALENDÁRIO DE CONSISTÊNCIA
-// Um dia conta como ativo quando o usuário realiza
-// pelo menos uma atividade real dentro do PRAXE.
-
-const activityWeekStart = new Date();
-
-const activityCurrentDay = activityWeekStart.getDay();
-
-// Domingo = 0, Segunda = 1...
-const activityDaysSinceMonday =
-  activityCurrentDay === 0 ? 6 : activityCurrentDay - 1;
-
-activityWeekStart.setDate(
-  activityWeekStart.getDate() - activityDaysSinceMonday
-);
-
-activityWeekStart.setHours(0, 0, 0, 0);
-
-const activityStartDateStr = formatLocalDate(activityWeekStart);
-
-const [
-  workoutHistoryResult,
-  nutritionHistoryResult,
-  waterHistoryResult,
-  cardioHistoryResult,
-  sleepHistoryResult,
-] = await Promise.all([
-  supabase
-    .from("workout_logs")
-    .select("workout_date")
-    .eq("user_id", user.id)
-    .gte("workout_date", activityStartDateStr),
-
-  supabase
-    .from("nutrition_logs")
-    .select("logged_at")
-    .eq("user_id", user.id)
-    .gte("logged_at", activityWeekStart.toISOString()),
-
-  supabase
-    .from("water_logs")
-    .select("logged_date")
-    .eq("user_id", user.id)
-    .gte("logged_date", activityStartDateStr),
-
-  supabase
-    .from("cardio_logs")
-    .select("cardio_date")
-    .eq("user_id", user.id)
-    .gte("cardio_date", activityStartDateStr),
-
-  supabase
-    .from("sleep_logs")
-    .select("sleep_date")
-    .eq("user_id", user.id)
-    .gte("sleep_date", activityStartDateStr),
-]);
-
-if (workoutHistoryResult.error) {
-  console.error(
-    "[PRAXE] Erro ao carregar histórico de treino:",
-    workoutHistoryResult.error
-  );
-}
-
-if (nutritionHistoryResult.error) {
-  console.error(
-    "[PRAXE] Erro ao carregar histórico de nutrição:",
-    nutritionHistoryResult.error
-  );
-}
-
-if (waterHistoryResult.error) {
-  console.error(
-    "[PRAXE] Erro ao carregar histórico de água:",
-    waterHistoryResult.error
-  );
-}
-
-if (cardioHistoryResult.error) {
-  console.error(
-    "[PRAXE] Erro ao carregar histórico de cardio:",
-    cardioHistoryResult.error
-  );
-}
-
-if (sleepHistoryResult.error) {
-  console.error(
-    "[PRAXE] Erro ao carregar histórico de sono:",
-    sleepHistoryResult.error
-  );
-}
-
-const activeDates = new Set<string>();
-
-(workoutHistoryResult.data || []).forEach((log) => {
-  if (log.workout_date) {
-    activeDates.add(log.workout_date);
-  }
-});
-
-(nutritionHistoryResult.data || []).forEach((log) => {
-  if (log.logged_at) {
-    activeDates.add(
-      formatLocalDate(new Date(log.logged_at))
-    );
-  }
-});
-
-(waterHistoryResult.data || []).forEach((log) => {
-  if (log.logged_date) {
-    activeDates.add(log.logged_date);
-  }
-});
-
-(cardioHistoryResult.data || []).forEach((log) => {
-  if (log.cardio_date) {
-    activeDates.add(log.cardio_date);
-  }
-});
-
-(sleepHistoryResult.data || []).forEach((log) => {
-  if (log.sleep_date) {
-    activeDates.add(log.sleep_date);
-  }
-});
-
-setCompletedMissionDates(Array.from(activeDates));
-        // 1. Puxa os dados cadastrais do Perfil
-        const { data: profileData } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('user_id', user.id)
-          .maybeSingle();
-          console.log("USER ID:", user.id);
-          console.log("PROFILE DATA:", profileData);
-        if (profileData) {
-          setProfile(profileData);
-          if (profileData.nome) {
-            setUserName(profileData.nome.split(' ')[0]);
-          }
+      if (!user || cancelled) { if (!cancelled) setLoading(false); return; }
+      const today = formatLocalDate(new Date());
+      const weekStart = getWeekDates()[0].date;
+      const [profileResult, missionsResult, workoutsResult, nutritionResult, waterResult, cardioResult, sleepResult] = await Promise.all([
+        supabase.from("profiles").select("total_xp, level, streak").eq("user_id", user.id).maybeSingle(),
+        supabase.from("daily_missions").select("id, title, description, completed, xp_reward").eq("user_id", user.id).eq("for_date", today).order("created_at", { ascending: true }),
+        supabase.from("workout_logs").select("workout_date").eq("user_id", user.id).gte("workout_date", weekStart),
+        supabase.from("nutrition_logs").select("logged_at").eq("user_id", user.id).gte("logged_at", `${weekStart}T00:00:00`),
+        supabase.from("water_logs").select("logged_date").eq("user_id", user.id).gte("logged_date", weekStart),
+        supabase.from("cardio_logs").select("cardio_date").eq("user_id", user.id).gte("cardio_date", weekStart),
+        supabase.from("sleep_logs").select("sleep_date").eq("user_id", user.id).gte("sleep_date", weekStart),
+      ]);
+      if (cancelled) return;
+      setProfile(profileResult.data);
+      let todayMissions = missionsResult.data ?? [];
+      if (todayMissions.length === 0) {
+        const response = await fetch("/api/missions/generate", { method: "POST" });
+        if (response.ok) {
+          const refreshed = await supabase.from("daily_missions").select("id, title, description, completed, xp_reward").eq("user_id", user.id).eq("for_date", today).order("created_at", { ascending: true });
+          todayMissions = refreshed.data ?? [];
         }
-        const { data: rankingData } = await supabase
-  .from("profiles")
-  .select("user_id, total_xp")
-  .order("total_xp", { ascending: false });
-
-if (rankingData && profileData) {
-  const userEnergy = Number(profileData.total_xp) || 0;
-
-  const userRank = getCoreRankProgress(
-    userEnergy
-  ).currentRank.id;
-
-  const usersInSameRank = rankingData.filter((item) => {
-    const itemEnergy = Number(item.total_xp) || 0;
-
-    return (
-      getCoreRankProgress(itemEnergy).currentRank.id ===
-      userRank
-    );
-  });
-
-  const position =
-    usersInSameRank.findIndex(
-      (item) => item.user_id === user.id
-    ) + 1;
-
-  setRankingPosition(
-    position > 0 ? position : null
-  );
-}
-
-        // 2. BUSCA EM TEMPO REAL: Último Treino injetado pela IA
-        const { data: workoutData } = await supabase
-          .from('workouts')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        
-        if (workoutData) setLatestWorkout(workoutData);
-
-        // 3. BUSCA EM TEMPO REAL: Último Plano Nutricional injetado pela IA
-        const { data: nutritionData } = await supabase
-  .from('nutrition_plans')
-  .select('*')
-  .eq('user_id', user.id)
-  .eq('active', true)
-  .order('created_at', { ascending: false })
-  .limit(1)
-  .maybeSingle();
-        
-        if (nutritionData) setLatestNutrition(nutritionData);
-
-        // 4. BUSCA EM TEMPO REAL: Missões do dia de hoje
-        const todayStr = todayWater;
-        const { data: missionsData } = await supabase
-          .from('daily_missions')
-          .select('*')
-          .eq('user_id', user.id)
-          .eq('for_date', todayStr)
-          .order('created_at', { ascending: true });
-        
-          if (missionsData && missionsData.length > 0) {
-            setMissions(missionsData);
-          } else {
-            try {
-              const response = await fetch("/api/missions/generate", {
-                method: "POST",
-              });
-          
-              if (!response.ok) {
-                console.error(
-                  "[PRAXE] Erro ao gerar missões:",
-                  await response.text()
-                );
-              } else {
-                const { data: generatedMissions, error: generatedMissionsError } =
-                  await supabase
-                    .from("daily_missions")
-                    .select("*")
-                    .eq("user_id", user.id)
-                    .eq("for_date", todayStr)
-                    .order("created_at", { ascending: true });
-          
-                if (generatedMissionsError) {
-                  console.error(
-                    "[PRAXE] Erro ao recarregar missões:",
-                    generatedMissionsError
-                  );
-                } else {
-                  setMissions(generatedMissions || []);
-                }
-              }
-            } catch (error) {
-              console.error("[PRAXE] Erro ao gerar missões:", error);
-            }
-          }
       }
+      if (cancelled) return;
+      setMissions(todayMissions);
+      const dates = new Set<string>();
+      for (const row of workoutsResult.data ?? []) if (row.workout_date) dates.add(row.workout_date);
+      for (const row of nutritionResult.data ?? []) if (row.logged_at) dates.add(formatLocalDate(new Date(row.logged_at)));
+      for (const row of waterResult.data ?? []) if (row.logged_date) dates.add(row.logged_date);
+      for (const row of cardioResult.data ?? []) if (row.cardio_date) dates.add(row.cardio_date);
+      for (const row of sleepResult.data ?? []) if (row.sleep_date) dates.add(row.sleep_date);
+      setActiveDates(dates);
       setLoading(false);
     }
-    
-    loadDashboardData();
+    void loadDashboard();
+    return () => { cancelled = true; };
   }, [supabase]);
 
-  async function handleAddWater(amount: number) {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-  
-    if (!user) return;
-  
-    const now = new Date();
-  
-    const today = [
-      now.getFullYear(),
-      String(now.getMonth() + 1).padStart(2, "0"),
-      String(now.getDate()).padStart(2, "0"),
-    ].join("-");
-  
-    const { error } = await supabase
-      .from("water_logs")
-      .insert({
-        user_id: user.id,
-        amount_ml: amount,
-        logged_date: today,
-      });
-  
-    if (error) {
-      console.error("[PRAXE] Erro ao registrar água:", error);
-      return;
-    }
-  
-    setWaterConsumedMl((current) => current + amount);
-  }
-  
-  async function handleSaveSleep(hours: number) {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const totalEnergy = Math.max(0, Number(profile?.total_xp) || 0);
+  const level = Math.max(1, Number(profile?.level) || Math.floor(totalEnergy / 500) + 1);
+  const streak = Math.max(0, Number(profile?.streak) || 0);
+  const coreProgress = getCoreRankProgress(totalEnergy);
+  const energyGoal = coreProgress.energyNeeded || Math.max(totalEnergy, 1);
+  const energyInLevel = coreProgress.reachedMaximumRank ? totalEnergy : coreProgress.energyInsideRank;
+  const progress = Math.round(coreProgress.progressPercentage);
+  const week = getWeekDates();
+  const visibleMissions = missions.slice(0, 3);
 
-  if (!user) return;
-
-  const now = new Date();
-
-  const today = [
-    now.getFullYear(),
-    String(now.getMonth() + 1).padStart(2, "0"),
-    String(now.getDate()).padStart(2, "0"),
-  ].join("-");
-
-  const { data: existingSleep, error: checkError } = await supabase
-    .from("sleep_logs")
-    .select("id")
-    .eq("user_id", user.id)
-    .eq("sleep_date", today)
-    .maybeSingle();
-
-  if (checkError) {
-    console.error("[PRAXE] Erro ao verificar sono:", checkError);
-    return;
-  }
-
-  if (existingSleep) {
-    const { error } = await supabase
-      .from("sleep_logs")
-      .update({
-        hours_slept: hours,
-      })
-      .eq("id", existingSleep.id);
-
-    if (error) {
-      console.error("[PRAXE] Erro ao atualizar sono:", error);
-      return;
-    }
-  } else {
-    const { error } = await supabase
-      .from("sleep_logs")
-      .insert({
-        user_id: user.id,
-        sleep_date: today,
-        hours_slept: hours,
-      });
-
-    if (error) {
-      console.error("[PRAXE] Erro ao registrar sono:", error);
-      return;
-    }
-  }
-
-  setSleepHours(hours);
-}
-
-async function handleAddCardio(minutes: number) {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) return;
-
-  const now = new Date();
-
-  const today = [
-    now.getFullYear(),
-    String(now.getMonth() + 1).padStart(2, "0"),
-    String(now.getDate()).padStart(2, "0"),
-  ].join("-");
-
-  const { error } = await supabase
-    .from("cardio_logs")
-    .insert({
-      user_id: user.id,
-      cardio_date: today,
-      minutes: minutes,
-    });
-
-  if (error) {
-    console.error("[PRAXE] Erro ao registrar cardio:", error);
-    return;
-  }
-
-  setCardioMinutes((current) => current + minutes);
-}
-
-  async function handleToggleMission(id: string, currentStatus: boolean) {
-    const mission = missions.find((m) => m.id === id);
-    if (!mission) return;
-  
-    const xpReward = mission.xp_reward || 50;
-    const newStatus = !currentStatus;
-    const xpChange = newStatus ? xpReward : -xpReward;
-    const currentXP = profile?.total_xp || 0;
-    
-    const currentTotalXP = profile?.total_xp || 0;
-    const newTotalXP = Math.max(0, currentTotalXP + xpChange);
-    const newLevel = Math.max(1, Math.floor(newTotalXP / 500) + 1);
-    const coreStageChanged = didCoreStageChange(
-      currentTotalXP,
-      newTotalXP
-    );
-  
-    let newStreak = profile?.streak || 0;
-  
-    if (newStatus) {
-      const today = new Date().toISOString().split("T")[0];
-  
-      if (!profile?.last_activity_date) {
-        newStreak = 1;
-      } else {
-        const lastDate = new Date(profile.last_activity_date);
-        const currentDate = new Date(today);
-  
-        const diffDays = Math.floor(
-          (currentDate.getTime() - lastDate.getTime()) /
-            (1000 * 60 * 60 * 24)
-        );
-  
-        if (diffDays === 1) {
-          newStreak += 1;
-        } else if (diffDays > 1) {
-          newStreak = 1;
-        }
-      }
-  
-      const { data: existingBadge } = await supabase
-        .from("badges")
-        .select("*")
-        .eq("user_id", mission.user_id)
-        .eq("badge_name", "Primeiro Passo")
-        .maybeSingle();
-  
-      if (!existingBadge) {
-        await supabase.from("badges").insert({
-          user_id: mission.user_id,
-          badge_name: "Primeiro Passo",
-          badge_description: "Complete sua primeira missão.",
-        });
-      }
-  
-      const { data: consistencyBadge } = await supabase
-        .from("badges")
-        .select("*")
-        .eq("user_id", mission.user_id)
-        .eq("badge_name", "Consistência")
-        .maybeSingle();
-  
-      if (newStreak >= 7 && !consistencyBadge) {
-        await supabase.from("badges").insert({
-          user_id: mission.user_id,
-          badge_name: "Consistência",
-          badge_description: "Complete missões por 7 dias seguidos.",
-        });
-      }
-    }
-  
-    const { data, error: missionError } =
-    await supabase.rpc(
-      "toggle_mission_with_xp",
-      {
-        p_mission_id: id,
-        p_completed: newStatus,
-      }
-    );
-  
-    if (missionError) {
-      console.error("Erro ao atualizar missão:", missionError);
-      return;
-    }
-    console.log("XP atualizado:", data);
-    const { error: profileError } = await supabase
-  .from("profiles")
-  .upsert(
-    {
-      user_id: mission.user_id,
-      total_xp: newTotalXP,
-      level: newLevel,
-      streak: newStreak,
-      last_activity_date: newStatus
-        ? new Date().toISOString().split("T")[0]
-        : profile?.last_activity_date,
-    },
-    { onConflict: "user_id" }
-  );
-  
-    if (profileError) {
-      console.error("Erro ao atualizar perfil:", profileError);
-      return;
-    }
-  
-    setMissions((prev) =>
-      prev.map((m) =>
-        m.id === id
-          ? {
-              ...m,
-              completed: newStatus,
-              completed_at: newStatus
-                ? new Date().toISOString()
-                : null,
-            }
-          : m
-      )
-    );
-    if (newStatus)
-    setProfile((prev: any) => ({
-      ...prev,
-      total_xp: newTotalXP,
-      level: newLevel,
-      streak: newStreak,
-      last_activity_date: new Date().toISOString().split("T")[0],
-    }));
-  }
-
-  // Cálculos matemáticos de progresso dinâmico
-  const totalMissions = missions.length;
-  const completedMissions = missions.filter(m => m.completed).length;
-  const progressPercent = totalMissions > 0 ? Math.round((completedMissions / totalMissions) * 100) : 0;
-
-  const hora = new Date().getHours();
-  const saudacao = hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite';
-  const totalXP = profile?.total_xp || 0;
-
-const coreProgress = getCoreRankProgress(totalXP);
-const currentRank = coreProgress.currentRank;
-const nextRank = coreProgress.nextRank;
-const coreProgressPercent = Math.round(
-  coreProgress.progressPercentage
-);
-  
-
-      const today = new Date();
-
-      function formatLocalDate(date: Date) {
-        return [
-          date.getFullYear(),
-          String(date.getMonth() + 1).padStart(2, "0"),
-          String(date.getDate()).padStart(2, "0"),
-        ].join("-");
-      }
-      
-      const monday = new Date(today);
-
-const currentDay = today.getDay();
-
-// Domingo = 0, Segunda = 1, Terça = 2...
-const daysSinceMonday = currentDay === 0 ? 6 : currentDay - 1;
-
-monday.setDate(today.getDate() - daysSinceMonday);
-
-const weekDays = Array.from({ length: 7 }, (_, index) => {
-  const date = new Date(monday);
-
-  date.setDate(monday.getDate() + index);
-
-  const dateString = formatLocalDate(date);
-  const todayString = formatLocalDate(today);
-
-  return {
-    label: ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"][index],
-    day: date.getDate().toString(),
-    date: dateString,
-    checked: completedMissionDates.includes(dateString),
-    isToday: dateString === todayString,
-  };
-});
-      function getExerciseCount(exercises: unknown) {
-        if (!exercises) return 0;
-      
-        try {
-          const parsedExercises =
-            typeof exercises === "string"
-              ? JSON.parse(exercises)
-              : exercises;
-      
-          return Array.isArray(parsedExercises)
-            ? parsedExercises.length
-            : 0;
-        } catch {
-          return 0;
-        }
-      }
-      
-      const latestWorkoutExerciseCount = getExerciseCount(
-        latestWorkout?.exercises
-      );
-  if (loading) {
-    return (
-      <div className="p-6 lg:p-10 space-y-6 animate-pulse">
-        <div className="h-8 bg-[#111111] w-48 rounded-lg" />
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {[1, 2, 3, 4].map((i) => <div key={i} className="h-28 bg-[#111111] rounded-2xl" />)}
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <main className="mx-auto min-h-screen w-full max-w-[560px] animate-pulse px-5 pb-32 pt-6 sm:px-8"><div className="h-8 w-28 rounded-lg bg-white/[0.06]" /><div className="mx-auto mt-16 h-72 w-72 rounded-full bg-white/[0.04]" /><div className="mt-10 h-2 rounded-full bg-white/[0.06]" /><div className="mt-14 space-y-3"><div className="h-20 rounded-[24px] bg-white/[0.05]" /><div className="h-20 rounded-[24px] bg-white/[0.05]" /></div></main>;
 
   return (
-    <div className="p-6 lg:p-10 space-y-8">
-  
-
-     {/* EVOLUTION COCKPIT — TOPO */}
-<section className="space-y-5">
-  {/* HERO / SAUDAÇÃO */}
-  <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
-    <div className="space-y-2">
-      <p className="text-xs font-black uppercase tracking-[0.24em] text-[#8b5cf6]">
-        Evolution Cockpit
-      </p>
-
-      <h1 className="text-3xl font-black tracking-tight text-white lg:text-4xl">
-        {saudacao}, {userName}
-      </h1>
-
-      <p className="text-sm font-medium text-zinc-300">
-        Disciplina hoje, evolução sempre.
-      </p>
-
-      <p className="text-xs text-zinc-500">
-        {new Date().toLocaleDateString("pt-BR", {
-          weekday: "long",
-          day: "numeric",
-          month: "long",
-        })}
-      </p>
-    </div>
-
-    <div className="flex items-center gap-3 rounded-2xl border border-[#232336] bg-[#111118] px-4 py-3">
-      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-500/10">
-        <span className="text-xl">🔥</span>
-      </div>
-
-      <div>
-        <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">
-          Sequência atual
-        </p>
-
-        <p className="text-lg font-black text-orange-400">
-          {profile?.streak || 0}{" "}
-          {(profile?.streak || 0) === 1 ? "dia" : "dias"}
-        </p>
-      </div>
-    </div>
-  </div>
-
-  {/* CONSISTÊNCIA SEMANAL */}
-  <div className="rounded-2xl border border-[#232336] bg-[#0d0d14] p-4">
-    <div className="mb-4 flex items-center justify-between">
-      <div>
-        <p className="text-xs font-black uppercase tracking-[0.18em] text-zinc-400">
-          Consistência semanal
-        </p>
-
-        <p className="mt-1 text-xs text-zinc-600">
-          Cada dia ativo fortalece sua sequência.
-        </p>
-      </div>
-
-      <span className="text-xs font-black text-[#a855f7]">
-        {weekDays.filter((day) => day.checked).length}/7 dias
-      </span>
-    </div>
-
-    <div className="grid grid-cols-7 gap-2">
-      {weekDays.map((day) => {
-        const isToday = day.isToday;
-
-        return (
-          <div
-            key={day.date}
-            className="flex min-w-0 flex-col items-center gap-2"
-          >
-            <span
-              className={`truncate text-[10px] font-black uppercase sm:text-xs ${
-                isToday ? "text-[#a855f7]" : "text-zinc-500"
-              }`}
-            >
-              {day.label}
-            </span>
-
-            <div
-              className={`flex h-9 w-9 items-center justify-center rounded-full border text-xs font-black transition-all sm:h-11 sm:w-11 ${
-                day.checked
-                  ? "border-[#8b5cf6] bg-[#7c3aed]/20 text-white shadow-[0_0_20px_rgba(124,58,237,0.22)]"
-                  : isToday
-                  ? "border-[#a855f7] bg-[#a855f7]/10 text-[#c084fc]"
-                  : "border-[#292938] bg-[#111118] text-zinc-500"
-              }`}
-            >
-              {day.checked ? "✓" : day.day}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  </div>
-
- {/* NÚCLEO PRINCIPAL DO PRAXE */}
- <CoreHero
-  level={1}
-  levelName={currentRank.name}
-  totalXP={totalXP}
-  xpMissing={coreProgress.energyMissing}
-  xpProgress={coreProgressPercent}
-  completedMissions={completedMissions}
-  totalMissions={totalMissions}
-  rankingPosition={rankingPosition}
-/>
-
-<NextActionCard
-  title={latestWorkout?.title}
-  exerciseCount={latestWorkoutExerciseCount}
-  duration={latestWorkout?.duration || 50}
-  energyReward={120}
-  xpReward={50}
-  crystalReward={8}
-/>
-
-<EnergyToday
-  workoutCompleted={workoutCompletedToday}
-  proteinCompleted={proteinConsumedToday >= proteinGoal}
-  waterConsumedMl={waterConsumedMl}
-waterGoalMl={2500}
-onAddWater={handleAddWater}
-cardioMinutes={cardioMinutes}
-cardioGoalMinutes={30}
-onAddCardio={handleAddCardio}
- sleepHours={sleepHours}
-sleepGoalHours={8}
-onSaveSleep={handleSaveSleep}
-/>
-
-</section>
-<MissionOverviewCard
-  missions={missions.length}
-  totalXP={totalXP}
-/>
-<BottomSummary
-  streak={profile?.streak || 0}
-  rankingPosition={rankingPosition}
-  leagueName={currentRank.name}
-  xpMissing={coreProgress.energyMissing}
-/>
-
-{/* OBJETIVO ATUAL */}
-<div className="p-5 rounded-2xl bg-[#111111] border border-[#1f1f1f]">
-  <div className="flex items-center justify-between mb-4">
-    <span className="text-xs font-bold uppercase tracking-wider text-zinc-500">
-      🎯 Objetivo Atual
-    </span>
-
-    <span className="text-2xl">
-      🎯
-    </span>
-  </div>
-
-  <h3 className="text-lg font-black text-white">
-    Ganhar Massa Muscular
-  </h3>
-
-  <p className="text-sm text-zinc-400 mt-1">
-    {profile?.peso || 66}kg / 70kg
-  </p>
-
-  <div className="mt-4">
-    <div className="flex justify-between text-xs mb-2">
-      <span className="text-zinc-500">Progresso</span>
-
-      <span className="font-black text-[#7c3aed]">
-        {Math.round(((profile?.peso || 66) / 70) * 100)}%
-      </span>
-    </div>
-
-    <div className="w-full bg-zinc-800 h-3 rounded-full overflow-hidden">
-      <div
-        className="h-full bg-gradient-to-r from-purple-500 to-violet-600 rounded-full"
-        style={{
-          width: `${Math.min(
-            ((profile?.peso || 66) / 70) * 100,
-            100
-          )}%`
-        }}
-      />
-    </div>
-  </div>
-</div>
-<div className="p-6 rounded-3xl bg-[#111111] border border-[#1f1f1f]">
-  <div className="flex items-center justify-between mb-4">
-    <div>
-      <p className="text-xs uppercase tracking-widest text-zinc-500 font-black">
-        Dieta Ativa
-      </p>
-
-      <h3 className="text-xl font-black text-white mt-1">
-        {latestNutrition?.calories || 0} kcal
-      </h3>
-    </div>
-
-    <span className="text-3xl">🥗</span>
-  </div>
-
-  <div className="grid grid-cols-3 gap-3 text-center">
-    <div>
-      <p className="text-xs text-zinc-500">Proteína</p>
-      <p className="font-black text-[#7c3aed]">
-        {latestNutrition?.protein || 0}g
-      </p>
-    </div>
-
-    <div>
-      <p className="text-xs text-zinc-500">Carbo</p>
-      <p className="font-black text-orange-400">
-        {latestNutrition?.carbs || 0}g
-      </p>
-    </div>
-
-    <div>
-      <p className="text-xs text-zinc-500">Gordura</p>
-      <p className="font-black text-yellow-400">
-        {latestNutrition?.fat || 0}g
-      </p>
-    </div>
-  </div>
-
-  <Link
-    href="/dashboard/nutrition"
-    className="mt-4 inline-flex items-center gap-2 text-sm font-bold text-[#7c3aed]"
-  >
-    Abrir Nutrição
-    <ArrowRight className="w-4 h-4" />
-  </Link>
-</div>
-      {/* CALL TO ACTION — MENTORIA PREMIUM */}
-      <Link href="/dashboard/aria" className="block p-6 rounded-2xl bg-gradient-to-r from-[#7c3aed]/10 via-purple-500/5 to-transparent border border-[#7c3aed]/20 hover:border-[#7c3aed]/40 transition-all group">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div className="flex items-start gap-4">
-            <div className="p-3 rounded-xl bg-[#7c3aed] text-white shadow-lg">
-              <MessageSquare className="w-5 h-5 fill-white" />
-            </div>
-            <div className="space-y-1">
-              <h3 className="text-sm font-bold text-white group-hover:text-[#7c3aed] transition-colors flex items-center gap-1.5">
-                Falar com os Especialistas Praxe <Zap className="w-3.5 h-3.5 text-[#7c3aed] fill-[#7c3aed]" />
-              </h3>
-              <p className="text-xs text-zinc-400 max-w-xl">
-                Acesse o canal direto da sua assessoria privada. Fale agora com o **Coach Lucas Zanetti** (Treino) ou com o **Dr. Gabriel Fontes** (Nutrição) para montar ou ajustar o seu protocolo.
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-1 text-xs font-bold text-[#7c3aed] group-hover:translate-x-1 transition-transform">
-            Abrir Mentoria <ArrowRight className="w-4 h-4" />
-          </div>
+    <main className="mx-auto min-h-screen w-full max-w-[560px] overflow-hidden px-5 pb-32 pt-6 sm:px-8 sm:pt-8 lg:pb-16">
+      <header className="flex items-center justify-between">
+        <div className="flex h-9 w-32 items-center" data-praxe-logo-slot>
+          {/* Replace with /public/brand/praxe-logo.svg when the supplied wordmark is available. */}
+          <span className="text-xl font-black tracking-[0.22em] text-white" aria-label="PRAXE">PRAXE</span>
         </div>
-      </Link>
+        <div className="flex items-center gap-1.5" aria-label={`${streak} dias de consistência`}><Flame className="h-5 w-5 fill-[#ff6a00] text-[#ff6a00]" aria-hidden="true" /><span className="text-base font-bold tabular-nums text-white">{streak}</span></div>
+      </header>
 
-    </div>
+      <section className="mt-9 text-center" aria-labelledby="core-title">
+        <h1 id="core-title" className="text-[1.7rem] font-medium tracking-[-0.04em] text-[#f7f4ef]">Seu Núcleo</h1>
+        <CoreHero totalXP={totalEnergy} />
+        <div className="-mt-2">
+          <p className="text-lg font-semibold text-white">Nível {level}</p>
+          <p className="mt-1 text-sm font-medium text-zinc-400"><span className="text-[#ff7a00]">{energyInLevel.toLocaleString("pt-BR")}</span>{" / "}{energyGoal.toLocaleString("pt-BR")} Energia</p>
+          <div className="mt-4 h-2 overflow-hidden rounded-full bg-[#242424]" aria-label={`${progress}% do nível atual`}><div className="h-full rounded-full bg-[#ff6a00] shadow-[0_0_18px_rgba(255,106,0,0.48)] transition-[width] duration-700 motion-reduce:transition-none" style={{ width: `${progress}%` }} /></div>
+        </div>
+      </section>
+
+      <section className="mt-8" aria-label="Consistência semanal">
+        <div className="grid grid-cols-7 gap-1.5">
+          {week.map((day) => {
+            const checked = activeDates.has(day.date);
+            return <div key={day.date} className="flex flex-col items-center gap-2.5"><span className="text-[10px] font-bold tracking-[0.04em] text-zinc-500">{day.label}</span><span className={`flex h-8 w-8 items-center justify-center rounded-full border ${checked ? "border-[#ff6a00] bg-[#ff6a00] text-white" : "border-zinc-700 bg-[#111] text-zinc-700"}`} aria-label={`${day.label}: ${checked ? "atividade concluída" : "sem atividade"}`}>{checked ? <Check className="h-4 w-4 stroke-[3]" aria-hidden="true" /> : <Circle className="h-2 w-2 fill-current" aria-hidden="true" />}</span></div>;
+          })}
+        </div>
+      </section>
+
+      <section className="mt-10" aria-labelledby="missions-title">
+        <div className="flex items-center justify-between"><h2 id="missions-title" className="text-xl font-semibold tracking-[-0.03em] text-white">Missões de hoje</h2><Link href="/dashboard/missions" className="flex min-h-11 items-center gap-1 text-xs font-semibold text-zinc-400 transition hover:text-white">Ver todas <ChevronRight className="h-4 w-4" aria-hidden="true" /></Link></div>
+        <div className="mt-3 space-y-3">
+          {visibleMissions.map((mission) => <Link key={mission.id} href="/dashboard/missions" className={`flex min-h-[78px] items-center gap-4 rounded-[24px] bg-[#f4f1eb] px-4 py-3.5 text-[#101010] transition active:scale-[0.99] motion-reduce:transition-none ${mission.completed ? "opacity-75" : ""}`}><span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${mission.completed ? "bg-[#ff6a00] text-white" : "bg-black/[0.06] text-black"}`}>{mission.completed ? <Check className="h-5 w-5 stroke-[3]" aria-hidden="true" /> : <Target className="h-5 w-5" aria-hidden="true" />}</span><span className="min-w-0 flex-1"><span className={`block truncate text-sm font-bold ${mission.completed ? "line-through decoration-black/40" : ""}`}>{mission.title}</span><span className="mt-1 block text-xs font-semibold text-[#d55200]">+{mission.xp_reward ?? 0} Energia{mission.completed ? " · Concluída" : ""}</span></span><ChevronRight className="h-5 w-5 shrink-0 text-black/35" aria-hidden="true" /></Link>)}
+          {visibleMissions.length === 0 && <div className="rounded-[24px] border border-white/[0.08] bg-white/[0.03] px-5 py-7 text-center text-sm text-zinc-500">Nenhuma missão disponível hoje.</div>}
+        </div>
+      </section>
+    </main>
   );
 }

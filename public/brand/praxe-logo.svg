@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 110" role="img" aria-labelledby="title desc">
+  <title id="title">PRAXE logo</title>
+  <desc id="desc">Geometric PRAXE wordmark in black with an orange triangle accent inside the A.</desc>
+
+  <g fill="none" stroke="#000000" stroke-width="12" stroke-linecap="round" stroke-linejoin="round">
+    <!-- P -->
+    <path d="M 22 88 L 22 22 L 78 22 L 93 34 L 93 52 L 78 60 L 22 60"/>
+
+    <!-- R -->
+    <path d="M 122 88 L 122 22 L 178 22 L 193 34 L 193 52 L 178 60 L 122 60"/>
+    <path d="M 150 60 L 195 88"/>
+
+    <!-- A -->
+    <path d="M 228 88 L 268 22"/>
+    <path d="M 268 22 L 308 88"/>
+
+    <!-- X -->
+    <path d="M 338 22 L 392 88"/>
+    <path d="M 392 22 L 338 88"/>
+
+    <!-- E -->
+    <path d="M 428 22 L 428 88"/>
+    <path d="M 428 22 L 488 22"/>
+    <path d="M 428 55 L 478 55"/>
+    <path d="M 428 88 L 488 88"/>
+  </g>
+
+  <!-- orange accent inside A -->
+  <polygon points="258,66 279,66 268.5,84" fill="#ff5a1f"/>
+</svg>
