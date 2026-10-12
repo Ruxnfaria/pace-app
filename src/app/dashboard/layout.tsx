@@ -88,6 +88,7 @@ export default function DashboardLayout({
   const [loggingOut, setLoggingOut] = useState(false);
 
   const supabase = createClient();
+  const isDashboardHome = pathname === '/dashboard';
 
   const moreIsActive = moreItems.some(
     (item) =>
@@ -120,11 +121,11 @@ export default function DashboardLayout({
     <RewardQueueProvider>
       <div className="min-h-screen bg-[#0a0a0a] text-white">
         {/* Sidebar Desktop */}
-        <Sidebar />
+        {!isDashboardHome && <Sidebar />}
 
         {/* Conteúdo */}
-        <main className="lg:pl-64 pb-24 lg:pb-0">
-          <div className="max-w-7xl mx-auto">
+        <main className={cn("pb-24", !isDashboardHome && "lg:pl-64 lg:pb-0")}>
+          <div className={cn("mx-auto", isDashboardHome ? "max-w-[460px]" : "max-w-7xl")}>
             {children}
           </div>
         </main>
@@ -135,14 +136,15 @@ export default function DashboardLayout({
             type="button"
             aria-label="Fechar menu"
             onClick={() => setMoreOpen(false)}
-            className="lg:hidden fixed inset-0 z-[55] bg-black/60 backdrop-blur-sm"
+            className={cn("fixed inset-0 z-[55] bg-black/60 backdrop-blur-sm", !isDashboardHome && "lg:hidden")}
           />
         )}
 
         {/* Menu Mais */}
         <div
           className={cn(
-            "lg:hidden fixed bottom-20 left-0 right-0 z-[60] px-3 transition-all duration-300",
+            "fixed bottom-20 left-1/2 right-auto z-[60] w-full max-w-[460px] -translate-x-1/2 px-3 transition-all duration-300",
+            !isDashboardHome && "lg:hidden",
             moreOpen
               ? "translate-y-0 opacity-100"
               : "pointer-events-none translate-y-6 opacity-0"
@@ -234,7 +236,7 @@ export default function DashboardLayout({
         </div>
 
         {/* Navegação Mobile */}
-        <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-[70] h-20 border-t border-white/[0.08] bg-[#101014]/95 px-2 backdrop-blur-xl">
+        <nav className={cn("fixed bottom-0 left-1/2 right-auto z-[70] h-[74px] w-full max-w-[460px] -translate-x-1/2 border-t border-white/[0.08] bg-[#0d0d0d]/95 px-2 backdrop-blur-xl", !isDashboardHome && "lg:hidden")}>
           <div className="grid h-full grid-cols-5">
             {mobileItems.map((item) => {
               const Icon = item.icon;
@@ -254,7 +256,9 @@ export default function DashboardLayout({
                     className={cn(
                       "flex h-14 w-14 items-center justify-center rounded-2xl transition-all",
                       isActive
-                        ? "bg-[#7c3aed] text-white shadow-lg shadow-violet-950/40"
+                        ? isDashboardHome
+                          ? "bg-[#ff6a00] text-white shadow-lg shadow-orange-950/30"
+                          : "bg-[#7c3aed] text-white shadow-lg shadow-violet-950/40"
                         : "text-zinc-500"
                     )}
                   >
@@ -272,9 +276,11 @@ export default function DashboardLayout({
             >
               <div
                 className={cn(
-                  "flex h-14 w-14 items-center justify-center rounded-2xl transition-all",
+                  "flex h-12 w-12 items-center justify-center rounded-2xl transition-all",
                   moreOpen || moreIsActive
-                    ? "bg-[#7c3aed] text-white shadow-lg shadow-violet-950/40"
+                    ? isDashboardHome
+                      ? "bg-[#ff6a00] text-white shadow-lg shadow-orange-950/30"
+                      : "bg-[#7c3aed] text-white shadow-lg shadow-violet-950/40"
                     : "text-zinc-500"
                 )}
               >
