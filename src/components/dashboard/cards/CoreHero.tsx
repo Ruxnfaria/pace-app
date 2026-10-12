@@ -1,13 +1,28 @@
 "use client";
 
+import dynamic from "next/dynamic";
+import Image from "next/image";
 import { useEffect, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 
-import CoreVisual from "@/components/dashboard/coreVisual/CoreVisual";
 import { consumeCoreEnergy } from "@/lib/gamification/coreEnergyPulse";
 import { getCoreRankProgress } from "@/lib/gamification/coreStages";
 
 type CoreHeroProps = { totalXP: number };
+
+const CoreScene = dynamic(() => import("@/components/dashboard/core3d/CoreScene"), {
+  ssr: false,
+  loading: () => (
+    <Image
+      src="/cores/iniciante.png"
+      alt=""
+      fill
+      priority
+      sizes="(max-width: 640px) 340px, 360px"
+      className="object-contain"
+    />
+  ),
+});
 
 export default function CoreHero({ totalXP }: CoreHeroProps) {
   const [absorbing, setAbsorbing] = useState(false);
@@ -55,7 +70,7 @@ export default function CoreHero({ totalXP }: CoreHeroProps) {
       transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
       whileTap={reduceMotion ? undefined : { scale: 0.985 }}
     >
-      <CoreVisual
+      <CoreScene
         rankId={progress.currentRank.id}
         intensity={intensity}
         absorbing={absorbing}
