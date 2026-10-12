@@ -17,6 +17,31 @@ type CoreSceneProps = {
 
 const BEGINNER_SURFACE = "/core3d/beginner-surface.png";
 const BASELINE_INTENSITY = 0.58;
+const FISSURE_VERTEX_SHADER = `
+  varying vec2 vUv;
+
+  void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+const FISSURE_FRAGMENT_SHADER = `
+  uniform sampler2D uMap;
+  uniform vec3 uColor;
+  uniform float uOpacity;
+  varying vec2 vUv;
+
+  void main() {
+    vec3 surface = texture2D(uMap, vUv).rgb;
+    float luminance = dot(surface, vec3(0.2126, 0.7152, 0.0722));
+    float warmth = max(surface.r - surface.b * 0.9, 0.0);
+    float fissure = smoothstep(0.24, 0.68, luminance) * smoothstep(0.08, 0.42, warmth);
+    float alpha = fissure * uOpacity;
+
+    if (alpha < 0.01) discard;
+    gl_FragColor = vec4(uColor * (0.8 + fissure * 0.65), alpha);
+  }
+`;
 
 function getVisualPower(intensity: number, theme: CoreTheme) {
   return Math.min(BASELINE_INTENSITY + THREE.MathUtils.clamp(intensity, 0, 1) * 0.72 * theme.power, 1.42);
@@ -56,9 +81,9 @@ function CoreFallback({ theme }: { theme: CoreTheme }) {
 
 function CoreSphere({ rankId, intensity, absorbing, reducedMotion }: CoreSceneProps) {
   const group = useRef<THREE.Group>(null);
-  const sphere = useRef<THREE.Mesh>(null);
+  const surface = useRef<THREE.Group>(null);
   const material = useRef<THREE.MeshStandardMaterial>(null);
-  const fissures = useRef<THREE.MeshBasicMaterial>(null);
+  const fissures = useRef<THREE.ShaderMaterial>(null);
   const atmosphere = useRef<THREE.MeshBasicMaterial>(null);
   const pointerTarget = useRef({ x: 0, y: 0 });
   const hovered = useRef(false);
@@ -74,6 +99,14 @@ function CoreSphere({ rankId, intensity, absorbing, reducedMotion }: CoreScenePr
     texture.needsUpdate = true;
     return texture;
   }, [sourceTexture]);
+  const fissureUniforms = useMemo(
+    () => ({
+      uMap: { value: surfaceTexture },
+      uColor: { value: new THREE.Color(theme.secondary) },
+      uOpacity: { value: 0.34 },
+    }),
+    [surfaceTexture, theme.secondary],
+  );
 
   useEffect(() => () => surfaceTexture.dispose(), [surfaceTexture]);
 
@@ -86,14 +119,14 @@ function CoreSphere({ rankId, intensity, absorbing, reducedMotion }: CoreScenePr
       : Math.min((state.clock.elapsedTime - gainStartedAt.current) / 1.1, 1);
     const gainEnvelope = absorbing ? getEnergyGainEnvelope(gainProgress) : 0;
 
-    if (sphere.current && !reducedMotion) {
-      sphere.current.rotation.y += delta * (0.13 + visualPower * 0.025);
-      sphere.current.rotation.x = Math.sin(state.clock.elapsedTime * 0.18) * 0.025;
+    if (surface.current && !reducedMotion) {
+      surface.current.rotation.y += delta * (0.13 + visualPower * 0.025);
+      surface.current.rotation.x = Math.sin(state.clock.elapsedTime * 0.18) * 0.025;
     }
 
     if (material.current) {
       const pulse = reducedMotion ? 1 : 0.9 + Math.sin(state.clock.elapsedTime * 1.55) * 0.1;
-      const target = (1.35 + visualPower * 1.65) * pulse * (1 + gainEnvelope * 0.72) * (hovered.current ? 1.12 : 1);
+      const target = (0.42 + visualPower * 0.42) * pulse * (1 + gainEnvelope * 0.6) * (hovered.current ? 1.08 : 1);
       material.current.emissiveIntensity = THREE.MathUtils.lerp(
         material.current.emissiveIntensity,
         target,
@@ -105,9 +138,9 @@ function CoreSphere({ rankId, intensity, absorbing, reducedMotion }: CoreScenePr
       const energyFlow = reducedMotion
         ? 0.2 + visualPower * 0.12
         : 0.22 + visualPower * 0.14 + Math.sin(state.clock.elapsedTime * 1.65) * 0.055;
-      fissures.current.opacity = THREE.MathUtils.lerp(
-        fissures.current.opacity,
-        Math.min(energyFlow * (1 + gainEnvelope * 0.82), 0.78),
+      fissures.current.uniforms.uOpacity.value = THREE.MathUtils.lerp(
+        fissures.current.uniforms.uOpacity.value,
+        Math.min(energyFlow * (1 + gainEnvelope * 0.82), 0.72),
         absorbing ? 0.18 : 0.055,
       );
     }
@@ -157,33 +190,43 @@ function CoreSphere({ rankId, intensity, absorbing, reducedMotion }: CoreScenePr
         pointerTarget.current = { x: 0, y: 0 };
       }}
     >
-      <mesh ref={sphere}>
-        <sphereGeometry args={[1, 96, 64]} />
-        <meshStandardMaterial
-          ref={material}
-          map={surfaceTexture}
-          bumpMap={surfaceTexture}
-          bumpScale={0.045}
-          roughness={0.78}
-          metalness={0.12}
-          emissive={theme.primary}
-          emissiveMap={surfaceTexture}
-          emissiveIntensity={1}
-        />
-      </mesh>
-      <mesh scale={1.003} rotation={[0, 0.012, 0]}>
-        <sphereGeometry args={[1, 72, 56]} />
-        <meshBasicMaterial
-          ref={fissures}
-          map={surfaceTexture}
-          color={theme.secondary}
-          transparent
-          opacity={0.16}
-          blending={THREE.AdditiveBlending}
-          depthWrite={false}
-          toneMapped={false}
-        />
-      </mesh>
+      <group ref={surface}>
+        <mesh renderOrder={1}>
+          <sphereGeometry args={[1, 96, 64]} />
+          <meshStandardMaterial
+            ref={material}
+            map={surfaceTexture}
+            bumpMap={surfaceTexture}
+            bumpScale={0.065}
+            color="#d8d2cb"
+            roughness={0.88}
+            metalness={0.04}
+            emissive={theme.primary}
+            emissiveMap={surfaceTexture}
+            emissiveIntensity={0.7}
+            transparent={false}
+            opacity={1}
+            alphaTest={0}
+            blending={THREE.NormalBlending}
+            depthWrite
+            depthTest
+          />
+        </mesh>
+        <mesh scale={1.002} renderOrder={2}>
+          <sphereGeometry args={[1, 72, 56]} />
+          <shaderMaterial
+            ref={fissures}
+            uniforms={fissureUniforms}
+            vertexShader={FISSURE_VERTEX_SHADER}
+            fragmentShader={FISSURE_FRAGMENT_SHADER}
+            transparent
+            blending={THREE.AdditiveBlending}
+            depthWrite={false}
+            depthTest
+            toneMapped={false}
+          />
+        </mesh>
+      </group>
       <mesh scale={1.045}>
         <sphereGeometry args={[1, 64, 48]} />
         <meshBasicMaterial
@@ -194,6 +237,7 @@ function CoreSphere({ rankId, intensity, absorbing, reducedMotion }: CoreScenePr
           opacity={0.19 + getVisualPower(intensity, theme) * 0.075}
           blending={THREE.AdditiveBlending}
           depthWrite={false}
+          depthTest
         />
       </mesh>
     </group>
@@ -257,6 +301,7 @@ function CoreOrbits({ rankId, intensity, absorbing, reducedMotion }: CoreScenePr
           opacity={Math.min(opacity * 0.18 * (absorbing ? 1.7 : 1), 0.28)}
           blending={THREE.AdditiveBlending}
           depthWrite={false}
+          depthTest
           toneMapped={false}
         />
       </mesh>
@@ -268,6 +313,7 @@ function CoreOrbits({ rankId, intensity, absorbing, reducedMotion }: CoreScenePr
           opacity={Math.min(opacity * (absorbing ? 1.5 : 1), 1)}
           blending={THREE.AdditiveBlending}
           depthWrite={false}
+          depthTest
           toneMapped={false}
         />
       </mesh>
@@ -353,6 +399,7 @@ function CoreParticles({ rankId, intensity, absorbing, reducedMotion }: CoreScen
         opacity={Math.min((0.38 + visualPower * 0.3) * (absorbing ? 1.35 : 1), 1)}
         blending={THREE.AdditiveBlending}
         depthWrite={false}
+        depthTest
         sizeAttenuation
         toneMapped={false}
       />
@@ -427,6 +474,7 @@ function EnergyArcs({ rankId, intensity, absorbing, reducedMotion }: CoreScenePr
             opacity={0.18}
             blending={THREE.AdditiveBlending}
             depthWrite={false}
+            depthTest
             toneMapped={false}
           />
         </mesh>
@@ -466,6 +514,7 @@ function EnergyFlash({ rankId, intensity, absorbing, reducedMotion }: CoreSceneP
           opacity={0.04}
           blending={THREE.AdditiveBlending}
           depthWrite={false}
+          depthTest
           toneMapped={false}
         />
       </mesh>
@@ -477,10 +526,11 @@ function SceneContent(props: CoreSceneProps) {
   const theme = CORE_THEMES[props.rankId];
   return (
     <>
-      <ambientLight intensity={0.2} />
-      <directionalLight position={[-3, 3.5, 4]} intensity={2.8} color="#ffd2ad" />
-      <pointLight position={[2.4, -1.2, 2.8]} intensity={4.2} color={theme.primary} />
-      <pointLight position={[-2.2, -1.5, -1]} intensity={2.3} color={theme.primary} />
+      <ambientLight intensity={0.12} />
+      <hemisphereLight args={["#ffd8b8", "#080403", 0.62]} />
+      <directionalLight position={[-3, 3.5, 4]} intensity={3.1} color="#ffe2c8" />
+      <pointLight position={[2.4, -1.2, 2.8]} intensity={2.1} color={theme.primary} />
+      <pointLight position={[-2.2, -1.5, -1]} intensity={1.1} color={theme.primary} />
       <CoreOrbits {...props} />
       <CoreSphere {...props} />
       <EnergyArcs {...props} />
