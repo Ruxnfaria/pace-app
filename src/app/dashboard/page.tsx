@@ -94,25 +94,25 @@ export default function DashboardPage() {
   return (
     <main className="mx-auto min-h-screen w-full max-w-[430px] overflow-hidden px-5 pb-28 pt-5 sm:px-6 sm:pt-6">
       <header className="flex items-center justify-between">
-        <Image src="/brand/praxe-logo.svg" alt="PRAXE" width={520} height={110} preload unoptimized className="h-auto w-[104px]" />
+        <Image src="/brand/praxe-logo.svg" alt="PRAXE" width={520} height={110} preload unoptimized className="h-auto w-[116px]" />
         <div className="flex items-center gap-1.5" aria-label={`${streak} dias de consistência`}><Flame className="h-5 w-5 fill-[#ff6a00] text-[#ff6a00]" aria-hidden="true" /><span className="text-base font-bold tabular-nums text-white">{streak}</span></div>
       </header>
 
-      <section className="mt-5 text-center" aria-labelledby="core-title">
+      <section className="mt-3 text-center" aria-labelledby="core-title">
         <h1 id="core-title" className="text-[1.55rem] font-medium tracking-[-0.04em] text-[#f7f4ef]">Seu Núcleo</h1>
         <CoreHero totalXP={totalEnergy} />
-        <div className="-mt-1">
+        <div className="-mt-3">
           <p className="text-base font-bold text-white">Nível {level}</p>
           <p className="mt-0.5 text-[13px] font-medium text-zinc-300"><span className="text-[#ff7a00]">{energyInLevel.toLocaleString("pt-BR")}</span>{" / "}{energyGoal.toLocaleString("pt-BR")} Energia</p>
-          <div className="mx-auto mt-3 h-1.5 w-[74%] overflow-hidden rounded-full bg-[#292929]" aria-label={`${progress}% do nível atual`}><div className="h-full rounded-full bg-[#ff6a00] shadow-[0_0_14px_rgba(255,106,0,0.48)] transition-[width] duration-700 motion-reduce:transition-none" style={{ width: `${progress}%` }} /></div>
+          <div className="mx-auto mt-2.5 h-2 w-[74%] overflow-hidden rounded-full bg-[#292929]" aria-label={`${progress}% do nível atual`}><div className="h-full rounded-full bg-[#ff6a00] shadow-[0_0_16px_rgba(255,106,0,0.55)] transition-[width] duration-700 motion-reduce:transition-none" style={{ width: `${progress}%` }} /></div>
         </div>
       </section>
 
-      <section className="mx-auto mt-6 w-[94%]" aria-label="Consistência semanal">
+      <section className="mx-auto mt-4.5 w-[94%]" aria-label="Consistência semanal">
         <div className="grid grid-cols-7 gap-1">
           {week.map((day) => {
             const checked = activeDates.has(day.date);
-            return <div key={day.date} className="flex flex-col items-center gap-2"><span className="text-[9px] font-bold tracking-[0.03em] text-zinc-500">{day.label}</span><span className={`flex h-7 w-7 items-center justify-center rounded-full border ${checked ? "border-[#ff6a00] bg-[#ff6a00] text-white" : "border-zinc-700 bg-[#101010] text-zinc-700"}`} aria-label={`${day.label}: ${checked ? "atividade concluída" : "sem atividade"}`}>{checked ? <Check className="h-3.5 w-3.5 stroke-[3]" aria-hidden="true" /> : <Circle className="h-1.5 w-1.5 fill-current" aria-hidden="true" />}</span></div>;
+            return <div key={day.date} className="flex flex-col items-center gap-2"><span className="text-[10px] font-bold tracking-[0.03em] text-zinc-500">{day.label}</span><span className={`flex h-8 w-8 items-center justify-center rounded-full border ${checked ? "border-[#ff6a00] bg-[#ff6a00] text-white" : "border-zinc-700 bg-[#101010] text-zinc-700"}`} aria-label={`${day.label}: ${checked ? "atividade concluída" : "sem atividade"}`}>{checked ? <Check className="h-4 w-4 stroke-[3]" aria-hidden="true" /> : <Circle className="h-2 w-2 fill-current" aria-hidden="true" />}</span></div>;
           })}
         </div>
       </section>
