@@ -27,10 +27,11 @@ const CoreScene = dynamic(() => import("@/components/dashboard/core3d/CoreScene"
 export default function CoreHero({ totalXP }: CoreHeroProps) {
   const [absorbing, setAbsorbing] = useState(false);
   const [pendingEnergy, setPendingEnergy] = useState(0);
+  const [visualTestEnabled, setVisualTestEnabled] = useState(false);
   const reduceMotion = useReducedMotion();
   const progress = getCoreRankProgress(totalXP);
   const charge = Math.round(progress.progressPercentage);
-  const intensity = totalXP <= 0 ? 0.28 : 0.45 + (charge / 100) * 0.55;
+  const intensity = charge / 100;
 
   useEffect(() => {
     let absorbTimer: number | undefined;
@@ -45,6 +46,17 @@ export default function CoreHero({ totalXP }: CoreHeroProps) {
     }
 
     window.addEventListener("pace:core-energize", energize);
+    const hostname = window.location.hostname;
+    const isLocal = hostname === "localhost" || hostname === "127.0.0.1";
+    const isIsolatedPreview = hostname.includes("-git-codex-phase2-baseline-");
+    const visualTestTimer = window.setTimeout(
+      () =>
+        setVisualTestEnabled(
+          new URLSearchParams(window.location.search).get("coreVisualTest") === "1" &&
+            (isLocal || isIsolatedPreview),
+        ),
+      0,
+    );
     const pending = consumeCoreEnergy();
     if (pending > 0) {
       pendingTimer = window.setTimeout(() => setPendingEnergy(pending), 0);
@@ -58,6 +70,7 @@ export default function CoreHero({ totalXP }: CoreHeroProps) {
       if (pendingTimer) window.clearTimeout(pendingTimer);
       if (energizeTimer) window.clearTimeout(energizeTimer);
       if (clearTimer) window.clearTimeout(clearTimer);
+      if (visualTestTimer) window.clearTimeout(visualTestTimer);
     };
   }, []);
 
@@ -84,6 +97,15 @@ export default function CoreHero({ totalXP }: CoreHeroProps) {
         >
           +{pendingEnergy} Energia
         </motion.span>
+      )}
+      {visualTestEnabled && (
+        <button
+          type="button"
+          className="absolute bottom-2 right-2 z-30 rounded-full border border-orange-400/35 bg-black/80 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.08em] text-orange-200 backdrop-blur"
+          onClick={() => window.dispatchEvent(new Event("pace:core-energize"))}
+        >
+          Testar pulso
+        </button>
       )}
     </motion.div>
   );

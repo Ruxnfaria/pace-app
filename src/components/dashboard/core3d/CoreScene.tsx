@@ -16,6 +16,17 @@ type CoreSceneProps = {
 };
 
 const BEGINNER_SURFACE = "/core3d/beginner-surface.png";
+const BASELINE_INTENSITY = 0.58;
+
+function getVisualPower(intensity: number, theme: CoreTheme) {
+  return Math.min(BASELINE_INTENSITY + THREE.MathUtils.clamp(intensity, 0, 1) * 0.72 * theme.power, 1.42);
+}
+
+function getEnergyGainEnvelope(progress: number) {
+  if (progress <= 0.22) return progress / 0.22;
+  if (progress <= 0.48) return 1;
+  return Math.max(0, 1 - (progress - 0.48) / 0.52);
+}
 
 function supportsWebGL() {
   try {
@@ -51,6 +62,7 @@ function CoreSphere({ rankId, intensity, absorbing, reducedMotion }: CoreScenePr
   const atmosphere = useRef<THREE.MeshBasicMaterial>(null);
   const pointerTarget = useRef({ x: 0, y: 0 });
   const hovered = useRef(false);
+  const gainStartedAt = useRef<number | null>(null);
   const sourceTexture = useLoader(THREE.TextureLoader, BEGINNER_SURFACE);
   const theme = CORE_THEMES[rankId];
   const surfaceTexture = useMemo(() => {
@@ -66,16 +78,22 @@ function CoreSphere({ rankId, intensity, absorbing, reducedMotion }: CoreScenePr
   useEffect(() => () => surfaceTexture.dispose(), [surfaceTexture]);
 
   useFrame((state, delta) => {
-    const visualPower = Math.min(intensity * theme.power, 1.35);
+    const visualPower = getVisualPower(intensity, theme);
+    if (absorbing && gainStartedAt.current === null) gainStartedAt.current = state.clock.elapsedTime;
+    if (!absorbing) gainStartedAt.current = null;
+    const gainProgress = gainStartedAt.current === null
+      ? 0
+      : Math.min((state.clock.elapsedTime - gainStartedAt.current) / 1.1, 1);
+    const gainEnvelope = absorbing ? getEnergyGainEnvelope(gainProgress) : 0;
 
     if (sphere.current && !reducedMotion) {
-      sphere.current.rotation.y += delta * (0.085 + visualPower * 0.018);
+      sphere.current.rotation.y += delta * (0.13 + visualPower * 0.025);
       sphere.current.rotation.x = Math.sin(state.clock.elapsedTime * 0.18) * 0.025;
     }
 
     if (material.current) {
-      const pulse = reducedMotion ? 1 : 0.92 + Math.sin(state.clock.elapsedTime * 1.35) * 0.08;
-      const target = (0.9 + visualPower * 1.35) * pulse * (absorbing ? 1.55 : hovered.current ? 1.12 : 1);
+      const pulse = reducedMotion ? 1 : 0.9 + Math.sin(state.clock.elapsedTime * 1.55) * 0.1;
+      const target = (1.35 + visualPower * 1.65) * pulse * (1 + gainEnvelope * 0.72) * (hovered.current ? 1.12 : 1);
       material.current.emissiveIntensity = THREE.MathUtils.lerp(
         material.current.emissiveIntensity,
         target,
@@ -85,22 +103,22 @@ function CoreSphere({ rankId, intensity, absorbing, reducedMotion }: CoreScenePr
 
     if (fissures.current) {
       const energyFlow = reducedMotion
-        ? 0.12 + visualPower * 0.1
-        : 0.13 + visualPower * 0.11 + Math.sin(state.clock.elapsedTime * 2.1) * 0.035;
+        ? 0.2 + visualPower * 0.12
+        : 0.22 + visualPower * 0.14 + Math.sin(state.clock.elapsedTime * 1.65) * 0.055;
       fissures.current.opacity = THREE.MathUtils.lerp(
         fissures.current.opacity,
-        Math.min(energyFlow * (absorbing ? 2.25 : 1), 0.62),
+        Math.min(energyFlow * (1 + gainEnvelope * 0.82), 0.78),
         absorbing ? 0.18 : 0.055,
       );
     }
 
     if (atmosphere.current) {
       const atmosphericPulse = reducedMotion
-        ? 0.12 + intensity * 0.1
-        : 0.12 + intensity * 0.1 + Math.sin(state.clock.elapsedTime * 1.08) * 0.025;
+        ? 0.18 + visualPower * 0.07
+        : 0.18 + visualPower * 0.07 + Math.sin(state.clock.elapsedTime * 1.45) * 0.04;
       atmosphere.current.opacity = THREE.MathUtils.lerp(
         atmosphere.current.opacity,
-        atmosphericPulse * (absorbing ? 1.85 : 1),
+        atmosphericPulse * (1 + gainEnvelope * 0.85),
         0.08,
       );
     }
@@ -118,8 +136,9 @@ function CoreSphere({ rankId, intensity, absorbing, reducedMotion }: CoreScenePr
       );
       const breath = reducedMotion
         ? 1
-        : 1 + Math.sin(state.clock.elapsedTime * 1.2) * (0.006 + visualPower * 0.004);
-      group.current.scale.setScalar(absorbing ? breath * 1.03 : breath);
+        : 1 + Math.sin(state.clock.elapsedTime * 1.45) * (0.007 + visualPower * 0.004);
+      const impactScale = reducedMotion ? 1 : 1 + gainEnvelope * 0.03;
+      group.current.scale.setScalar(1.24 * breath * impactScale);
     }
   });
 
@@ -172,7 +191,7 @@ function CoreSphere({ rankId, intensity, absorbing, reducedMotion }: CoreScenePr
           color={theme.primary}
           side={THREE.BackSide}
           transparent
-          opacity={0.12 + intensity * 0.09}
+          opacity={0.19 + getVisualPower(intensity, theme) * 0.075}
           blending={THREE.AdditiveBlending}
           depthWrite={false}
         />
@@ -199,7 +218,10 @@ function CoreOrbits({ rankId, intensity, absorbing, reducedMotion }: CoreScenePr
   const first = useRef<THREE.Group>(null);
   const second = useRef<THREE.Group>(null);
   const third = useRef<THREE.Group>(null);
+  const firstEnergy = useRef<THREE.Mesh>(null);
+  const secondEnergy = useRef<THREE.Mesh>(null);
   const theme = CORE_THEMES[rankId];
+  const visualPower = getVisualPower(intensity, theme);
   const curves = useMemo(
     () => [
       createOrbitCurve(1.58, 1.18, 0.48, -0.16),
@@ -209,12 +231,20 @@ function CoreOrbits({ rankId, intensity, absorbing, reducedMotion }: CoreScenePr
     [],
   );
 
-  useFrame((_, delta) => {
-    if (reducedMotion) return;
+  useFrame((state, delta) => {
     const boost = absorbing ? 2.2 : 1;
-    if (first.current) first.current.rotation.y += delta * 0.08 * boost;
-    if (second.current) second.current.rotation.y -= delta * 0.047 * boost;
-    if (third.current) third.current.rotation.x += delta * 0.03 * boost;
+    if (!reducedMotion) {
+      if (first.current) first.current.rotation.y += delta * 0.095 * boost;
+      if (second.current) second.current.rotation.y -= delta * 0.055 * boost;
+      if (third.current) third.current.rotation.x += delta * 0.034 * boost;
+    }
+    if (firstEnergy.current && !reducedMotion) {
+      firstEnergy.current.position.copy(curves[0].getPointAt((state.clock.elapsedTime * 0.075) % 1));
+    }
+    if (secondEnergy.current && !reducedMotion) {
+      const orbitProgress = ((0.55 - state.clock.elapsedTime * 0.048) % 1 + 1) % 1;
+      secondEnergy.current.position.copy(curves[1].getPointAt(orbitProgress));
+    }
   });
 
   const orbit = (curve: THREE.CatmullRomCurve3, opacity: number, thickness: number) => (
@@ -246,10 +276,22 @@ function CoreOrbits({ rankId, intensity, absorbing, reducedMotion }: CoreScenePr
 
   return (
     <>
-      <group ref={first}>{orbit(curves[0], 0.45 + intensity * 0.28, 0.011)}</group>
-      <group ref={second}>{orbit(curves[1], 0.18 + intensity * 0.18, 0.006)}</group>
+      <group ref={first}>
+        {orbit(curves[0], 0.58 + visualPower * 0.22, 0.012)}
+        <mesh ref={firstEnergy}>
+          <sphereGeometry args={[0.028, 10, 8]} />
+          <meshBasicMaterial color={theme.secondary} toneMapped={false} />
+        </mesh>
+      </group>
+      <group ref={second}>
+        {orbit(curves[1], 0.3 + visualPower * 0.15, 0.007)}
+        <mesh ref={secondEnergy}>
+          <sphereGeometry args={[0.018, 8, 6]} />
+          <meshBasicMaterial color={theme.secondary} toneMapped={false} />
+        </mesh>
+      </group>
       {theme.orbitCount === 3 && (
-        <group ref={third}>{orbit(curves[2], 0.1 + intensity * 0.16, 0.0045)}</group>
+        <group ref={third}>{orbit(curves[2], 0.18 + visualPower * 0.12, 0.0045)}</group>
       )}
     </>
   );
@@ -259,6 +301,7 @@ function CoreParticles({ rankId, intensity, absorbing, reducedMotion }: CoreScen
   const points = useRef<THREE.Points>(null);
   const material = useRef<THREE.PointsMaterial>(null);
   const theme = CORE_THEMES[rankId];
+  const visualPower = getVisualPower(intensity, theme);
   const positions = useMemo(() => {
     const values = new Float32Array(theme.particleCount * 3);
     for (let index = 0; index < theme.particleCount; index += 1) {
@@ -281,7 +324,7 @@ function CoreParticles({ rankId, intensity, absorbing, reducedMotion }: CoreScen
     if (material.current) {
       const shimmer = reducedMotion ? 0.72 : 0.55 + Math.sin(state.clock.elapsedTime * 2.4) * 0.22;
       const targetOpacity = Math.min(
-        (0.2 + intensity * 0.48) * shimmer * (absorbing ? 1.75 : 1),
+        (0.38 + visualPower * 0.32) * shimmer * (absorbing ? 1.75 : 1),
         1,
       );
       material.current.opacity = THREE.MathUtils.lerp(
@@ -291,7 +334,7 @@ function CoreParticles({ rankId, intensity, absorbing, reducedMotion }: CoreScen
       );
       material.current.size = THREE.MathUtils.lerp(
         material.current.size,
-        (0.018 + intensity * 0.018) * (absorbing ? 1.8 : 1),
+        (0.022 + visualPower * 0.014) * (absorbing ? 1.8 : 1),
         0.12,
       );
     }
@@ -305,9 +348,9 @@ function CoreParticles({ rankId, intensity, absorbing, reducedMotion }: CoreScen
       <pointsMaterial
         ref={material}
         color={theme.secondary}
-        size={(0.018 + intensity * 0.016) * (absorbing ? 1.7 : 1)}
+        size={(0.022 + visualPower * 0.014) * (absorbing ? 1.7 : 1)}
         transparent
-        opacity={Math.min((0.3 + intensity * 0.42) * (absorbing ? 1.35 : 1), 1)}
+        opacity={Math.min((0.38 + visualPower * 0.3) * (absorbing ? 1.35 : 1), 1)}
         blending={THREE.AdditiveBlending}
         depthWrite={false}
         sizeAttenuation
@@ -343,11 +386,12 @@ function EnergyArcs({ rankId, intensity, absorbing, reducedMotion }: CoreScenePr
   const group = useRef<THREE.Group>(null);
   const materials = useRef<Array<THREE.MeshBasicMaterial | null>>([]);
   const theme = CORE_THEMES[rankId];
+  const visualPower = getVisualPower(intensity, theme);
   const arcs = useMemo(
     () => [
-      createEnergyArc(1.11, 0.2, 0.82, 0.28, 0.34),
-      createEnergyArc(1.14, 2.45, 0.68, -0.36, -0.48),
-      createEnergyArc(1.09, 4.45, 0.52, 0.02, 0.68),
+      createEnergyArc(1.36, 0.2, 0.82, 0.28, 0.34),
+      createEnergyArc(1.39, 2.45, 0.68, -0.36, -0.48),
+      createEnergyArc(1.34, 4.45, 0.52, 0.02, 0.68),
     ],
     [],
   );
@@ -360,12 +404,11 @@ function EnergyArcs({ rankId, intensity, absorbing, reducedMotion }: CoreScenePr
 
     materials.current.forEach((arcMaterial, index) => {
       if (!arcMaterial) return;
-      const flicker = reducedMotion
-        ? 0.7
-        : 0.58 + Math.sin(state.clock.elapsedTime * (2.8 + index * 0.47) + index * 1.9) * 0.32;
+      const wave = Math.sin(state.clock.elapsedTime * (3.4 + index * 0.73) + index * 2.1);
+      const discharge = reducedMotion ? 0.22 : Math.pow(Math.max(0, wave), 18);
       arcMaterial.opacity = Math.max(
-        0.04,
-        Math.min((0.1 + intensity * 0.2) * flicker * (absorbing ? 2.35 : 1), 0.88),
+        reducedMotion ? 0.045 : 0,
+        Math.min((0.28 + visualPower * 0.38) * (absorbing ? 1 : discharge), 0.94),
       );
     });
   });
@@ -396,15 +439,16 @@ function EnergyFlash({ rankId, intensity, absorbing, reducedMotion }: CoreSceneP
   const shell = useRef<THREE.MeshBasicMaterial>(null);
   const light = useRef<THREE.PointLight>(null);
   const theme = CORE_THEMES[rankId];
+  const visualPower = getVisualPower(intensity, theme);
 
   useFrame((state) => {
     const idlePulse = reducedMotion ? 1 : 0.9 + Math.sin(state.clock.elapsedTime * 1.3) * 0.1;
     if (shell.current) {
-      const target = (0.025 + intensity * 0.025) * idlePulse + (absorbing ? 0.18 : 0);
+      const target = (0.07 + visualPower * 0.035) * idlePulse + (absorbing ? 0.22 : 0);
       shell.current.opacity = THREE.MathUtils.lerp(shell.current.opacity, target, absorbing ? 0.22 : 0.07);
     }
     if (light.current) {
-      const target = (1.5 + intensity * 2.2) * idlePulse + (absorbing ? 7.5 : 0);
+      const target = (2.5 + visualPower * 2.6) * idlePulse + (absorbing ? 8.5 : 0);
       light.current.intensity = THREE.MathUtils.lerp(light.current.intensity, target, absorbing ? 0.2 : 0.065);
     }
   });
@@ -412,7 +456,7 @@ function EnergyFlash({ rankId, intensity, absorbing, reducedMotion }: CoreSceneP
   return (
     <>
       <pointLight ref={light} position={[0, 0, 2.05]} color={theme.secondary} intensity={2} distance={7} />
-      <mesh scale={1.13}>
+      <mesh scale={1.38}>
         <sphereGeometry args={[1, 48, 36]} />
         <meshBasicMaterial
           ref={shell}
@@ -433,10 +477,10 @@ function SceneContent(props: CoreSceneProps) {
   const theme = CORE_THEMES[props.rankId];
   return (
     <>
-      <ambientLight intensity={0.16} />
-      <directionalLight position={[-3, 3.5, 4]} intensity={2.4} color="#ffd2ad" />
-      <pointLight position={[2.4, -1.2, 2.8]} intensity={3.2} color={theme.primary} />
-      <pointLight position={[-2.2, -1.5, -1]} intensity={1.7} color={theme.primary} />
+      <ambientLight intensity={0.2} />
+      <directionalLight position={[-3, 3.5, 4]} intensity={2.8} color="#ffd2ad" />
+      <pointLight position={[2.4, -1.2, 2.8]} intensity={4.2} color={theme.primary} />
+      <pointLight position={[-2.2, -1.5, -1]} intensity={2.3} color={theme.primary} />
       <CoreOrbits {...props} />
       <CoreSphere {...props} />
       <EnergyArcs {...props} />
