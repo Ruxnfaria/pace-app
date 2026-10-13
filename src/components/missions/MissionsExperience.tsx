@@ -4,12 +4,17 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Apple, Check, ChevronRight, Dumbbell, Flame, LockKeyhole, Sparkles, Target, Trophy } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+
+import type { ChestOpenReward } from "@/lib/rewards/chest-opening";
 
 export type MissionView = { id: string; title: string; description: string | null; category: string | null; completed: boolean; xpReward: number; currentValue: number; targetValue: number };
-export type ChestView = { status: "granted" | "opened" | "locked"; progress: number; target: number };
+export type ChestView = { id: string | null; status: "granted" | "opened" | "locked"; progress: number; target: number };
 type Rarity = "common" | "rare" | "epic";
-type Props = { loading: boolean; streak: number; missions: MissionView[]; common: ChestView; rare: ChestView; epic: ChestView };
+type Props = { loading: boolean; streak: number; missions: MissionView[]; common: ChestView; rare: ChestView; epic: ChestView; walletCrystals: number | null; onOpenChest: (chestId: string) => Promise<ChestOpenReward> };
+type RewardReveal =
+  | { mode: "preview"; rarity: Rarity }
+  | { mode: "real"; reward: ChestOpenReward };
 
 const labels: Record<Rarity, string> = { common: "Baú Comum", rare: "Baú Raro", epic: "Baú Épico" };
 const chestAssets: Record<Rarity, string> = {
@@ -43,9 +48,10 @@ function MissionCard({ mission }: { mission: MissionView }) {
   );
 }
 
-function Chest({ rarity, data, demo, reduced }: { rarity: Rarity; data: ChestView; demo: boolean; reduced: boolean }) {
+function Chest({ rarity, data, demo, reduced, testMode, opening, error, onActivate }: { rarity: Rarity; data: ChestView; demo: boolean; reduced: boolean; testMode: boolean; opening: boolean; error: string | null; onActivate: () => void }) {
   const available = data.status === "granted";
   const opened = data.status === "opened";
+  const interactive = testMode || (available && data.id !== null && !opening);
   const isEpic = rarity === "epic";
   const particleCount = rarity === "epic" ? 8 : rarity === "rare" ? 5 : 3;
   const requirement = isEpic ? "20 dias ativos para desbloquear" : `Complete ${data.target} missões`;
@@ -56,12 +62,16 @@ function Chest({ rarity, data, demo, reduced }: { rarity: Rarity; data: ChestVie
       : "h-[104px] w-[43%] min-w-[126px]";
 
   return (
-    <motion.article
+    <motion.button
+      type="button"
+      disabled={!interactive}
+      onClick={onActivate}
+      aria-label={testMode ? `Prévia visual do ${labels[rarity]}` : available ? `Abrir ${labels[rarity]}` : undefined}
       layout
-      whileHover={reduced ? undefined : { y: -2 }}
+      whileHover={reduced || !interactive ? undefined : { y: -2 }}
       animate={demo && !reduced ? { scale: [1, 1.025, 1.04, 1.015], x: [0, -2, 2, -1, 0] } : { scale: 1, x: 0 }}
       transition={{ duration: demo ? (isEpic ? 1.5 : rarity === "rare" ? 1.2 : 0.9) : 0.35 }}
-      className={`group relative overflow-hidden rounded-[26px] border ${isEpic ? "p-5" : "p-4"} ${
+      className={`group relative w-full overflow-hidden rounded-[26px] border text-left ${interactive ? "cursor-pointer" : "cursor-default"} ${isEpic ? "p-5" : "p-4"} ${
         available || demo
           ? "border-orange-400/25 bg-gradient-to-br from-[#1a130e] via-[#0f0e0d] to-[#080808] shadow-[0_18px_55px_rgba(255,106,0,.12)]"
           : "border-white/[0.07] bg-gradient-to-br from-[#121212] to-[#090909]"
@@ -111,38 +121,62 @@ function Chest({ rarity, data, demo, reduced }: { rarity: Rarity; data: ChestVie
             <span className="text-[8px] font-bold uppercase tracking-[.16em] text-zinc-600">{isEpic ? "Recompensa mensal" : "Milestone diário"}</span>
           </div>
           <h3 className={`${isEpic ? "mt-2 text-xl" : "mt-1.5 text-[15px]"} font-bold text-white`}>{labels[rarity]}</h3>
-          <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">{opened ? "Recompensa já aberta." : available ? "Disponível — abertura real em breve." : requirement}</p>
+          <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">{error ?? (opened ? "Recompensa coletada." : opening ? "Abrindo com segurança..." : available ? "Disponível — toque para abrir." : requirement)}</p>
           <div className="mt-3 flex items-center gap-2">
             <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/[.06]"><motion.div initial={{ width: 0 }} animate={{ width: `${Math.min(data.progress / data.target, 1) * 100}%` }} className="h-full bg-gradient-to-r from-[#b74400] via-[#ff6a00] to-[#ffa14f] shadow-[0_0_8px_rgba(255,106,0,.35)]" /></div>
-            <span className={`text-[10px] font-bold ${available ? "text-[#ff8a32]" : "text-zinc-500"}`}>{opened ? "Aberto" : available ? "Disponível" : `${Math.min(data.progress, data.target)} / ${data.target}`}</span>
+            <span className={`text-[10px] font-bold ${available ? "text-[#ff8a32]" : "text-zinc-500"}`}>{opened ? "Coletado" : opening ? "Abrindo" : available ? "Disponível" : `${Math.min(data.progress, data.target)} / ${data.target}`}</span>
           </div>
         </div>
       </div>
-    </motion.article>
+    </motion.button>
   );
 }
 
-export default function MissionsExperience({ loading, streak, missions, common, rare, epic }: Props) {
+export default function MissionsExperience({ loading, streak, missions, common, rare, epic, walletCrystals, onOpenChest }: Props) {
   const reduced = Boolean(useReducedMotion());
   const [testMode, setTestMode] = useState(false);
   const [demo, setDemo] = useState<Rarity | null>(null);
-  const [reward, setReward] = useState<Rarity | null>(null);
+  const [reward, setReward] = useState<RewardReveal | null>(null);
+  const [opening, setOpening] = useState<Rarity | null>(null);
+  const [openError, setOpenError] = useState<Partial<Record<Rarity, string>>>({});
+  const animationTimer = useRef<number | null>(null);
   const completed = missions.filter((m) => m.completed).length;
   const percent = missions.length ? Math.round(completed / missions.length * 100) : 0;
 
   useEffect(() => { const host = location.hostname; const safe = host === "localhost" || host === "127.0.0.1" || host.includes("-git-codex-phase2-baseline-"); const timer = setTimeout(() => setTestMode(safe && new URLSearchParams(location.search).get("missionVisualTest") === "1"), 0); return () => clearTimeout(timer); }, []);
-  function preview(rarity: Rarity) { if (!testMode) return; setReward(null); setDemo(rarity); setTimeout(() => { setDemo(null); setReward(rarity); }, reduced ? 80 : rarity === "epic" ? 1500 : rarity === "rare" ? 1200 : 900); }
+  useEffect(() => () => { if (animationTimer.current !== null) window.clearTimeout(animationTimer.current); }, []);
+  function animationDuration(rarity: Rarity) { return reduced ? 80 : rarity === "epic" ? 1500 : rarity === "rare" ? 1200 : 900; }
+  function preview(rarity: Rarity) { if (!testMode) return; setReward(null); setDemo(rarity); animationTimer.current = window.setTimeout(() => { setDemo(null); setReward({ mode: "preview", rarity }); }, animationDuration(rarity)); }
+  async function open(rarity: Rarity, data: ChestView) {
+    if (testMode) { preview(rarity); return; }
+    if (data.status !== "granted" || data.id === null || opening !== null) return;
+    setOpenError((current) => ({ ...current, [rarity]: undefined }));
+    setReward(null);
+    setOpening(rarity);
+    try {
+      const authoritativeReward = await onOpenChest(data.id);
+      setOpening(null);
+      setDemo(rarity);
+      animationTimer.current = window.setTimeout(() => {
+        setDemo(null);
+        setReward({ mode: "real", reward: authoritativeReward });
+      }, animationDuration(rarity));
+    } catch (error) {
+      setOpening(null);
+      setOpenError((current) => ({ ...current, [rarity]: error instanceof Error ? error.message : "Não foi possível abrir o baú" }));
+    }
+  }
 
   return <main className="mx-auto min-h-screen w-full max-w-[430px] overflow-hidden px-5 pb-28 pt-5 sm:px-6">
     <header className="flex items-center justify-between"><Image src="/brand/praxe-logo.svg" alt="PRAXE" width={520} height={110} preload unoptimized className="h-auto w-[116px]" /><div className="flex items-center gap-1.5"><Flame className="h-5 w-5 fill-[#ff6a00] text-[#ff6a00]" /><span className="font-bold">{streak}</span></div></header>
     <section className="mt-7"><h1 className="text-[1.75rem] font-semibold tracking-[-.045em]">Missões</h1><p className="mt-1 text-[13px] text-zinc-500">Complete desafios, fortaleça seu Núcleo e ganhe Energia.</p></section>
-    <section className="mt-7"><p className="text-[9px] font-bold uppercase tracking-[.22em] text-[#d96818]">Jornada do mês</p><h2 className="mt-1 text-lg font-semibold">Consistência que vira recompensa</h2><p className="text-[11px] text-zinc-600">Mantenha sua consistência durante o mês.</p><div className="mt-4"><Chest rarity="epic" data={epic} demo={demo === "epic"} reduced={reduced} /></div></section>
+    <section className="mt-7"><p className="text-[9px] font-bold uppercase tracking-[.22em] text-[#d96818]">Jornada do mês</p><h2 className="mt-1 text-lg font-semibold">Consistência que vira recompensa</h2><p className="text-[11px] text-zinc-600">Mantenha sua consistência durante o mês.</p><div className="mt-4"><Chest rarity="epic" data={epic} demo={demo === "epic"} reduced={reduced} testMode={testMode} opening={opening === "epic"} error={openError.epic ?? null} onActivate={() => void open("epic", epic)} /></div></section>
     <section className="relative mt-5 overflow-hidden rounded-[26px] border border-orange-400/10 bg-gradient-to-br from-[#17120e] to-[#0a0a0a] p-5"><div className="absolute -right-12 -top-16 h-40 w-40 rounded-full bg-orange-500/[.08] blur-3xl" /><div className="relative flex justify-between"><div><p className="text-[9px] font-bold uppercase tracking-[.22em] text-[#d96818]">Jornada de hoje</p><h2 className="mt-2 max-w-[270px] text-base font-semibold">Complete suas missões para fortalecer o Núcleo.</h2></div><Trophy className="h-6 w-6 text-[#ff7a1a]" /></div><div className="relative mt-5 flex justify-between text-[11px]"><span className="text-zinc-400">Progresso diário</span><b>{completed} / {missions.length} concluídas</b></div><div className="relative mt-2 h-2 overflow-hidden rounded-full bg-white/[.06]"><motion.div initial={{ width: 0 }} animate={{ width: `${percent}%` }} className="h-full bg-[#ff6a00]" /></div></section>
     <section className="mt-7"><div className="flex items-end justify-between"><div><h2 className="text-lg font-semibold">Missões do dia</h2><p className="text-[11px] text-zinc-600">Complete e ganhe Energia</p></div><Link href="/dashboard/aria" className="text-[10px] text-zinc-600">Solicitar novas</Link></div>
-      {loading ? <div className="mt-4 space-y-3 animate-pulse">{[0,1,2].map((n)=><div key={n} className="h-28 rounded-[22px] bg-white/[.04]" />)}</div> : missions.length === 0 ? <div className="mt-4 rounded-[22px] border border-white/[.06] bg-[#101010] p-8 text-center text-sm text-zinc-400">Nenhuma missão disponível hoje.</div> : <div className="relative mt-4 space-y-3.5 pl-5"><div className="absolute bottom-8 left-[7px] top-8 w-px bg-gradient-to-b from-orange-500/35 via-white/10 to-orange-500/20" />{missions.slice(0,2).map(m=><div key={m.id} className="relative"><i className="absolute -left-[22px] top-8 h-4 w-4 rounded-full border-4 border-[#050505] bg-[#ff6a00]" /><MissionCard mission={m} /></div>)}<div className="relative"><i className="absolute -left-[22px] top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border-4 border-[#050505] bg-[#bd4d0a]" /><Chest rarity="common" data={common} demo={demo === "common"} reduced={reduced} /></div>{missions.slice(2).map(m=><div key={m.id} className="relative"><i className="absolute -left-[22px] top-8 h-4 w-4 rounded-full border-4 border-[#050505] bg-[#ff6a00]" /><MissionCard mission={m} /></div>)}<div className="relative"><i className="absolute -left-[22px] top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border-4 border-[#050505] bg-[#ff6a00]" /><Chest rarity="rare" data={rare} demo={demo === "rare"} reduced={reduced} /></div></div>}
-      {!loading && missions.length === 0 && <div className="mt-3 space-y-3"><Chest rarity="common" data={common} demo={demo === "common"} reduced={reduced} /><Chest rarity="rare" data={rare} demo={demo === "rare"} reduced={reduced} /></div>}
+      {loading ? <div className="mt-4 space-y-3 animate-pulse">{[0,1,2].map((n)=><div key={n} className="h-28 rounded-[22px] bg-white/[.04]" />)}</div> : missions.length === 0 ? <div className="mt-4 rounded-[22px] border border-white/[.06] bg-[#101010] p-8 text-center text-sm text-zinc-400">Nenhuma missão disponível hoje.</div> : <div className="relative mt-4 space-y-3.5 pl-5"><div className="absolute bottom-8 left-[7px] top-8 w-px bg-gradient-to-b from-orange-500/35 via-white/10 to-orange-500/20" />{missions.slice(0,2).map(m=><div key={m.id} className="relative"><i className="absolute -left-[22px] top-8 h-4 w-4 rounded-full border-4 border-[#050505] bg-[#ff6a00]" /><MissionCard mission={m} /></div>)}<div className="relative"><i className="absolute -left-[22px] top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border-4 border-[#050505] bg-[#bd4d0a]" /><Chest rarity="common" data={common} demo={demo === "common"} reduced={reduced} testMode={testMode} opening={opening === "common"} error={openError.common ?? null} onActivate={() => void open("common", common)} /></div>{missions.slice(2).map(m=><div key={m.id} className="relative"><i className="absolute -left-[22px] top-8 h-4 w-4 rounded-full border-4 border-[#050505] bg-[#ff6a00]" /><MissionCard mission={m} /></div>)}<div className="relative"><i className="absolute -left-[22px] top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border-4 border-[#050505] bg-[#ff6a00]" /><Chest rarity="rare" data={rare} demo={demo === "rare"} reduced={reduced} testMode={testMode} opening={opening === "rare"} error={openError.rare ?? null} onActivate={() => void open("rare", rare)} /></div></div>}
+      {!loading && missions.length === 0 && <div className="mt-3 space-y-3"><Chest rarity="common" data={common} demo={demo === "common"} reduced={reduced} testMode={testMode} opening={opening === "common"} error={openError.common ?? null} onActivate={() => void open("common", common)} /><Chest rarity="rare" data={rare} demo={demo === "rare"} reduced={reduced} testMode={testMode} opening={opening === "rare"} error={openError.rare ?? null} onActivate={() => void open("rare", rare)} /></div>}
     </section>
     {testMode && <section className="mt-6 rounded-[20px] border border-dashed border-orange-400/20 p-3"><p className="text-[9px] uppercase tracking-wider text-orange-300/70">Preview visual — sem recompensa</p><div className="mt-3 grid grid-cols-3 gap-2">{(["common","rare","epic"] as const).map(r=><button key={r} onClick={()=>preview(r)} className="rounded-xl border border-white/[.07] p-2 text-[9px] text-zinc-400">Testar {labels[r].replace("Baú ","")}</button>)}</div></section>}
-    <AnimatePresence>{reward && <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="fixed inset-0 z-[90] flex items-center justify-center bg-black/80 px-6"><motion.div initial={reduced ? false : {scale:.9,y:12}} animate={{scale:1,y:0}} className="w-full max-w-[330px] rounded-[28px] border border-orange-400/20 bg-[#10100f] p-7 text-center"><Sparkles className="mx-auto h-8 w-8 text-[#ff7a1a]" /><p className="mt-4 text-[9px] uppercase tracking-[.24em] text-[#d96818]">Recompensa</p><h2 className="mt-2 text-xl font-bold">Prévia visual</h2><p className="mt-2 text-xs text-zinc-500">Demonstração do {labels[reward]}. Nada foi concedido.</p><button onClick={()=>setReward(null)} className="mt-6 w-full rounded-2xl bg-[#ff6a00] py-3 text-xs font-bold">Continuar</button></motion.div></motion.div>}</AnimatePresence>
+    <AnimatePresence>{reward && <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="fixed inset-0 z-[90] flex items-center justify-center bg-black/80 px-6"><motion.div initial={reduced ? false : {scale:.9,y:12}} animate={{scale:1,y:0}} className="w-full max-w-[330px] rounded-[28px] border border-orange-400/20 bg-[#10100f] p-7 text-center"><Sparkles className="mx-auto h-8 w-8 text-[#ff7a1a]" /><p className="mt-4 text-[9px] uppercase tracking-[.24em] text-[#d96818]">Recompensa</p>{reward.mode === "real" ? <><h2 className="mt-2 text-2xl font-bold">+{reward.reward.amount} Cristais</h2><p className="mt-2 text-xs text-zinc-500">Recompensa do {labels[reward.reward.chestRarity]} creditada.</p>{(reward.reward.walletCrystals ?? walletCrystals) !== null && <p className="mt-3 text-[10px] font-semibold text-orange-200/70">Saldo: {reward.reward.walletCrystals ?? walletCrystals} Cristais</p>}</> : <><h2 className="mt-2 text-xl font-bold">Prévia visual</h2><p className="mt-2 text-xs text-zinc-500">Demonstração do {labels[reward.rarity]}. Nada foi concedido.</p></>}<button onClick={()=>setReward(null)} className="mt-6 w-full rounded-2xl bg-[#ff6a00] py-3 text-xs font-bold">Continuar</button></motion.div></motion.div>}</AnimatePresence>
   </main>;
 }

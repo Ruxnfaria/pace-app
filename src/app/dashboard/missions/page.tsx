@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { getCoreRankProgress } from '@/lib/gamification/coreStages';
 import { getBrazilDate, getBrazilMonthRangeFromDate } from '@/lib/dates/brazilDate';
 import MissionsExperience, { type ChestView, type MissionView } from '@/components/missions/MissionsExperience';
+import { requestChestOpen, type ChestOpenReward } from '@/lib/rewards/chest-opening';
 
 interface Mission {
   id: string;
@@ -20,7 +21,7 @@ interface Mission {
   category: string | null;
 }
 
-type UserChest = { status: 'granted' | 'opened'; source_id: string | null };
+type UserChest = { id: string; status: 'granted' | 'opened'; source_id: string | null };
 
 export default function MissionsPage() {
   const supabase = useMemo(() => createClient(), []);
@@ -29,6 +30,7 @@ export default function MissionsPage() {
   const [userXp, setUserXp] = useState(0);
   const [streak, setStreak] = useState(0);
   const [userChests, setUserChests] = useState<UserChest[]>([]);
+  const [walletCrystals, setWalletCrystals] = useState<number | null>(null);
 
 
   const loadMissionsAndData = useCallback(async () => {
@@ -73,9 +75,18 @@ export default function MissionsPage() {
 
       const { data: chestsData } = await supabase
         .from('user_chests')
-        .select('status, source_id')
+        .select('id, status, source_id')
         .eq('user_id', user.id);
       setUserChests((chestsData ?? []) as UserChest[]);
+
+      const { data: wallet } = await supabase
+        .from('user_wallets')
+        .select('crystals')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      setWalletCrystals(
+        typeof wallet?.crystals === 'number' ? wallet.crystals : null,
+      );
     }
     setLoading(false);
   }, [supabase]);
@@ -108,11 +119,26 @@ export default function MissionsPage() {
     currentValue: mission.current_value,
     targetValue: mission.target_value,
   }));
-  const chest = (sourceId: string, progress: number, target: number): ChestView => ({
-    status: userChests.find((item) => item.source_id === sourceId)?.status ?? 'locked',
-    progress,
-    target,
-  });
+  const chest = (sourceId: string, progress: number, target: number): ChestView => {
+    const grantedChest = userChests.find((item) => item.source_id === sourceId);
+    return {
+      id: grantedChest?.id ?? null,
+      status: grantedChest?.status ?? 'locked',
+      progress,
+      target,
+    };
+  };
+
+  const openChest = useCallback(async (chestId: string): Promise<ChestOpenReward> => {
+    const reward = await requestChestOpen(chestId);
+    setUserChests((current) => current.map((item) => (
+      item.id === reward.chestId ? { ...item, status: 'opened' } : item
+    )));
+    if (reward.walletCrystals !== null) {
+      setWalletCrystals(reward.walletCrystals);
+    }
+    return reward;
+  }, []);
 
   return (
     <>
@@ -123,6 +149,8 @@ export default function MissionsPage() {
         common={chest(`daily-common:${today}`, completedToday, 2)}
         rare={chest(`daily-rare:${today}`, completedToday, 3)}
         epic={chest(`monthly:${month.monthId}`, activeDays, 20)}
+        walletCrystals={walletCrystals}
+        onOpenChest={openChest}
       />
     <div className="hidden">
 
