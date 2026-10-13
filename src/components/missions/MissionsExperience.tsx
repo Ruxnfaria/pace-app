@@ -12,6 +12,12 @@ type Rarity = "common" | "rare" | "epic";
 type Props = { loading: boolean; streak: number; missions: MissionView[]; common: ChestView; rare: ChestView; epic: ChestView };
 
 const labels: Record<Rarity, string> = { common: "Baú Comum", rare: "Baú Raro", epic: "Baú Épico" };
+const chestAssets: Record<Rarity, string> = {
+  common: "/rewards/chests/common.png",
+  rare: "/rewards/chests/rare.png",
+  epic: "/rewards/chests/epic.png",
+};
+const chestTier: Record<Rarity, string> = { common: "Tier 1", rare: "Tier 2", epic: "Tier 3" };
 
 function MissionCard({ mission }: { mission: MissionView }) {
   const Icon = mission.category === "workout" ? Dumbbell : mission.category === "nutrition" ? Apple : Target;
@@ -40,17 +46,77 @@ function MissionCard({ mission }: { mission: MissionView }) {
 function Chest({ rarity, data, demo, reduced }: { rarity: Rarity; data: ChestView; demo: boolean; reduced: boolean }) {
   const available = data.status === "granted";
   const opened = data.status === "opened";
-  const size = rarity === "epic" ? "h-28 w-32" : rarity === "rare" ? "h-24 w-28" : "h-20 w-24";
+  const isEpic = rarity === "epic";
+  const particleCount = rarity === "epic" ? 8 : rarity === "rare" ? 5 : 3;
+  const requirement = isEpic ? "20 dias ativos para desbloquear" : `Complete ${data.target} missões`;
+  const imageSize = isEpic
+    ? "h-[168px] w-full"
+    : rarity === "rare"
+      ? "h-[116px] w-[46%] min-w-[138px]"
+      : "h-[104px] w-[43%] min-w-[126px]";
+
   return (
-    <motion.article layout animate={demo && !reduced ? { scale: [1, 1.04, 1.015] } : { scale: 1 }} className={`overflow-hidden rounded-[24px] border p-4 ${available || demo ? "border-orange-400/20 bg-gradient-to-br from-[#18130f] to-[#0c0c0c] shadow-[0_0_30px_rgba(255,106,0,.14)]" : "border-white/[0.07] bg-[#0f0f0f]"}`}>
-      <div className="flex items-center gap-4">
-        <div className={`relative shrink-0 ${size}`} aria-hidden="true">
-          <motion.div animate={demo && !reduced ? { y: -7, rotateX: -35 } : { y: 0, rotateX: 0 }} transition={{ delay: demo ? 0.32 : 0 }} className="absolute inset-x-[12%] top-[20%] h-[24%] origin-bottom rounded-t-xl border border-white/10 bg-gradient-to-b from-[#3a3732] to-[#171614]" style={{ transformPerspective: 280 }} />
-          <div className="absolute inset-x-[8%] bottom-[12%] top-[42%] overflow-hidden rounded-b-xl border border-white/10 bg-gradient-to-br from-[#302d29] via-[#171513] to-[#080808]"><div className="absolute inset-y-0 left-[19%] w-[9%] bg-black/35" /><div className="absolute inset-y-0 right-[19%] w-[9%] bg-black/35" /><motion.div animate={{ opacity: available || demo ? [0.35, 1, 0.35] : 0.08 }} transition={{ duration: 2, repeat: available && !reduced ? Infinity : 0 }} className="absolute inset-x-2 top-0 h-px bg-[#ff7300] shadow-[0_0_14px_3px_rgba(255,106,0,.65)]" /></div>
-          {!available && !opened && !demo && <LockKeyhole className="absolute left-1/2 top-[53%] h-5 w-5 -translate-x-1/2 text-zinc-600" />}
-          {(available || demo) && [0, 1, 2].map((p) => <motion.span key={p} className="absolute left-1/2 top-1/2 h-1 w-1 rounded-full bg-orange-200" animate={reduced ? { opacity: .7 } : { x: [0, (p - 1) * 15], y: [3, -25 - p * 3], opacity: [0, 1, 0] }} transition={{ duration: 1.4, repeat: Infinity, delay: p * .28 }} />)}
+    <motion.article
+      layout
+      whileHover={reduced ? undefined : { y: -2 }}
+      animate={demo && !reduced ? { scale: [1, 1.025, 1.04, 1.015], x: [0, -2, 2, -1, 0] } : { scale: 1, x: 0 }}
+      transition={{ duration: demo ? (isEpic ? 1.5 : rarity === "rare" ? 1.2 : 0.9) : 0.35 }}
+      className={`group relative overflow-hidden rounded-[26px] border ${isEpic ? "p-5" : "p-4"} ${
+        available || demo
+          ? "border-orange-400/25 bg-gradient-to-br from-[#1a130e] via-[#0f0e0d] to-[#080808] shadow-[0_18px_55px_rgba(255,106,0,.12)]"
+          : "border-white/[0.07] bg-gradient-to-br from-[#121212] to-[#090909]"
+      }`}
+    >
+      <motion.div
+        aria-hidden="true"
+        animate={{ opacity: available || demo ? [0.28, 0.5, 0.28] : 0.08 }}
+        transition={{ duration: 2.6, repeat: available && !reduced ? Infinity : 0 }}
+        className={`pointer-events-none absolute left-[8%] top-1/2 -translate-y-1/2 rounded-full bg-[#ff6a00] blur-3xl ${isEpic ? "h-44 w-44" : "h-28 w-28"}`}
+      />
+      {demo && !reduced && <motion.div aria-hidden="true" initial={{ opacity: 0, scale: 0.45 }} animate={{ opacity: [0, 0.65, 0], scale: [0.45, 1.3, 1.75] }} transition={{ duration: isEpic ? 1.5 : 1 }} className="pointer-events-none absolute inset-0 m-auto h-32 w-32 rounded-full border border-orange-300/50" />}
+      <div className={`relative flex ${isEpic ? "flex-col" : "items-center gap-3"}`}>
+        <motion.div
+          className={`relative shrink-0 ${imageSize}`}
+          aria-hidden="true"
+          animate={available && !reduced ? { y: [0, -2, 0], scale: [1, 1.012, 1] } : { y: 0, scale: 1 }}
+          transition={{ duration: rarity === "epic" ? 3.2 : 3.8, repeat: available ? Infinity : 0, ease: "easeInOut" }}
+        >
+          <div className="absolute inset-x-[15%] bottom-[8%] h-[14%] rounded-full bg-black/80 blur-md" />
+          <Image
+            src={chestAssets[rarity]}
+            alt=""
+            fill
+            sizes={isEpic ? "(max-width: 460px) 90vw, 390px" : "(max-width: 460px) 42vw, 180px"}
+            className={`object-contain transition-[filter,transform] duration-500 ${
+              available || demo
+                ? "drop-shadow-[0_10px_18px_rgba(255,106,0,.2)] brightness-110"
+                : "brightness-[.68] saturate-[.72]"
+            }`}
+          />
+          {demo && !reduced && <motion.div initial={{ y: 0, rotateX: 0 }} animate={{ y: -8, rotateX: -12 }} transition={{ delay: 0.38, duration: 0.42 }} className="absolute inset-0 origin-bottom [clip-path:inset(0_0_48%_0)] [transform-style:preserve-3d]"><Image src={chestAssets[rarity]} alt="" fill sizes="190px" className="object-contain brightness-125 drop-shadow-[0_0_12px_rgba(255,137,45,.55)]" /></motion.div>}
+          {!available && !opened && !demo && <span className="absolute bottom-[17%] left-1/2 flex h-7 w-7 -translate-x-1/2 items-center justify-center rounded-lg border border-white/10 bg-black/75 shadow-lg"><LockKeyhole className="h-3.5 w-3.5 text-zinc-500" /></span>}
+          {(available || demo) && Array.from({ length: particleCount }, (_, p) => (
+            <motion.span
+              key={p}
+              className="absolute left-1/2 top-[62%] h-1 w-1 rounded-full bg-orange-100 shadow-[0_0_7px_2px_rgba(255,125,32,.65)]"
+              animate={reduced ? { opacity: 0.65 } : { x: [0, ((p % 4) - 1.5) * 24], y: [4, -34 - (p % 3) * 8], opacity: [0, 0.9, 0] }}
+              transition={{ duration: 1.6 + (p % 3) * 0.25, repeat: Infinity, delay: p * 0.19 }}
+            />
+          ))}
+          {(available || demo) && <motion.span aria-hidden="true" className="absolute inset-y-[16%] -left-1/3 w-1/4 -skew-x-12 bg-gradient-to-r from-transparent via-orange-100/30 to-transparent blur-sm" animate={reduced ? { opacity: 0 } : { left: ["-35%", "125%"] }} transition={{ duration: 1.5, repeat: Infinity, repeatDelay: 3.6 }} />}
+        </motion.div>
+        <div className={`min-w-0 flex-1 ${isEpic ? "-mt-2" : ""}`}>
+          <div className="flex items-center gap-2">
+            <span className="rounded-full border border-orange-400/20 bg-orange-400/[.06] px-2 py-1 text-[8px] font-bold uppercase tracking-[.18em] text-[#d96818]">{chestTier[rarity]}</span>
+            <span className="text-[8px] font-bold uppercase tracking-[.16em] text-zinc-600">{isEpic ? "Recompensa mensal" : "Milestone diário"}</span>
+          </div>
+          <h3 className={`${isEpic ? "mt-2 text-xl" : "mt-1.5 text-[15px]"} font-bold text-white`}>{labels[rarity]}</h3>
+          <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">{opened ? "Recompensa já aberta." : available ? "Disponível — abertura real em breve." : requirement}</p>
+          <div className="mt-3 flex items-center gap-2">
+            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/[.06]"><motion.div initial={{ width: 0 }} animate={{ width: `${Math.min(data.progress / data.target, 1) * 100}%` }} className="h-full bg-gradient-to-r from-[#b74400] via-[#ff6a00] to-[#ffa14f] shadow-[0_0_8px_rgba(255,106,0,.35)]" /></div>
+            <span className={`text-[10px] font-bold ${available ? "text-[#ff8a32]" : "text-zinc-500"}`}>{opened ? "Aberto" : available ? "Disponível" : `${Math.min(data.progress, data.target)} / ${data.target}`}</span>
+          </div>
         </div>
-        <div className="min-w-0 flex-1"><p className="text-[9px] font-bold uppercase tracking-[.18em] text-[#d96818]">{rarity === "epic" ? "Recompensa mensal" : "Milestone diário"}</p><h3 className="mt-1 text-[15px] font-bold text-white">{labels[rarity]}</h3><p className="mt-1 text-[11px] text-zinc-500">{opened ? "Recompensa já aberta." : available ? "Disponível — abertura real em breve." : rarity === "epic" ? "Mantenha sua consistência durante o mês." : `Complete ${data.target} missões hoje.`}</p><div className="mt-3 flex items-center gap-2"><div className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/[.06]"><motion.div initial={{ width: 0 }} animate={{ width: `${Math.min(data.progress / data.target, 1) * 100}%` }} className="h-full bg-gradient-to-r from-[#c54b00] to-[#ff8a32]" /></div><span className={`text-[10px] font-bold ${available ? "text-[#ff8a32]" : "text-zinc-600"}`}>{opened ? "Aberto" : available ? "Disponível" : `${Math.min(data.progress, data.target)} / ${data.target}`}</span></div></div>
       </div>
     </motion.article>
   );
@@ -65,7 +131,7 @@ export default function MissionsExperience({ loading, streak, missions, common, 
   const percent = missions.length ? Math.round(completed / missions.length * 100) : 0;
 
   useEffect(() => { const host = location.hostname; const safe = host === "localhost" || host === "127.0.0.1" || host.includes("-git-codex-phase2-baseline-"); const timer = setTimeout(() => setTestMode(safe && new URLSearchParams(location.search).get("missionVisualTest") === "1"), 0); return () => clearTimeout(timer); }, []);
-  function preview(rarity: Rarity) { if (!testMode) return; setReward(null); setDemo(rarity); setTimeout(() => { setDemo(null); setReward(rarity); }, reduced ? 80 : rarity === "epic" ? 1200 : rarity === "rare" ? 1000 : 820); }
+  function preview(rarity: Rarity) { if (!testMode) return; setReward(null); setDemo(rarity); setTimeout(() => { setDemo(null); setReward(rarity); }, reduced ? 80 : rarity === "epic" ? 1500 : rarity === "rare" ? 1200 : 900); }
 
   return <main className="mx-auto min-h-screen w-full max-w-[430px] overflow-hidden px-5 pb-28 pt-5 sm:px-6">
     <header className="flex items-center justify-between"><Image src="/brand/praxe-logo.svg" alt="PRAXE" width={520} height={110} preload unoptimized className="h-auto w-[116px]" /><div className="flex items-center gap-1.5"><Flame className="h-5 w-5 fill-[#ff6a00] text-[#ff6a00]" /><span className="font-bold">{streak}</span></div></header>
