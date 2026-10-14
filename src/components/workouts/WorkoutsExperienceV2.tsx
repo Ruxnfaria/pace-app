@@ -1,9 +1,11 @@
 "use client";
 
 import {
-  ArrowLeft, Check, CheckCircle2, ChevronLeft, ChevronRight, Dumbbell,
-  History, List, LoaderCircle, NotebookPen, Pencil, Play, RotateCcw, X,
+  ArrowLeft, CalendarDays, Check, CheckCircle2, ChevronLeft, ChevronRight,
+  Clock3, Dumbbell, List, LoaderCircle, NotebookPen, Play,
+  RotateCcw, X,
 } from "lucide-react";
+import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ExerciseMedia } from "@/components/workouts/ExerciseMedia";
@@ -31,6 +33,12 @@ const formatDuration = (seconds: number) => {
   const minutes = Math.floor(seconds / 60);
   const remainder = seconds % 60;
   return minutes ? `${minutes} min ${remainder ? `${remainder}s` : ""}`.trim() : `${remainder}s`;
+};
+
+const addDays = (date: string, days: number) => {
+  const next = new Date(`${date}T12:00:00.000Z`);
+  next.setUTCDate(next.getUTCDate() + days);
+  return next.toISOString().slice(0, 10);
 };
 
 function Modal({
@@ -154,6 +162,40 @@ export default function WorkoutsExperienceV2() {
   const allDone = Boolean(snapshot?.activeExercises.length && completedCount === snapshot.activeExercises.length);
   const previousNote = snapshot?.previousNote ?? null;
   const mutationBusy = operation !== null;
+  const homeWorkout = activeWorkout ?? primaryWorkout;
+  const homeExerciseCount = activeSession
+    ? snapshot?.activeExercises.length ?? 0
+    : primaryWorkout?.exercises.length ?? 0;
+  const homeStatus = activeSession
+    ? "Em andamento"
+    : temporaryWorkout
+      ? "Escolhido para hoje"
+      : pending
+        ? "Pendente"
+        : scheduledWorkout
+          ? "Treino de hoje"
+          : "Disponível";
+  const nextScheduledWorkout = (() => {
+    if (!snapshot) return null;
+    for (let offset = 1; offset <= 7; offset += 1) {
+      const weekday = (((todayWeekday - 1 + offset) % 7) + 1) as (typeof WEEKDAYS)[number]["value"];
+      const date = addDays(today, offset);
+      const row = snapshot.schedule.find((item) => item.isoWeekday === weekday);
+      const workout = workouts.find((item) => item.id === row?.workoutId);
+      if (row && row.effectiveFromDate <= date && workout) {
+        return { date, weekday, workout };
+      }
+    }
+    return null;
+  })();
+  const weekDates = Object.fromEntries(
+    WEEKDAYS.map((day) => [day.value, addDays(today, day.value - todayWeekday)])
+  ) as Record<(typeof WEEKDAYS)[number]["value"], string>;
+  const completedScheduleDates = new Set(
+    (snapshot?.durableHistory ?? [])
+      .map((item) => item.session.scheduledForDate)
+      .filter((date): date is string => Boolean(date))
+  );
 
   const beginOperation = useCallback((kind: Exclude<Operation, null>) => {
     if (operationRef.current !== null) return false;
@@ -331,15 +373,63 @@ export default function WorkoutsExperienceV2() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-6xl px-4 pb-24 pt-6 text-white sm:px-6 lg:px-8">
-      <header className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-[10px] font-black uppercase tracking-[0.25em] text-violet-400">Treinos persistentes</p><h1 className="mt-2 text-3xl font-black">Sua rotina</h1><p className="mt-2 text-sm text-zinc-500">Sessões, notas e histórico preservados pelo banco.</p></div><div className="flex gap-2"><button type="button" onClick={() => setPanel("history")} className="flex min-h-11 items-center gap-2 rounded-2xl border border-white/[0.08] px-4 text-sm font-bold"><History className="h-4 w-4" />Histórico</button><button type="button" onClick={openSchedule} className="flex min-h-11 items-center gap-2 rounded-2xl border border-white/[0.08] px-4 text-sm font-bold"><Pencil className="h-4 w-4" />Agenda</button></div></header>
-      {success && <div className="mb-5 flex justify-between rounded-2xl border border-emerald-400/15 bg-emerald-400/[0.07] p-4 text-sm text-emerald-200"><span>{success}</span><button type="button" onClick={() => setSuccess("")}><X className="h-4 w-4" /></button></div>}
-      {error && <div className="mb-5 rounded-2xl border border-red-400/15 bg-red-400/[0.07] p-4 text-sm text-red-200">{error}</div>}
-      {operation === "bootstrap" ? <div className="h-72 animate-pulse rounded-[30px] bg-white/[0.04]" /> : <>
-        {activeSession && <section className="mb-5 rounded-[24px] border border-amber-300/20 bg-amber-300/[0.07] p-5"><p className="text-xs font-black uppercase text-amber-200">Sessão em andamento</p><h2 className="mt-2 text-xl font-black">{activeSession.workoutTitle}</h2><p className="mt-2 text-sm text-amber-100/70">Iniciada em {new Date(activeSession.startedAt).toLocaleString("pt-BR")}. Seu progresso foi restaurado.</p><button type="button" onClick={() => setSessionOpen(true)} className="mt-4 min-h-12 rounded-xl bg-amber-200 px-5 text-sm font-black text-black">Retomar treino</button></section>}
-        {pending && <section className="mb-5 flex flex-col gap-4 rounded-[24px] border border-amber-300/15 bg-amber-300/[0.05] p-5 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs font-black uppercase text-amber-200">Pendente desde {formatDate(pending.scheduledForDate)}</p><p className="mt-2 text-lg font-black">{pending.workoutTitle}</p><p className="mt-1 text-sm text-zinc-500">Permanece pendente até concluir ou pular explicitamente.</p></div><button type="button" disabled={Boolean(activeSession) || mutationBusy} onClick={() => void skipPending()} className="min-h-11 rounded-xl border border-amber-200/20 px-4 text-xs font-bold text-amber-100 disabled:opacity-40">Pular com motivo</button></section>}
-        {primaryWorkout ? <section className="relative overflow-hidden rounded-[30px] border border-violet-500/25 bg-[#0b0914] p-6 sm:p-8"><p className="text-[10px] font-black uppercase tracking-[0.2em] text-violet-300">{temporaryWorkout ? "Troca somente nesta sessão" : pending ? "Próximo pendente" : scheduledWorkout ? "Agendado hoje" : scheduledRow && !scheduledRow.workoutId ? "Dia de descanso · treino avulso" : "Treino disponível"}</p><h2 className="mt-4 text-3xl font-black">{primaryWorkout.title}</h2><p className="mt-3 text-sm text-zinc-400">{primaryWorkout.exercises.length || "Snapshot carregado ao iniciar"} {primaryWorkout.exercises.length === 1 ? "exercício" : "exercícios"}</p><div className="mt-6 flex flex-wrap gap-3"><button type="button" disabled={Boolean(activeSession) || mutationBusy} onClick={() => void startPrimary()} className="flex min-h-14 items-center gap-3 rounded-2xl bg-violet-600 px-6 text-sm font-black disabled:bg-white/[0.06] disabled:text-zinc-600">{operation === "start" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}{activeSession ? "Retome a sessão atual" : "Iniciar treino"}</button><button type="button" disabled={Boolean(activeSession) || mutationBusy} onClick={() => setPanel("switch")} className="min-h-14 rounded-2xl border border-white/[0.08] px-5 text-sm font-bold disabled:opacity-40">Trocar somente agora</button></div></section> : <section className="rounded-[30px] border border-white/[0.08] p-8 text-center"><Dumbbell className="mx-auto h-8 w-8 text-violet-300" /><p className="mt-4 font-bold">Nenhum treino disponível.</p><button type="button" disabled={generating || Boolean(activeSession) || mutationBusy} onClick={() => void generateFirstWorkout()} className="mt-5 min-h-12 rounded-xl bg-violet-600 px-5 text-sm font-black disabled:opacity-50">{generating ? "Gerando treino..." : "Gerar meu primeiro treino"}</button></section>}
-        <section className="mt-6 rounded-[28px] border border-white/[0.07] bg-white/[0.025] p-5"><div className="flex items-center justify-between"><div><p className="text-[10px] font-black uppercase text-zinc-600">Sua semana</p><h2 className="mt-2 text-lg font-black">Agenda permanente</h2></div><button type="button" disabled={mutationBusy} onClick={openSchedule} className="text-xs font-bold text-violet-300 disabled:opacity-40">Editar</button></div><div className="mt-5 grid grid-cols-7 gap-2 overflow-x-auto">{WEEKDAYS.map((day) => { const row = snapshot?.schedule.find((item) => item.isoWeekday === day.value); const workout = workouts.find((item) => item.id === row?.workoutId); return <div key={day.value} className={`min-w-16 rounded-2xl border p-3 text-center ${day.value === todayWeekday ? "border-violet-400/30 bg-violet-400/[0.08]" : "border-white/[0.06]"}`}><p className="text-[10px] font-black text-zinc-500">{day.short}</p><p className="mt-3 truncate text-[10px] font-bold">{workout?.title ?? "Pausa"}</p></div>; })}</div></section>
+    <div className="mx-auto w-full max-w-[430px] overflow-hidden px-4 pb-28 pt-5 text-white min-[375px]:px-5 sm:px-6">
+      <header className="flex items-center justify-between">
+        <Image src="/brand/praxe-logo.svg" alt="PRAXE" width={520} height={110} preload unoptimized className="h-auto w-[116px]" />
+        <span className="flex h-9 w-9 items-center justify-center rounded-2xl border border-orange-400/10 bg-orange-500/[0.06] text-[#ff6a00]" aria-hidden="true"><Dumbbell className="h-[18px] w-[18px]" /></span>
+      </header>
+
+      <section className="mt-6">
+        <h1 className="text-[1.7rem] font-semibold tracking-[-.045em]">Treinos</h1>
+        <p className="mt-1 max-w-[360px] text-[12px] leading-5 text-zinc-500">Siga seu plano, evolua com consistência e fortaleça seu Núcleo.</p>
+      </section>
+
+      {success && <div className="mt-4 flex justify-between rounded-2xl border border-emerald-400/15 bg-emerald-400/[0.07] p-3 text-xs text-emerald-200"><span>{success}</span><button type="button" onClick={() => setSuccess("")}><X className="h-4 w-4" /></button></div>}
+      {error && <div className="mt-4 rounded-2xl border border-red-400/15 bg-red-400/[0.07] p-3 text-xs text-red-200">{error}</div>}
+
+      {operation === "bootstrap" ? <div className="mt-5 h-72 animate-pulse rounded-[28px] bg-white/[0.04]" /> : <>
+        {homeWorkout ? <section className="relative mt-5 overflow-hidden rounded-[28px] border border-orange-400/15 bg-gradient-to-br from-[#1a140f] via-[#100e0c] to-[#080808] p-5 shadow-[0_22px_70px_rgba(255,106,0,.12)]">
+          <div className="pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full bg-orange-500/[0.12] blur-[80px]" />
+          <Dumbbell className="pointer-events-none absolute -bottom-5 -right-4 h-32 w-32 rotate-[-12deg] text-orange-100/[0.035]" strokeWidth={1.2} />
+          <div className="relative">
+            <div className="flex items-center justify-between gap-3">
+              <span className={`rounded-full border px-3 py-1.5 text-[9px] font-bold uppercase tracking-[.16em] ${activeSession || pending ? "border-orange-300/20 bg-orange-400/[0.09] text-orange-200" : "border-white/[0.07] bg-white/[0.035] text-zinc-400"}`}>{homeStatus}</span>
+              {pending && !activeSession && <span className="text-[9px] font-medium text-zinc-600">desde {formatDate(pending.scheduledForDate)}</span>}
+            </div>
+            <p className="mt-5 text-[9px] font-bold uppercase tracking-[.2em] text-[#d96818]">Treino de hoje</p>
+            <h2 className="mt-2 max-w-[300px] break-words text-[26px] font-bold leading-[1.08] tracking-[-.035em]">{homeWorkout.title}</h2>
+            <p className="mt-2 max-w-[300px] text-[11px] leading-5 text-zinc-500">{activeSession ? "Seu progresso está salvo. Continue de onde parou." : pending ? "Este treino permanece como próximo até ser concluído ou pulado." : temporaryWorkout ? "Esta troca vale somente para agora e não altera sua semana." : "Hora de começar seu treino de hoje."}</p>
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.06] bg-black/20 px-3 py-1.5 text-[10px] font-semibold text-zinc-300"><Dumbbell className="h-3.5 w-3.5 text-[#d96818]" />{homeExerciseCount || "—"} {homeExerciseCount === 1 ? "exercício" : "exercícios"}</span>
+              {activeSession && <span className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.06] bg-black/20 px-3 py-1.5 text-[10px] font-semibold text-zinc-300"><Clock3 className="h-3.5 w-3.5 text-[#d96818]" />{completedCount} de {snapshot?.activeExercises.length ?? 0} concluídos</span>}
+            </div>
+
+            {activeSession && <div className="mt-4"><div className="mb-1.5 flex justify-between text-[9px] text-zinc-500"><span>Progresso da sessão</span><span className="font-semibold tabular-nums text-zinc-300">{completedCount}/{snapshot?.activeExercises.length ?? 0}</span></div><div className="h-1.5 overflow-hidden rounded-full bg-white/[0.06]"><div className="h-full rounded-full bg-gradient-to-r from-[#b74700] to-[#ff7a1a]" style={{ width: `${snapshot?.activeExercises.length ? completedCount / snapshot.activeExercises.length * 100 : 0}%` }} /></div></div>}
+
+            <button type="button" disabled={!activeSession && mutationBusy} onClick={() => activeSession ? setSessionOpen(true) : void startPrimary()} className="mt-5 flex min-h-13 w-full items-center justify-center gap-2.5 rounded-2xl bg-[#ff6a00] px-5 text-[13px] font-bold text-white shadow-[0_12px_30px_rgba(255,106,0,.22)] transition active:scale-[.99] disabled:bg-white/[0.06] disabled:text-zinc-600">{operation === "start" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4 fill-current" />}{activeSession ? "Continuar treino" : "Iniciar treino"}</button>
+
+            {!activeSession && <button type="button" disabled={mutationBusy} onClick={() => setPanel("switch")} className="mt-2.5 min-h-11 w-full rounded-xl border border-white/[0.07] bg-white/[0.02] text-[11px] font-semibold text-zinc-400 disabled:opacity-40">Trocar somente agora</button>}
+            {pending && !activeSession && <button type="button" disabled={mutationBusy} onClick={() => void skipPending()} className="mt-1.5 min-h-9 w-full text-[10px] font-medium text-zinc-600 disabled:opacity-40">Pular treino pendente</button>}
+          </div>
+        </section> : <section className="mt-5 rounded-[28px] border border-white/[0.07] bg-gradient-to-br from-[#141414] to-[#0a0a0a] p-6 text-center"><span className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-orange-400/10 bg-orange-500/[0.06]"><Dumbbell className="h-6 w-6 text-[#ff6a00]" /></span><p className="mt-4 text-sm font-semibold">Nenhum treino disponível.</p><p className="mt-1 text-[11px] text-zinc-600">Gere seu plano para começar.</p><button type="button" disabled={generating || Boolean(activeSession) || mutationBusy} onClick={() => void generateFirstWorkout()} className="mt-5 min-h-12 w-full rounded-xl bg-[#ff6a00] px-5 text-xs font-bold disabled:opacity-50">{generating ? "Gerando treino..." : "Gerar meu primeiro treino"}</button></section>}
+
+        <section className="mt-6">
+          <div className="flex items-end justify-between"><div><p className="text-[9px] font-bold uppercase tracking-[.2em] text-[#d96818]">Sua semana</p><h2 className="mt-1 text-[17px] font-semibold tracking-[-.02em]">Plano de treino</h2></div><button type="button" disabled={mutationBusy} onClick={openSchedule} className="flex items-center gap-1.5 pb-0.5 text-[10px] font-medium text-zinc-500 disabled:opacity-40"><CalendarDays className="h-3.5 w-3.5" />Ver calendário</button></div>
+          <div className="mt-3 grid grid-cols-7 gap-1.5 rounded-[22px] border border-white/[0.055] bg-white/[0.02] p-3 min-[375px]:gap-2">
+            {WEEKDAYS.map((day) => { const row = snapshot?.schedule.find((item) => item.isoWeekday === day.value); const workout = workouts.find((item) => item.id === row?.workoutId); const current = day.value === todayWeekday; const completed = completedScheduleDates.has(weekDates[day.value]); return <div key={day.value} className="min-w-0 text-center" title={workout?.title ?? "Pausa"}><p className={`text-[8px] font-bold uppercase ${current ? "text-[#ff7a1a]" : "text-zinc-600"}`}>{day.short}</p><span className={`mx-auto mt-2 flex h-8 w-8 items-center justify-center rounded-full border min-[375px]:h-9 min-[375px]:w-9 ${current ? "border-orange-400/30 bg-orange-500/[0.12] text-[#ff7a1a]" : completed ? "border-emerald-400/20 bg-emerald-400/[0.08] text-emerald-300" : workout ? "border-white/[0.08] bg-white/[0.035] text-zinc-400" : "border-white/[0.04] text-zinc-700"}`}>{completed ? <Check className="h-3.5 w-3.5" /> : workout ? <span className="h-1.5 w-1.5 rounded-full bg-current" /> : <span className="text-[8px]">—</span>}</span></div>; })}
+          </div>
+        </section>
+
+        <section className="mt-5">
+          <p className="text-[9px] font-bold uppercase tracking-[.2em] text-zinc-600">Próximo treino</p>
+          {nextScheduledWorkout ? <div className="mt-2.5 flex items-center gap-3 rounded-[20px] border border-white/[0.06] bg-gradient-to-br from-[#131313] to-[#0c0c0c] p-3.5"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-orange-400/10 bg-orange-500/[0.06] text-[#ff6a00]"><Dumbbell className="h-5 w-5" /></span><div className="min-w-0 flex-1"><h3 className="truncate text-[13px] font-semibold">{nextScheduledWorkout.workout.title}</h3><p className="mt-1 text-[10px] text-zinc-600">{getWeekdayLabel(nextScheduledWorkout.weekday)} · {formatDate(nextScheduledWorkout.date)} · {nextScheduledWorkout.workout.exercises.length || "—"} exercícios</p></div><ChevronRight className="h-4 w-4 shrink-0 text-zinc-700" /></div> : <div className="mt-2.5 rounded-[18px] border border-white/[0.05] bg-white/[0.02] px-4 py-3 text-center text-[10px] text-zinc-600">Nenhum próximo treino agendado.</div>}
+        </section>
+
+        <section className="mt-5">
+          <div className="flex items-end justify-between"><div><p className="text-[9px] font-bold uppercase tracking-[.2em] text-zinc-600">Última anotação</p><h2 className="mt-1 text-[17px] font-semibold tracking-[-.02em]">Evolução registrada</h2></div><button type="button" onClick={() => setPanel("history")} className="pb-0.5 text-[10px] font-medium text-zinc-500">Ver todas</button></div>
+          <button type="button" onClick={() => setPanel("history")} className="mt-2.5 flex w-full items-center gap-3 rounded-[20px] border border-white/[0.06] bg-white/[0.02] p-3.5 text-left"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] border border-white/[0.06] bg-white/[0.025] text-[#d96818]"><NotebookPen className="h-[18px] w-[18px]" /></span><span className="min-w-0 flex-1"><span className="block text-[12px] font-semibold text-zinc-300">{previousNote ? "Sua última nota" : "Registre suas anotações"}</span><span className="mt-1 line-clamp-2 block text-[10px] leading-4 text-zinc-600">{previousNote ?? "Anote cargas, sensações e observações da sua evolução."}</span></span><ChevronRight className="h-4 w-4 shrink-0 text-zinc-700" /></button>
+        </section>
       </>}
 
       {panel === "switch" && <Modal eyebrow="Somente esta sessão" title="Trocar treino" close={() => setPanel(null)}><div className="space-y-2">{workouts.map((workout) => <button type="button" key={workout.id} onClick={() => { setTemporaryWorkout(workout); setPanel(null); }} className="flex w-full items-center justify-between rounded-2xl border border-white/[0.07] p-4 text-left"><span><span className="block font-black">{workout.title}</span><span className="mt-1 block text-xs text-zinc-600">Não altera a agenda nem o pendente</span></span><ChevronRight className="h-4 w-4" /></button>)}</div>{temporaryWorkout && <button type="button" onClick={() => { setTemporaryWorkout(null); setPanel(null); }} className="mt-4 flex min-h-11 w-full items-center justify-center gap-2 text-xs text-zinc-400"><RotateCcw className="h-4 w-4" />Cancelar troca</button>}</Modal>}
