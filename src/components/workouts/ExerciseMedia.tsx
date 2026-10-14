@@ -19,10 +19,10 @@ export function ExerciseMedia({ exerciseId, exerciseName }: { exerciseId: string
       aria-label={media.alt} autoPlay muted loop playsInline controls={false} />
   );
   return (
-    <div className="relative flex h-full min-h-52 w-full items-center justify-center overflow-hidden bg-[#0d0d14] px-6 text-center">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_35%,rgba(124,58,237,0.18),transparent_48%)]" />
+    <div className="relative flex h-full min-h-52 w-full items-center justify-center overflow-hidden bg-[#0b0b0b] px-6 text-center">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_35%,rgba(255,106,0,0.12),transparent_52%)]" />
       <div className="relative flex flex-col items-center">
-        <div className="flex h-14 w-14 items-center justify-center rounded-full border border-violet-400/20 bg-violet-400/[0.08] text-violet-300">
+        <div className="flex h-14 w-14 items-center justify-center rounded-full border border-orange-400/15 bg-orange-500/[0.07] text-orange-300">
           {media.status === "loading" ? <LoaderCircle className="h-5 w-5 animate-spin" />
             : media.status === "error" ? <CircleAlert className="h-5 w-5" /> : <Play className="h-5 w-5 fill-current" />}
         </div>
