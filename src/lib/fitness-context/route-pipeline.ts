@@ -1,5 +1,6 @@
 import type { UserFitnessContext } from "./model.ts";
 import { buildWorkoutFitnessPrompt } from "./prompt.ts";
+import { resolveWorkoutDisplayName } from "../workouts/display-name.ts";
 
 export type FitnessRouteServiceErrorCode =
   | "AI_UNAVAILABLE"
@@ -112,7 +113,16 @@ export function parseGeneratedWorkouts(content: string): GeneratedWorkout[] {
     }
     const exercises = item.exercises.map(parseGeneratedExercise);
     if (exercises.some((exercise) => exercise === null)) return null;
-    return { name, muscle_group: muscleGroup, exercises: exercises as GeneratedExercise[] };
+    const validatedExercises = exercises as GeneratedExercise[];
+    return {
+      name: resolveWorkoutDisplayName({
+        title: name,
+        muscleGroup,
+        exerciseNames: validatedExercises.map((exercise) => exercise.name),
+      }),
+      muscle_group: muscleGroup,
+      exercises: validatedExercises,
+    };
   });
 
   if (workouts.some((workout) => workout === null)) {

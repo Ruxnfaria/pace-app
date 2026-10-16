@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { resolveWorkoutDisplayName } from "./display-name.ts";
 import {
   abandonWorkoutSession,
   completeWorkoutSession,
@@ -129,10 +130,19 @@ export function buildWorkoutHistory(input: {
     if (session.status !== "completed" || !session.completedAt) return [];
     const workoutLogId = input.bridges.get(session.id);
     if (!workoutLogId) return [];
+    const sessionExercises = input.exercises.filter((exercise) => exercise.sessionId === session.id);
     return [{
       kind: "durable",
-      session: { ...session, status: "completed", completedAt: session.completedAt },
-      exercises: input.exercises.filter((exercise) => exercise.sessionId === session.id),
+      session: {
+        ...session,
+        status: "completed",
+        completedAt: session.completedAt,
+        workoutTitle: resolveWorkoutDisplayName({
+          title: session.workoutTitle,
+          exerciseNames: sessionExercises.map((exercise) => exercise.name),
+        }),
+      },
+      exercises: sessionExercises,
       workoutLogId,
       durationSeconds: getSessionDurationSeconds(session.startedAt, session.completedAt),
     }];
@@ -148,7 +158,13 @@ export function buildWorkoutHistory(input: {
       id,
       workoutId,
       workoutDate: date,
-      currentWorkoutTitle: input.workouts.find((workout) => workout.id === workoutId)?.title ?? null,
+      currentWorkoutTitle: (() => {
+        const workout = input.workouts.find((item) => item.id === workoutId);
+        return workout ? resolveWorkoutDisplayName({
+          title: workout.title,
+          exerciseNames: workout.exercises.map((exercise) => exercise.name),
+        }) : null;
+      })(),
     }];
   });
   return { durableHistory, legacyHistory };
@@ -239,6 +255,23 @@ export function createBrowserWorkoutGateway(
     }
 
     const exercises = (exerciseResult.data ?? []).map((row) => asExercise(row as UnknownRow));
+    const displayWorkouts = workouts.map((workout) => ({
+      ...workout,
+      title: resolveWorkoutDisplayName({
+        title: workout.title,
+        exerciseNames: workout.exercises.map((exercise) => exercise.name),
+      }),
+    }));
+    const activeExercises = activeSession
+      ? exercises.filter((exercise) => exercise.sessionId === activeSession.id)
+      : [];
+    const displayActiveSession = activeSession ? {
+      ...activeSession,
+      workoutTitle: resolveWorkoutDisplayName({
+        title: activeSession.workoutTitle,
+        exerciseNames: activeExercises.map((exercise) => exercise.name),
+      }),
+    } : null;
     const bridges = new Map(
       [...(bridgeBySessionResult.data ?? []), ...(bridgeByLogResult.data ?? [])]
         .map((row) => [String(row.session_id), String(row.workout_log_id)])
@@ -248,22 +281,24 @@ export function createBrowserWorkoutGateway(
       exercises,
       bridges,
       logs: (logsResult.data ?? []) as UnknownRow[],
-      workouts,
+      workouts: displayWorkouts,
     });
 
     return {
-      workouts,
+      workouts: displayWorkouts,
       schedule: (scheduleResult.data ?? []).map((row) => asSchedule(row as UnknownRow)),
       pending: pending ? {
         id: pending.occurrence_id,
         scheduledForDate: pending.scheduled_for_date,
         sourceWorkoutId: pending.source_workout_id,
-        workoutTitle: pending.workout_title,
+        workoutTitle: resolveWorkoutDisplayName({
+          title: pending.workout_title,
+          exerciseNames: workouts.find((workout) => workout.id === pending.source_workout_id)
+            ?.exercises.map((exercise) => exercise.name) ?? [],
+        }),
       } : null,
-      activeSession,
-      activeExercises: activeSession
-        ? exercises.filter((exercise) => exercise.sessionId === activeSession.id)
-        : [],
+      activeSession: displayActiveSession,
+      activeExercises,
       durableHistory,
       legacyHistory,
       previousNote,

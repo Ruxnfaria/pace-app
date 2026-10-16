@@ -378,6 +378,7 @@ test("/api/workouts/generate: pipeline real valida saída antes de persistir", a
     },
     persistWorkouts: async (_access, workouts, receivedContext) => {
       order.push("persist");
+      assert.equal(workouts[0].name, "Peito");
       assert.equal(workouts[0].exercises[0].name, "Supino");
       assert.equal(receivedContext, context);
     },
@@ -461,6 +462,7 @@ test("/api/chat retorna aviso controlado quando salvar treino está contido", as
     }),
     persistCommand: async (_access, command) => {
       assert.equal(command.type, "workout");
+      assert.equal(command.title, "Peito");
       const notice = "Salvar treino está temporariamente indisponível.";
       notices.push(notice);
       return { notice };

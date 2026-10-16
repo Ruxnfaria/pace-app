@@ -12,6 +12,7 @@ import { ExerciseMedia } from "@/components/workouts/ExerciseMedia";
 import { getBrazilDate } from "@/lib/dates/brazilDate";
 import { createClient } from "@/lib/supabase/client";
 import { createBrowserWorkoutGateway } from "@/lib/workouts/browser-gateway";
+import { resolveWorkoutDisplayName } from "@/lib/workouts/display-name";
 import {
   WorkoutLifecycleCoordinator,
   type WorkoutLifecycleSnapshot,
@@ -68,7 +69,10 @@ function asSnapshotWorkout(snapshot: WorkoutLifecycleSnapshot): Workout | null {
   if (!session) return null;
   return {
     id: session.workoutId ?? session.id,
-    title: session.workoutTitle,
+    title: resolveWorkoutDisplayName({
+      title: session.workoutTitle,
+      exerciseNames: snapshot.activeExercises.map((exercise) => exercise.name),
+    }),
     rawText: null,
     createdAt: session.startedAt,
     exercises: snapshot.activeExercises.map((exercise) => ({
@@ -154,6 +158,9 @@ export default function WorkoutsExperienceV2() {
     ? workouts.find((workout) => workout.id === scheduledRow.workoutId) ?? null
     : null;
   const pendingPresentation = pending ? getPendingWorkoutPresentation(pending) : null;
+  const pendingSourceWorkout = pending?.sourceWorkoutId
+    ? workouts.find((workout) => workout.id === pending.sourceWorkoutId) ?? null
+    : null;
   const primaryWorkout = temporaryWorkout ?? pendingPresentation ?? scheduledWorkout ?? workouts[0] ?? null;
   const activeSession = snapshot?.activeSession ?? null;
   const activeWorkout = snapshot ? asSnapshotWorkout(snapshot) : null;
@@ -166,6 +173,14 @@ export default function WorkoutsExperienceV2() {
   const homeNoteDate = latestNotedHistory?.session.completedAt.slice(0, 10) ?? null;
   const mutationBusy = operation !== null;
   const homeWorkout = activeWorkout ?? primaryWorkout;
+  const homeWorkoutName = homeWorkout
+    ? resolveWorkoutDisplayName({
+        title: homeWorkout.title,
+        exerciseNames: (homeWorkout.exercises.length
+          ? homeWorkout.exercises
+          : pendingSourceWorkout?.exercises ?? []).map((exercise) => exercise.name),
+      })
+    : null;
   const homeExerciseCount = activeSession
     ? snapshot?.activeExercises.length ?? 0
     : primaryWorkout?.exercises.length ?? 0;
@@ -400,7 +415,7 @@ export default function WorkoutsExperienceV2() {
               {pending && !activeSession && <span className="text-[9px] font-medium text-zinc-600">desde {formatDate(pending.scheduledForDate)}</span>}
             </div>
             <p className="mt-5 text-[9px] font-bold uppercase tracking-[.2em] text-[#d96818]">Treino de hoje</p>
-            <h2 className="mt-2 max-w-[300px] break-words text-[26px] font-bold leading-[1.08] tracking-[-.035em]">{homeWorkout.title}</h2>
+            <h2 className="mt-2 max-w-[300px] break-words text-[26px] font-bold leading-[1.08] tracking-[-.035em]">{homeWorkoutName}</h2>
             <p className="mt-2 max-w-[300px] text-[11px] leading-5 text-zinc-500">{activeSession ? "Seu progresso está salvo. Continue de onde parou." : pending ? "Este treino permanece como próximo até ser concluído ou pulado." : temporaryWorkout ? "Esta troca vale somente para agora e não altera sua semana." : "Hora de começar seu treino de hoje."}</p>
 
             <div className="mt-4 flex flex-wrap gap-2">

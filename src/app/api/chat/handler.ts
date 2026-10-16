@@ -8,6 +8,7 @@ import {
   runFitnessRoutePipeline,
   type FitnessRouteAccess,
 } from "../../../lib/fitness-context/route-pipeline.ts";
+import { resolveWorkoutDisplayName } from "../../../lib/workouts/display-name.ts";
 
 type StoredChatMessage = { sender: string; content: string };
 
@@ -200,7 +201,14 @@ function parseCommand(toolCall: ChatToolCall): ChatPersistenceCommand {
         tip: stringField(exercise, "tip", 500),
       };
     });
-    return { type: "workout", title: stringField(value, "title", 160), exercises };
+    return {
+      type: "workout",
+      title: resolveWorkoutDisplayName({
+        title: stringField(value, "title", 160),
+        exerciseNames: exercises.map((exercise) => exercise.name),
+      }),
+      exercises,
+    };
   }
 
   if (toolCall.function.name === "salvar_nutricao") {
@@ -251,6 +259,7 @@ ${fitnessPrompt}
 DIRETRIZES ABSOLUTAS DE AUTOMAÇÃO:
 - Responda de forma direta, madura e elegante, em parágrafos corridos e fluidos no chat. PROIBIDO listas por tópicos no seu texto de resposta convencional.
 - Sempre que você prescrever, montar ou alterar uma rotina ou divisão de treino, use a ferramenta salvar_treino.
+- Em salvar_treino, use um title curto que descreva a divisão muscular real, nunca apenas Treino A/B/C.
 - Ao criar um treino ou uma dieta, crie no mínimo 3 missões diárias com salvar_missao_diaria.
 - Ao planejar calorias, macros ou dieta, use salvar_nutricao.
 

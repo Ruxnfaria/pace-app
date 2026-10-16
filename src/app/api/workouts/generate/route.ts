@@ -21,8 +21,8 @@ ${fitnessPrompt}
 Retorne somente JSON neste formato:
 {
   "workouts": [{
-    "name": "Treino A",
-    "muscle_group": "Grupo muscular principal",
+    "name": "Peito + Tríceps",
+    "muscle_group": "Peito + Tríceps",
     "exercises": [{
       "name": "Nome do exercício",
       "sets": "4",
@@ -33,6 +33,7 @@ Retorne somente JSON neste formato:
   }]
 }
 
+O campo name deve ser curto, em português e descrever a divisão muscular real (por exemplo: Peito + Tríceps, Costas + Bíceps, Pernas ou Full Body), nunca apenas Treino A/B/C.
 Todos os campos são obrigatórios. Não inclua links, GIFs, vídeos ou qualquer mídia de terceiros; a mídia é resolvida separadamente pelo PRAXE.`;
 }
 

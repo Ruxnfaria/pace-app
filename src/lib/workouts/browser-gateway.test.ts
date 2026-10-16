@@ -44,6 +44,32 @@ test("fallback legado não inventa título quando o workout não sobrevive", () 
   });
 });
 
+test("histórico técnico usa somente o snapshot de exercícios da própria sessão", () => {
+  const result = buildWorkoutHistory({
+    workouts: [{
+      id: "workout-1", title: "Treino A", rawText: null,
+      createdAt: "2026-10-01T00:00:00.000Z",
+      exercises: [{ id: "current", name: "Agachamento", sets: "3", reps: "10", rest: null, tip: null }],
+    }],
+    completedSessions: [{
+      id: "session-1", status: "completed", workoutId: "workout-1",
+      scheduleOccurrenceId: null, scheduledForDate: null, workoutTitle: "Treino A",
+      startedAt: "2026-10-08T12:00:00.000Z", completedAt: "2026-10-08T12:30:00.000Z", note: null,
+    }],
+    exercises: [
+      { id: "chest", sessionId: "session-1", exerciseKey: null, name: "Supino reto", position: 0, sets: "3", reps: "10", rest: null, tip: null, completedAt: "2026-10-08T12:10:00.000Z" },
+      { id: "triceps", sessionId: "session-1", exerciseKey: null, name: "Tríceps testa", position: 1, sets: "3", reps: "10", rest: null, tip: null, completedAt: "2026-10-08T12:20:00.000Z" },
+    ],
+    bridges: new Map([["session-1", "log-1"]]),
+    logs: [
+      { id: "log-1", workout_id: "workout-1", workout_date: "2026-10-08" },
+      { id: "legacy", workout_id: "workout-1", workout_date: "2026-10-07" },
+    ],
+  });
+  assert.equal(result.durableHistory[0].session.workoutTitle, "Peito + Tríceps");
+  assert.equal(result.legacyHistory[0].currentWorkoutTitle, "Pernas");
+});
+
 test("bridge por workout_log exclui fallback mesmo fora da janela de 40 sessões", () => {
   const result = buildWorkoutHistory({
     workouts: [], completedSessions: [], exercises: [],

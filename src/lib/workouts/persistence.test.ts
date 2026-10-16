@@ -125,6 +125,7 @@ test("payload do plano é determinístico e contém sete dias", () => {
     preferredWeekdays: [5, 1, 3, 3],
   });
   assert.deepEqual(payload.workouts.map((item) => item.client_key), ["workout-01", "workout-02"]);
+  assert.deepEqual(payload.workouts.map((item) => item.title), ["Peito", "Costas"]);
   assert.deepEqual(payload.schedule, [
     { iso_weekday: 1, workout_key: "workout-01" },
     { iso_weekday: 2, workout_key: null },

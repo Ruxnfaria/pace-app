@@ -1,5 +1,6 @@
 import type { UserFitnessContext } from "../fitness-context/model.ts";
 import type { GeneratedWorkout } from "../fitness-context/route-pipeline.ts";
+import { resolveWorkoutDisplayName } from "./display-name.ts";
 
 export type WorkoutRpcError = {
   code?: string;
@@ -623,7 +624,11 @@ export function buildWorkoutPlanPayload(
 ): WorkoutPlanPayload {
   const workoutRows = workouts.map((workout, index) => ({
     client_key: `workout-${String(index + 1).padStart(2, "0")}`,
-    title: workout.name,
+    title: resolveWorkoutDisplayName({
+      title: workout.name,
+      muscleGroup: workout.muscle_group,
+      exerciseNames: workout.exercises.map((exercise) => exercise.name),
+    }),
     exercises: workout.exercises,
   }));
   const preferred = validWeekdays(training.preferredWeekdays);

@@ -15,6 +15,7 @@ import { getBrazilDate } from "@/lib/dates/brazilDate";
 import { GamificationActions } from "@/lib/gamification/actions";
 import { queueCoreEnergy } from "@/lib/gamification/coreEnergyPulse";
 import { createClient } from "@/lib/supabase/client";
+import { resolveWorkoutDisplayName } from "@/lib/workouts/display-name";
 import {
   WEEKDAYS, buildWeeklySchedule, getDurationLabel, getNextWorkoutState,
   getScheduleDays, getWeekdayLabel, isoWeekdayFromDate, normalizeWorkout,
@@ -91,7 +92,16 @@ function LegacyWorkoutsExperience() {
       ]);
       if (workoutResult.error) throw workoutResult.error;
       if (logResult.error) throw logResult.error;
-      setWorkouts((workoutResult.data ?? []).map(normalizeWorkout).filter((item): item is Workout => item !== null));
+      setWorkouts((workoutResult.data ?? [])
+        .map(normalizeWorkout)
+        .filter((item): item is Workout => item !== null)
+        .map((workout) => ({
+          ...workout,
+          title: resolveWorkoutDisplayName({
+            title: workout.title,
+            exerciseNames: workout.exercises.map((exercise) => exercise.name),
+          }),
+        })));
       const row = profileResult.data as Record<string, unknown> | null;
       setProfile(row ? {
         trainingDaysPerWeek: asNumber(row.training_days_per_week),
