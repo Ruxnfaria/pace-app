@@ -89,7 +89,7 @@ export default function DashboardLayout({
 
   const supabase = createClient();
   const isDashboardHome = pathname === '/dashboard';
-  const usesCompactAppShell = isDashboardHome || pathname === '/dashboard/missions' || pathname === '/dashboard/workouts';
+  const usesCompactAppShell = isDashboardHome || pathname === '/dashboard/missions' || pathname === '/dashboard/workouts' || pathname === '/dashboard/nutrition';
 
   const moreIsActive = moreItems.some(
     (item) =>
