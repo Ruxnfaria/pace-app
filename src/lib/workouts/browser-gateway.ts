@@ -116,6 +116,44 @@ function asSchedule(row: UnknownRow): WorkoutWeeklyScheduleRow {
   };
 }
 
+export function withWorkoutDisplayName(workout: Workout): Workout {
+  return {
+    ...workout,
+    title: resolveWorkoutDisplayName({
+      title: workout.title,
+      exerciseNames: workout.exercises.map((exercise) => exercise.name),
+    }),
+  };
+}
+
+export function withSessionDisplayName(
+  session: WorkoutSession,
+  exercises: WorkoutSessionExercise[]
+): WorkoutSession {
+  return {
+    ...session,
+    workoutTitle: resolveWorkoutDisplayName({
+      title: session.workoutTitle,
+      exerciseNames: exercises
+        .filter((exercise) => exercise.sessionId === session.id)
+        .map((exercise) => exercise.name),
+    }),
+  };
+}
+
+export function resolvePendingWorkoutDisplayName(input: {
+  title: string;
+  occurrenceExerciseNames: string[];
+  sourceWorkout: Workout | null;
+}): string {
+  return resolveWorkoutDisplayName({
+    title: input.title,
+    exerciseNames: input.occurrenceExerciseNames.length
+      ? input.occurrenceExerciseNames
+      : input.sourceWorkout?.exercises.map((exercise) => exercise.name) ?? [],
+  });
+}
+
 export function buildWorkoutHistory(input: {
   completedSessions: WorkoutSession[];
   exercises: WorkoutSessionExercise[];
@@ -137,10 +175,7 @@ export function buildWorkoutHistory(input: {
         ...session,
         status: "completed",
         completedAt: session.completedAt,
-        workoutTitle: resolveWorkoutDisplayName({
-          title: session.workoutTitle,
-          exerciseNames: sessionExercises.map((exercise) => exercise.name),
-        }),
+        workoutTitle: withSessionDisplayName(session, sessionExercises).workoutTitle,
       },
       exercises: sessionExercises,
       workoutLogId,
@@ -236,7 +271,7 @@ export function createBrowserWorkoutGateway(
       return id === null || id === undefined ? [] : [String(id)];
     });
 
-    const [exerciseResult, bridgeBySessionResult, bridgeByLogResult, previousNote] = await Promise.all([
+    const [exerciseResult, bridgeBySessionResult, bridgeByLogResult, pendingExerciseResult, previousNote] = await Promise.all([
       sessionIds.length ? client.from("workout_session_exercises")
         .select("id, session_id, exercise_key, name, exercise_position, sets, reps, rest, tip_snapshot, completed_at")
         .in("session_id", sessionIds).order("exercise_position", { ascending: true })
@@ -247,31 +282,32 @@ export function createBrowserWorkoutGateway(
       logIds.length ? client.from("workout_session_legacy_log")
         .select("session_id, workout_log_id").in("workout_log_id", logIds)
         : Promise.resolve({ data: [], error: null }),
+      pending ? client.from("workout_schedule_occurrence_exercises")
+        .select("name, exercise_position").eq("occurrence_id", pending.occurrence_id)
+        .order("exercise_position", { ascending: true })
+        : Promise.resolve({ data: [], error: null }),
       loadPreviousWorkoutNote(client, userId, activeSession?.workoutId ?? null),
     ]);
     if (exerciseResult.error) queryFailure("os exercícios das sessões", exerciseResult.error);
     if (bridgeBySessionResult.error || bridgeByLogResult.error) {
       queryFailure("as pontes do histórico", bridgeBySessionResult.error ?? bridgeByLogResult.error);
     }
+    if (pendingExerciseResult.error) {
+      queryFailure("os exercícios do treino pendente", pendingExerciseResult.error);
+    }
 
     const exercises = (exerciseResult.data ?? []).map((row) => asExercise(row as UnknownRow));
-    const displayWorkouts = workouts.map((workout) => ({
-      ...workout,
-      title: resolveWorkoutDisplayName({
-        title: workout.title,
-        exerciseNames: workout.exercises.map((exercise) => exercise.name),
-      }),
-    }));
+    const displayWorkouts = workouts.map(withWorkoutDisplayName);
     const activeExercises = activeSession
       ? exercises.filter((exercise) => exercise.sessionId === activeSession.id)
       : [];
-    const displayActiveSession = activeSession ? {
-      ...activeSession,
-      workoutTitle: resolveWorkoutDisplayName({
-        title: activeSession.workoutTitle,
-        exerciseNames: activeExercises.map((exercise) => exercise.name),
-      }),
-    } : null;
+    const displayActiveSession = activeSession
+      ? withSessionDisplayName(activeSession, activeExercises)
+      : null;
+    const pendingExerciseNames = (pendingExerciseResult.data ?? []).flatMap((row) => {
+      const name = asString((row as UnknownRow).name);
+      return name ? [name] : [];
+    });
     const bridges = new Map(
       [...(bridgeBySessionResult.data ?? []), ...(bridgeByLogResult.data ?? [])]
         .map((row) => [String(row.session_id), String(row.workout_log_id)])
@@ -291,10 +327,10 @@ export function createBrowserWorkoutGateway(
         id: pending.occurrence_id,
         scheduledForDate: pending.scheduled_for_date,
         sourceWorkoutId: pending.source_workout_id,
-        workoutTitle: resolveWorkoutDisplayName({
+        workoutTitle: resolvePendingWorkoutDisplayName({
           title: pending.workout_title,
-          exerciseNames: workouts.find((workout) => workout.id === pending.source_workout_id)
-            ?.exercises.map((exercise) => exercise.name) ?? [],
+          occurrenceExerciseNames: pendingExerciseNames,
+          sourceWorkout: workouts.find((workout) => workout.id === pending.source_workout_id) ?? null,
         }),
       } : null,
       activeSession: displayActiveSession,
