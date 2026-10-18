@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildLegacyFitnessContext, buildV22FitnessContext, type LegacyProfileRow, type V22ContextRows } from "./model.ts";
+import { buildLegacyFitnessContext, buildV22FitnessContext, buildV24FitnessContext, type LegacyProfileRow, type V22ContextRows, type V24ContextRows } from "./model.ts";
 import { handleChatPost } from "../../app/api/chat/handler.ts";
 import { CHAT_WORKOUT_SAVE_UNAVAILABLE, getChatWorkoutSaveContainment } from "../workouts/runtime-policy.ts";
 import {
@@ -32,6 +32,17 @@ const v22Context = buildV22FitnessContext(
     activities: [{ onboarding_payload_schema_version: 3, activity_code: "walking", other_activity_label: null, schedule_type: null, available_weekdays: null, sessions_per_week: 2, duration_range: "30_45", intensity: "low" }],
     restrictions: [], dislikedFoods: [], preferredFoods: [], supplements: [],
   } satisfies V22ContextRows
+);
+
+const schema5Context = buildV24FitnessContext(
+  { nome: "Pessoa VNext", onboarding_version: 2, objetivo: null, nivel_experiencia: null, dias_treino: null, idade: null, sexo: null, peso: null, altura: null },
+  {
+    health: { birth_date: "2000-01-01", biological_sex: "male", height_cm: 180, weight_kg: 80, target_weight_kg: null, primary_goal: "hypertrophy" },
+    training: { primary_goal: "hypertrophy", priority_muscles: [], training_experience: "under_6_months", exercise_confidence: "needs_guidance", recent_training_break: "under_1_month", initial_training_level: "beginner", training_days_per_week: 4, available_weekdays: [1, 2, 4, 6], session_duration_min: 60, session_duration_is_plus: false, training_location: "full_gym", other_location_label: null, available_equipment: [], other_equipment_label: null, pain_or_limitation: false, affected_body_areas: [], preferred_training_period: "evening" },
+    nutrition: { meals_per_day: null, meal_schedule_flexibility: "moderate", food_preparation_style: "cook_some", food_budget_style: "balanced", dietary_pattern: "omnivore", dietary_pattern_other_label: null, has_food_restrictions: false, uses_supplements: false, accepts_eggs: null, accepts_dairy: null },
+    activities: [], restrictions: [], dislikedFoods: [], preferredFoods: [], supplements: [],
+  } satisfies V24ContextRows,
+  5
 );
 
 for (const route of ["/api/chat", "/api/workouts/generate"]) {
@@ -421,6 +432,19 @@ test("/api/workouts/generate aceita FitnessContext V2.2 sem dados nutricionais",
   });
   assert.match(receivedPrompt, /conditioning|preferredWeekdays|walking/);
   assert.doesNotMatch(receivedPrompt, /availableMealMoments|currentEatingRoutine|supplement/i);
+});
+
+test("/api/workouts/generate aceita FitnessContext schema 5 e persiste o resultado validado", async () => {
+  let receivedPrompt = "";
+  let persisted = false;
+  await runWorkoutGenerationRoute({
+    requireActiveSubscription: async () => ({ client: {}, userId: "id" }),
+    loadFitnessContext: async () => schema5Context,
+    invokeOpenAI: async (prompt) => { receivedPrompt = prompt; return validWorkoutJson; },
+    persistWorkouts: async () => { persisted = true; },
+  });
+  assert.match(receivedPrompt, /hypertrophy|preferredTrainingPeriod|evening/);
+  assert.equal(persisted, true);
 });
 
 test("/api/chat aceita FitnessContext V2.2 e minimiza escopo nutricional", async () => {

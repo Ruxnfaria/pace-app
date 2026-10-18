@@ -6,11 +6,13 @@ import {
   buildLegacyFitnessContext,
   buildV21FitnessContext,
   buildV22FitnessContext,
+  buildV24FitnessContext,
   FitnessContextError,
   parseCompletionReceipt,
   parseLegacyProfileRow,
   parseV21ContextRows,
   parseV22ContextRows,
+  parseV24ContextRows,
   type LegacyProfileRow,
   type UserFitnessContext,
 } from "./model";
@@ -94,7 +96,7 @@ export async function getUserFitnessContext(
     supabase
       .from("training_profiles")
       .select(
-        "onboarding_payload_schema_version,primary_goal,priority_muscles,training_experience,exercise_confidence,recent_training_break,initial_training_level,training_days_per_week,available_weekdays,preferred_weekdays,session_duration_min,session_duration_is_plus,session_duration_range,training_location,other_location_label,available_equipment,other_equipment_label,pain_or_limitation,affected_body_areas,aerobic_practice_frequency,aerobic_safety_limitation"
+        "onboarding_payload_schema_version,primary_goal,priority_muscles,training_experience,exercise_confidence,recent_training_break,initial_training_level,training_days_per_week,available_weekdays,preferred_weekdays,preferred_training_period,session_duration_min,session_duration_is_plus,session_duration_range,training_location,other_location_label,available_equipment,other_equipment_label,pain_or_limitation,affected_body_areas,aerobic_practice_frequency,aerobic_safety_limitation"
       )
       .eq("user_id", userId)
       .maybeSingle(),
@@ -163,5 +165,9 @@ export async function getUserFitnessContext(
   if (receipt.payload_schema_version === 2) {
     return buildV21FitnessContext(profile, parseV21ContextRows(rawRows));
   }
-  return buildV22FitnessContext(profile, parseV22ContextRows(rawRows));
+  if (receipt.payload_schema_version === 3) {
+    return buildV22FitnessContext(profile, parseV22ContextRows(rawRows));
+  }
+  const schema = receipt.payload_schema_version as 4 | 5;
+  return buildV24FitnessContext(profile, parseV24ContextRows(rawRows, schema), schema);
 }

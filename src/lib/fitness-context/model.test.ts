@@ -5,15 +5,18 @@ import {
   buildLegacyFitnessContext,
   buildV2FitnessContext,
   buildV22FitnessContext,
+  buildV24FitnessContext,
   calculateAge,
   FitnessContextError,
   parseLegacyProfileRow,
   parseCompletionReceipt,
   parseV2ContextRows,
   parseV22ContextRows,
+  parseV24ContextRows,
   type LegacyProfileRow,
   type V2ContextRows,
   type V22ContextRows,
+  type V24ContextRows,
 } from "./model.ts";
 import {
   buildChatFitnessDto,
@@ -145,14 +148,26 @@ function completeV22Rows(): V22ContextRows {
   };
 }
 
+function completeV24Rows(preferredTrainingPeriod: string | null): V24ContextRows {
+  const rows = completeV2Rows();
+  return {
+    ...rows,
+    training: rows.training
+      ? { ...rows.training, preferred_training_period: preferredTrainingPeriod }
+      : null,
+  };
+}
+
 const completedV2Profile: LegacyProfileRow = {
   ...legacyProfile, onboarding_version: 2, onboarding_completed: true,
   onboarding_completed_at: "2026-09-28T12:00:00Z",
 };
 
-test("receipt seleciona schema 2 e schema 3 somente com canonicalização consistente", () => {
+test("receipt seleciona schemas 2, 3, 4 e 5 somente com canonicalização consistente", () => {
   assert.equal(parseCompletionReceipt({ onboarding_version: 2, payload_schema_version: 2, canonicalization_version: 2, completed_at: completedV2Profile.onboarding_completed_at }, completedV2Profile).payload_schema_version, 2);
   assert.equal(parseCompletionReceipt({ onboarding_version: 2, payload_schema_version: 3, canonicalization_version: 3, completed_at: completedV2Profile.onboarding_completed_at }, completedV2Profile).payload_schema_version, 3);
+  assert.equal(parseCompletionReceipt({ onboarding_version: 2, payload_schema_version: 4, canonicalization_version: 4, completed_at: completedV2Profile.onboarding_completed_at }, completedV2Profile).payload_schema_version, 4);
+  assert.equal(parseCompletionReceipt({ onboarding_version: 2, payload_schema_version: 5, canonicalization_version: 5, completed_at: completedV2Profile.onboarding_completed_at }, completedV2Profile).payload_schema_version, 5);
 });
 
 test("receipt ausente, inconsistente ou desconhecido falha fechado", () => {
@@ -172,6 +187,35 @@ test("V2.2 válido preserva contrato novo, atividades múltiplas e nulls sem fab
   assert.equal(context.nutrition.foodPreparationAvailability, "moderate");
   assert.equal(context.nutrition.currentEatingRoutine, "variable");
   assert.equal(context.nutrition.mealsPerDay, null); assert.equal(context.nutrition.acceptsEggs, null);
+});
+
+test("schema 4 reutiliza o perfil V2.1 persistido sem inventar período de treino", () => {
+  const rows=parseV24ContextRows(completeV24Rows(null),4);
+  const context=buildV24FitnessContext(completedV2Profile,rows,4);
+  assert.equal(context.source,"v2_4");
+  assert.equal(context.payloadSchemaVersion,4);
+  assert.equal(context.training.preferredTrainingPeriod,null);
+  assert.equal(context.training.trainingDaysPerWeek,3);
+});
+
+test("schema 5 gera contexto de workout e preserva preferred_training_period", () => {
+  const rows=parseV24ContextRows(completeV24Rows("evening"),5);
+  const context=buildV24FitnessContext(completedV2Profile,rows,5);
+  assert.equal(context.source,"vnext");
+  assert.equal(context.payloadSchemaVersion,5);
+  assert.equal(context.training.preferredTrainingPeriod,"evening");
+  assert.match(buildWorkoutFitnessPrompt(context),/preferredTrainingPeriod/);
+  assert.doesNotThrow(()=>buildWorkoutFitnessDto(context));
+});
+
+test("schema 5 rejeita somente período de treino inválido, sem exigir preferred_meals_per_day", () => {
+  assert.throws(
+    ()=>parseV24ContextRows(completeV24Rows("dawn"),5),
+    (error)=>error instanceof FitnessContextError&&error.missingDomains.includes("training.preferred_training_period")
+  );
+  const rows=completeV24Rows("morning");
+  assert.equal(rows.nutrition?.meals_per_day,null);
+  assert.doesNotThrow(()=>parseV24ContextRows(rows,5));
 });
 
 test("V2.2 aceita preferred weekdays independentes da frequência e full_gym vazio", () => {

@@ -4,6 +4,41 @@ type MissionCompletionEffects = {
   syncChests: () => Promise<void>;
 };
 
+type RelationReadError = {
+  code?: string | null;
+  message?: string | null;
+};
+
+const OPTIONAL_LEGACY_MISSION_RELATIONS = new Set([
+  "nutrition_logs",
+  "nutrition_plans",
+]);
+
+export async function resolveOptionalMissionRelation<T>(options: {
+  relation: string;
+  fallback: T;
+  read: () => PromiseLike<{
+    data: T | null;
+    error: RelationReadError | null;
+  }>;
+}): Promise<T> {
+  const { data, error } = await options.read();
+
+  if (!error) return data ?? options.fallback;
+
+  const code = error.code ?? "";
+  const message = (error.message ?? "").toLowerCase();
+  const relation = options.relation.toLowerCase();
+  const relationIsMissing =
+    OPTIONAL_LEGACY_MISSION_RELATIONS.has(relation) &&
+    (code === "PGRST205" || code === "42P01") &&
+    message.includes(relation);
+
+  if (relationIsMissing) return options.fallback;
+
+  throw error;
+}
+
 function isContainedWorkout(options: {
   persistenceV2Enabled: boolean;
   category: string;

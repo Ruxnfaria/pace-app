@@ -88,6 +88,7 @@ function trainingDto(context: UserFitnessContext): JsonObject {
     ["daysPerWeek", training.trainingDaysPerWeek],
     ["availableWeekdays", training.availableWeekdays],
     ["preferredWeekdays", training.preferredWeekdays],
+    ["preferredTrainingPeriod", training.preferredTrainingPeriod],
     ["sessionDurationMin", training.sessionDurationMin],
     ["sessionDurationIsPlus", training.sessionDurationIsPlus],
     ["sessionDurationRange", training.sessionDurationRange],

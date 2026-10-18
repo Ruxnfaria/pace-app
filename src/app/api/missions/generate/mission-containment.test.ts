@@ -6,6 +6,7 @@ import {
   applyNewGeneratedMissionCompletion,
   insertNewGeneratedMissionAfterInvariant,
   reconcileExistingGeneratedMission,
+  resolveOptionalMissionRelation,
 } from "./mission-containment.ts";
 
 type MissionState = {
@@ -60,6 +61,94 @@ function createNewMissionOrchestration(options: {
     },
   };
 }
+
+test("fonte nutricional legada ausente usa fallback sem bloquear missões", async () => {
+  const result = await resolveOptionalMissionRelation({
+    relation: "nutrition_logs",
+    fallback: [] as Array<{ protein: number; logged_at: string }>,
+    read: async () => ({
+      data: null,
+      error: {
+        code: "PGRST205",
+        message:
+          "Could not find the table 'public.nutrition_logs' in the schema cache",
+      },
+    }),
+  });
+
+  assert.deepEqual(result, []);
+});
+
+test("nutrition_plans ausente também usa fallback restrito", async () => {
+  const result = await resolveOptionalMissionRelation({
+    relation: "nutrition_plans",
+    fallback: null,
+    read: async () => ({
+      data: null,
+      error: {
+        code: "42P01",
+        message: 'relation "public.nutrition_plans" does not exist',
+      },
+    }),
+  });
+
+  assert.equal(result, null);
+});
+
+test("relação não autorizada nunca é tratada como legacy opcional", async () => {
+  await assert.rejects(
+    resolveOptionalMissionRelation({
+      relation: "profiles",
+      fallback: null,
+      read: async () => ({
+        data: null,
+        error: { code: "42P01", message: 'relation "public.profiles" does not exist' },
+      }),
+    }),
+    (error: unknown) =>
+      typeof error === "object" && error !== null && "code" in error && error.code === "42P01"
+  );
+});
+
+test("erro real de leitura nutricional continua fail-closed", async () => {
+  await assert.rejects(
+    resolveOptionalMissionRelation({
+      relation: "nutrition_logs",
+      fallback: [],
+      read: async () => ({
+        data: null,
+        error: { code: "42501", message: "permission denied" },
+      }),
+    }),
+    (error: unknown) =>
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      error.code === "42501"
+  );
+});
+
+test("erro de relação diferente não é mascarado", async () => {
+  await assert.rejects(
+    resolveOptionalMissionRelation({
+      relation: "nutrition_logs",
+      fallback: [],
+      read: async () => ({
+        data: null,
+        error: {
+          code: "42P01",
+          message: 'relation "public.other_table" does not exist',
+        },
+      }),
+    }),
+    (error: unknown) =>
+      typeof error === "object" &&
+      error !== null &&
+      "message" in error &&
+      typeof error.message === "string" &&
+      error.message.includes("other_table")
+  );
+});
 
 async function exerciseExistingMission(options: {
   persistenceV2Enabled: boolean;

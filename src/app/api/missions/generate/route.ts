@@ -15,6 +15,7 @@ import {
   applyNewGeneratedMissionCompletion,
   insertNewGeneratedMissionAfterInvariant,
   reconcileExistingGeneratedMission,
+  resolveOptionalMissionRelation,
 } from "./mission-containment";
 
 export async function POST() {
@@ -52,16 +53,19 @@ const workoutCompletedToday = await resolveWorkoutMissionCompletedToday({
   },
 });
 
-const { data: nutritionLogs, error: nutritionLogsError } = await supabase
-  .from("nutrition_logs")
-  .select("protein, logged_at")
-  .eq("user_id", user.id);
+const nutritionLogs = await resolveOptionalMissionRelation<
+  Array<{ protein: number | string | null; logged_at: string | null }> | null
+>({
+  relation: "nutrition_logs",
+  fallback: null,
+  read: async () => await supabase
+    .from("nutrition_logs")
+    .select("protein, logged_at")
+    .eq("user_id", user.id),
+});
 
-if (nutritionLogsError) {
-  throw nutritionLogsError;
-}
-
-const todayProteinLogs = (nutritionLogs || []).filter((log) => {
+const consumptionContractAvailable = nutritionLogs !== null;
+const todayProteinLogs = (nutritionLogs ?? []).filter((log) => {
   if (!log.logged_at) return false;
 
   const logDate = new Date(log.logged_at);
@@ -80,21 +84,20 @@ const totalProteinToday = todayProteinLogs.reduce(
   0
 );
 
-const { data: activeNutritionPlan, error: nutritionPlanError } =
-  await supabase
-    .from("nutrition_plans")
-    .select("protein")
+const { data: activeNutritionTarget, error: nutritionTargetError } = await supabase
+    .from("nutrition_target_snapshots")
+    .select("protein_g")
     .eq("user_id", user.id)
-    .eq("active", true)
-    .order("created_at", { ascending: false })
+    .eq("status", "active")
+    .order("version", { ascending: false })
     .limit(1)
     .maybeSingle();
 
-if (nutritionPlanError) {
-  throw nutritionPlanError;
+if (nutritionTargetError) {
+  throw nutritionTargetError;
 }
 
-const proteinGoal = Number(activeNutritionPlan?.protein) || 180;
+const proteinGoal = Number(activeNutritionTarget?.protein_g) || 0;
 
 const proteinCompletedToday = totalProteinToday >= proteinGoal;
 
@@ -137,7 +140,7 @@ async function awardEnergy(amount: number) {
         completed_at: workoutCompletedToday ? now.toISOString() : null,
         for_date: today,
       },
-      {
+      ...(consumptionContractAvailable ? [{
         user_id: user.id,
         title: "Registrar 3 refeições hoje",
         description:
@@ -149,8 +152,8 @@ async function awardEnergy(amount: number) {
         completed: nutritionCompletedToday,
         completed_at: nutritionCompletedToday ? now.toISOString() : null,
         for_date: today,
-      },
-      {
+      }] : []),
+      ...(consumptionContractAvailable && proteinGoal > 0 ? [{
         user_id: user.id,
         title: "Bater sua meta de proteína",
         description:
@@ -162,7 +165,7 @@ async function awardEnergy(amount: number) {
         completed: proteinCompletedToday,
         completed_at: proteinCompletedToday ? now.toISOString() : null,
         for_date: today,
-      },
+      }] : []),
     ];
 
     let createdCount = 0;

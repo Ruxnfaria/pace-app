@@ -13,6 +13,7 @@ type MissionRecord = {
 type Scenario = {
   missions: Record<MissionCategory, MissionRecord>;
   nutritionLogs: Array<{ protein: number; logged_at: string }>;
+  nutritionLogsError: { code: string; message: string } | null;
   calls: {
     dailyChest: number;
     weeklyChest: number;
@@ -20,6 +21,7 @@ type Scenario = {
     energy: number;
     streak: number;
     workoutLogReads: number;
+    missionReads: MissionCategory[];
     inserts: number;
     updates: Array<{ category: MissionCategory; values: object }>;
   };
@@ -134,6 +136,7 @@ const { POST } = await import("./route.ts");
 function createScenario(options?: {
   completed?: Partial<Record<MissionCategory, boolean>>;
   nutritionLogs?: Scenario["nutritionLogs"];
+  nutritionLogsError?: Scenario["nutritionLogsError"];
 }): Scenario {
   const completed = options?.completed ?? {};
 
@@ -156,6 +159,7 @@ function createScenario(options?: {
       },
     },
     nutritionLogs: options?.nutritionLogs ?? [],
+    nutritionLogsError: options?.nutritionLogsError ?? null,
     calls: {
       dailyChest: 0,
       weeklyChest: 0,
@@ -163,6 +167,7 @@ function createScenario(options?: {
       energy: 0,
       streak: 0,
       workoutLogReads: 0,
+      missionReads: [],
       inserts: 0,
       updates: [],
     },
@@ -222,11 +227,12 @@ function createSupabaseStub(scenario: Scenario) {
         },
         async maybeSingle() {
           if (table === "daily_missions" && operation === "select") {
+            scenario.calls.missionReads.push(lastSelectedCategory);
             return { data: scenario.missions[lastSelectedCategory], error: null };
           }
 
-          if (table === "nutrition_plans") {
-            return { data: { protein: 100 }, error: null };
+          if (table === "nutrition_target_snapshots") {
+            return { data: { protein_g: 100 }, error: null };
           }
 
           throw new Error(`Unexpected maybeSingle on ${table}/${operation}`);
@@ -241,7 +247,9 @@ function createSupabaseStub(scenario: Scenario) {
           let result: unknown;
 
           if (table === "nutrition_logs" && operation === "select") {
-            result = { data: scenario.nutritionLogs, error: null };
+            result = scenario.nutritionLogsError
+              ? { data: null, error: scenario.nutritionLogsError }
+              : { data: scenario.nutritionLogs, error: null };
           } else if (table === "daily_missions" && operation === "update") {
             scenario.calls.updates.push({
               category: lastSelectedCategory,
@@ -309,4 +317,31 @@ test("POST com workout V2 preserva containment durante recovery genérico", asyn
     },
     { daily: 1, weekly: 1, monthly: 1 }
   );
+});
+
+test("POST materializa somente missão independente quando nutrition_logs não existe", async () => {
+  activeScenario = createScenario({
+    nutritionLogsError: {
+      code: "PGRST205",
+      message: "Could not find the table 'public.nutrition_logs' in the schema cache",
+    },
+  });
+
+  const response = await POST();
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(activeScenario.calls.missionReads, ["workout"]);
+  assert.equal(activeScenario.calls.missionReads.includes("nutrition"), false);
+  assert.equal(activeScenario.calls.missionReads.includes("protein"), false);
+});
+
+test("POST mantém permission error de nutrition_logs fail-closed", async () => {
+  activeScenario = createScenario({
+    nutritionLogsError: { code: "42501", message: "permission denied" },
+  });
+
+  const response = await POST();
+
+  assert.equal(response.status, 500);
+  assert.deepEqual(activeScenario.calls.missionReads, []);
 });
