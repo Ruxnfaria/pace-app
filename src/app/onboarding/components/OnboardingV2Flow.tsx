@@ -34,6 +34,10 @@ import {
   ONBOARDING_V2_STEPS,
 } from '../lib/onboarding-v2-steps';
 import {
+  formatBirthDateForReview,
+  formatWeekdaysForReview,
+} from '../lib/onboarding-v2-review-format';
+import {
   createInitialOnboardingV2State,
   onboardingV2Reducer,
   type OnboardingV2Action,
@@ -65,7 +69,6 @@ import {
   type RestrictionCode,
   type RoutinePredictability,
   type SupplementCode,
-  type Weekday,
 } from '../lib/onboarding-v2-types';
 import {
   validateOnboardingV2,
@@ -150,7 +153,6 @@ const TRAINING_PERIOD_OPTIONS = [
   { value: 'variable', title: 'Varia bastante' },
 ] satisfies readonly ChoiceCardOption<PreferredTrainingPeriod>[];
 const TRAINING_PERIOD_LABELS = Object.fromEntries(TRAINING_PERIOD_OPTIONS.map(({ value, title }) => [value, title])) as Record<PreferredTrainingPeriod, string>;
-const WEEKDAY_LABELS: Record<Weekday, string> = { 1: 'Seg', 2: 'Ter', 3: 'Qua', 4: 'Qui', 5: 'Sex', 6: 'Sáb', 7: 'Dom' };
 const MEAL_SCHEDULE_OPTIONS = [
   { value: 'limited', title: 'Pouco tempo', description: 'Preciso de uma organização bem prática para o dia a dia.' },
   { value: 'moderate', title: 'Rotina normal', description: 'Consigo reservar alguns momentos para me alimentar.' },
@@ -383,7 +385,7 @@ function ReviewContent({ form, onEdit, editingDisabled = false }: { form: Onboar
   return <div className="space-y-4">
     <ReviewCard title="Você" editLabel="Editar seus dados pessoais" onEdit={() => onEdit('goal')} editingDisabled={editingDisabled}>
       <ReviewRow label="Objetivo" value={health.primaryGoal && PRIMARY_GOALS.includes(health.primaryGoal as PrimaryGoal) ? GOAL_LABELS[health.primaryGoal as PrimaryGoal] : 'Não informado'} />
-      <ReviewRow label="Nascimento" value={health.birthDate ?? 'Não informado'} />
+      <ReviewRow label="Nascimento" value={health.birthDate ? formatBirthDateForReview(health.birthDate) : 'Não informado'} />
       <ReviewRow label="Sexo biológico" value={health.biologicalSex ? sexLabels[health.biologicalSex] : 'Não informado'} />
       <ReviewRow label="Medidas" value={`${health.heightCm ?? '—'} cm · ${health.weightKg ?? '—'} kg${health.targetWeightKg ? ` · meta ${health.targetWeightKg} kg` : ''}`} />
       <ReviewRow label="Atividade diária" value={health.activityLevel ? ACTIVITY_LEVEL_LABELS[health.activityLevel] : 'Não informada'} />
@@ -396,7 +398,7 @@ function ReviewContent({ form, onEdit, editingDisabled = false }: { form: Onboar
     <ReviewCard title="Treino" editLabel="Editar dados de treino" onEdit={() => onEdit('training-experience')} editingDisabled={editingDisabled}>
       <ReviewRow label="Experiência" value={training.trainingExperience ? experienceLabels[training.trainingExperience] : 'Não informada'} />
       <ReviewRow label="Autonomia" value={training.exerciseConfidence ? confidenceLabels[training.exerciseConfidence] : 'Não informada'} />
-      <ReviewRow label="Rotina" value={`${training.trainingDaysPerWeek ?? '—'}x por semana · ${joinOrNone(training.availableWeekdays.map((day) => WEEKDAY_LABELS[day]))} · ${training.sessionDurationMin === 90 ? '90+ min' : `${training.sessionDurationMin ?? '—'} min`}`} />
+      <ReviewRow label="Rotina" value={`${training.trainingDaysPerWeek ?? '—'}x por semana · ${formatWeekdaysForReview(training.availableWeekdays)} · ${training.sessionDurationMin === 90 ? '90+ min' : `${training.sessionDurationMin ?? '—'} min`}`} />
       <ReviewRow label="Local" value={training.trainingLocation ? locationLabels[training.trainingLocation] : 'Não informado'} />
       <ReviewRow label="Equipamentos" value={training.trainingLocation === 'full_gym' ? 'Academia completa' : joinOrNone(training.availableEquipment.map((item) => item === 'other' ? training.otherEquipmentLabel || 'Outro' : EQUIPMENT_LABELS[item]))} />
       <ReviewRow label="Cuidados" value={training.hasPainOrLimitation ? joinOrNone(training.painAreas.map((item) => BODY_AREA_LABELS[item])) : 'Nenhuma dor ou limitação declarada'} />

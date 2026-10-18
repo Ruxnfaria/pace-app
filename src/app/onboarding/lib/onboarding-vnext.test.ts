@@ -4,6 +4,10 @@ import test from 'node:test';
 import { buildOnboardingV2Payload } from './build-onboarding-v2-payload.ts';
 import { parseOnboardingV2Draft } from './onboarding-v2-draft.ts';
 import {
+  formatBirthDateForReview,
+  formatWeekdaysForReview,
+} from './onboarding-v2-review-format.ts';
+import {
   getNextOnboardingV2Step,
   getPreviousOnboardingV2Step,
   ONBOARDING_V2_STEPS,
@@ -105,6 +109,41 @@ test('normaliza preferred_meals_per_day ausente para null no schema 5', () => {
     meal_break_availability: 'limited',
     preferred_training_period: 'evening',
   });
+});
+
+test('formata a data de nascimento somente para a revisão', () => {
+  const form = completeForm();
+  form.health.birthDate = '2005-01-31';
+
+  assert.equal(formatBirthDateForReview(form.health.birthDate), '31/01/2005');
+  assert.equal(form.health.birthDate, '2005-01-31');
+
+  const payload = buildOnboardingV2Payload(
+    form,
+    '00000000-0000-4000-8000-000000000001',
+    { referenceDate: new Date('2026-10-18T12:00:00Z') },
+  );
+  assert.equal(payload.health.birth_date, '2005-01-31');
+});
+
+test('resume dias contínuos como intervalo sem alterar os valores persistidos', () => {
+  const form = completeForm();
+  form.training.trainingDaysPerWeek = 6;
+  form.training.availableWeekdays = [1, 2, 3, 4, 5, 6];
+
+  assert.equal(formatWeekdaysForReview(form.training.availableWeekdays), 'Seg a Sáb');
+
+  const payload = buildOnboardingV2Payload(
+    form,
+    '00000000-0000-4000-8000-000000000001',
+    { referenceDate: new Date('2026-10-18T12:00:00Z') },
+  );
+  assert.deepEqual(payload.training.available_weekdays, [1, 2, 3, 4, 5, 6]);
+});
+
+test('mantém a lista abreviada quando os dias não são contínuos', () => {
+  assert.equal(formatWeekdaysForReview([1, 3, 5]), 'Seg, Qua, Sex');
+  assert.equal(formatWeekdaysForReview([2, 4, 6]), 'Ter, Qui, Sáb');
 });
 
 test('valida horários locais e permite rotina que atravessa meia-noite', () => {
