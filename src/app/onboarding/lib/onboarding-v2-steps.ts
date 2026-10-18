@@ -23,7 +23,6 @@ export const ONBOARDING_V2_STEPS: readonly OnboardingV2StepDefinition[] = [
   { id: 'training-frequency', section: 'training' },
   { id: 'training-location', section: 'training' },
   { id: 'pain', section: 'training' },
-  { id: 'meal-training-routine', section: 'nutrition' },
   { id: 'meal-schedule-flexibility', section: 'nutrition' },
   { id: 'dietary-pattern', section: 'nutrition' },
   { id: 'restrictions', section: 'nutrition' },

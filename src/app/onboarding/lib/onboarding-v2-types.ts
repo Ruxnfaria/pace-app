@@ -259,7 +259,6 @@ export type OnboardingV2StepId =
   | 'training-frequency'
   | 'training-location'
   | 'pain'
-  | 'meal-training-routine'
   | 'meal-schedule-flexibility'
   | 'dietary-pattern'
   | 'restrictions'

@@ -66,12 +66,16 @@ function completeForm(): OnboardingV2FormState {
   };
 }
 
-test('remove a escolha de refeições e mantém a navegação agrupada', () => {
+test('mantém 16 etapas sem a rotina redundante e preserva a navegação agrupada', () => {
   const form = completeForm();
   const ids = ONBOARDING_V2_STEPS.map(({ id }) => id);
 
+  assert.equal(ids.length, 16);
   assert.equal(ids.includes('preferred-meals-per-day' as never), false);
+  assert.equal(ids.includes('meal-training-routine' as never), false);
   assert.equal(getNextOnboardingV2Step(form, 'training-experience')?.id, 'training-frequency');
+  assert.equal(getNextOnboardingV2Step(form, 'pain')?.id, 'meal-schedule-flexibility');
+  assert.equal(getPreviousOnboardingV2Step(form, 'meal-schedule-flexibility')?.id, 'pain');
   assert.equal(getPreviousOnboardingV2Step(form, 'dietary-pattern')?.id, 'meal-schedule-flexibility');
 });
 
@@ -115,11 +119,22 @@ test('valida horários locais e permite rotina que atravessa meia-noite', () => 
   assert.equal(validateOnboardingV2Step('daily-routine', overnight).valid, false);
 });
 
-test('valida pausas e período habitual de treino', () => {
+test('valida período habitual de treino junto da frequência', () => {
   const form = completeForm();
-  assert.equal(validateOnboardingV2Step('meal-training-routine', form).valid, true);
+  assert.equal(validateOnboardingV2Step('training-frequency', form).valid, true);
+  form.routine.preferredTrainingPeriod = undefined;
+  const result = validateOnboardingV2Step('training-frequency', form);
+  assert.equal(result.valid, false);
+  assert.equal(result.issues.at(-1)?.field, 'routine.preferredTrainingPeriod');
+});
+
+test('valida pausas para alimentação na etapa de rotina alimentar', () => {
+  const form = completeForm();
+  assert.equal(validateOnboardingV2Step('meal-schedule-flexibility', form).valid, true);
   form.routine.mealBreakAvailability = undefined;
-  assert.equal(validateOnboardingV2Step('meal-training-routine', form).valid, false);
+  const result = validateOnboardingV2Step('meal-schedule-flexibility', form);
+  assert.equal(result.valid, false);
+  assert.equal(result.issues.at(-1)?.field, 'routine.mealBreakAvailability');
 });
 
 test('voltar e avançar preserva o contexto preenchido', () => {
@@ -156,14 +171,14 @@ test('restaura draft antigo de uma etapa consolidada sem perder respostas', () =
   assert.equal(restored?.form.routine.wakeTime, undefined);
 });
 
-test('draft schema 5 preserva todo o contexto de rotina', () => {
+test('draft schema 5 da etapa removida migra sem perder o contexto de rotina', () => {
   const form = completeForm();
   const restored = parseOnboardingV2Draft(JSON.stringify({
     version: 5,
     state: { currentStepId: 'meal-training-routine', form },
   }));
 
-  assert.equal(restored?.currentStepId, 'meal-training-routine');
+  assert.equal(restored?.currentStepId, 'meal-schedule-flexibility');
   assert.deepEqual(restored?.form.routine, form.routine);
 });
 

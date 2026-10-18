@@ -257,6 +257,9 @@ export function validateOnboardingV2Step(
       if (!isOneOf(SESSION_DURATIONS, training.sessionDurationMin)) {
         issues.push(issue(stepId, 'training.sessionDurationMin', 'Escolha uma duração válida.'));
       }
+      if (!isOneOf(PREFERRED_TRAINING_PERIODS, routine.preferredTrainingPeriod)) {
+        issues.push(issue(stepId, 'routine.preferredTrainingPeriod', 'Escolha o período em que costuma treinar.'));
+      }
       break;
     case 'training-location':
       if (!isOneOf(TRAINING_LOCATIONS, training.trainingLocation)) {
@@ -306,17 +309,12 @@ export function validateOnboardingV2Step(
         issues.push(issue(stepId, 'training.painAreas', 'Mantenha as áreas coerentes com a resposta de dor.'));
       }
       break;
-    case 'meal-training-routine':
-      if (!isOneOf(MEAL_BREAK_AVAILABILITIES, routine.mealBreakAvailability)) {
-        issues.push(issue(stepId, 'routine.mealBreakAvailability', 'Escolha sua disponibilidade para pausas.'));
-      }
-      if (!isOneOf(PREFERRED_TRAINING_PERIODS, routine.preferredTrainingPeriod)) {
-        issues.push(issue(stepId, 'routine.preferredTrainingPeriod', 'Escolha o período em que costuma treinar.'));
-      }
-      break;
     case 'meal-schedule-flexibility':
       if (!isOneOf(MEAL_SCHEDULE_FLEXIBILITIES, nutrition.mealScheduleFlexibility)) {
         issues.push(issue(stepId, 'nutrition.mealScheduleFlexibility', 'Escolha quanto espaço sua rotina oferece para organizar a alimentação.'));
+      }
+      if (!isOneOf(MEAL_BREAK_AVAILABILITIES, routine.mealBreakAvailability)) {
+        issues.push(issue(stepId, 'routine.mealBreakAvailability', 'Escolha sua disponibilidade para pausas.'));
       }
       if (!isOneOf(FOOD_PREPARATION_STYLES, nutrition.preparationStyle)) {
         issues.push(issue(stepId, 'nutrition.preparationStyle', 'Escolha um preparo válido.'));

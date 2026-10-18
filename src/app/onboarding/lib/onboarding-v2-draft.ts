@@ -83,6 +83,7 @@ export function parseOnboardingV2DraftEnvelope(
       'session-duration': 'training-frequency',
       equipment: 'training-location',
       'pain-areas': 'pain',
+      'meal-training-routine': 'meal-schedule-flexibility',
       'preferred-meals-per-day': 'meal-schedule-flexibility',
       'preparation-style': 'meal-schedule-flexibility',
       'budget-style': 'meal-schedule-flexibility',
