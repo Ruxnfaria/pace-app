@@ -49,6 +49,7 @@ import {
   TRAINING_DAYS_PER_WEEK,
   TRAINING_EXPERIENCES,
   TRAINING_LOCATIONS,
+  type ActivityLevel,
   type BodyArea,
   type DietaryPattern,
   type Equipment,
@@ -59,6 +60,7 @@ import {
   type OnboardingV2RestrictionForm,
   type OnboardingV2StepId,
   type PrimaryGoal,
+  type PreferredMealsPerDay,
   type RestrictionCode,
   type SupplementCode,
   type Weekday,
@@ -121,6 +123,13 @@ const BODY_AREA_LABELS: Record<BodyArea, string> = {
 };
 
 const GOAL_LABELS = Object.fromEntries(GOAL_OPTIONS.map(({ value, title }) => [value, title])) as Record<PrimaryGoal, string>;
+const ACTIVITY_LEVEL_OPTIONS = [
+  { value: 'sedentary', title: 'Sedentária', description: 'Passo grande parte do dia sentado(a) e me movimento pouco fora dos treinos.' },
+  { value: 'light', title: 'Pouco ativa', description: 'Tenho alguma movimentação no dia, mas a maior parte da rotina é leve.' },
+  { value: 'moderate', title: 'Ativa', description: 'Caminho ou me movimento bastante ao longo do dia.' },
+  { value: 'high', title: 'Muito ativa', description: 'Minha rotina diária envolve bastante movimento ou trabalho fisicamente ativo.' },
+] satisfies readonly ChoiceCardOption<ActivityLevel>[];
+const ACTIVITY_LEVEL_LABELS = Object.fromEntries(ACTIVITY_LEVEL_OPTIONS.map(({ value, title }) => [value, title])) as Record<ActivityLevel, string>;
 const WEEKDAY_LABELS: Record<Weekday, string> = { 1: 'Seg', 2: 'Ter', 3: 'Qua', 4: 'Qui', 5: 'Sex', 6: 'Sáb', 7: 'Dom' };
 const MEAL_SCHEDULE_OPTIONS = [
   { value: 'limited', title: 'Pouco tempo', description: 'Preciso de uma organização bem prática para o dia a dia.' },
@@ -128,6 +137,10 @@ const MEAL_SCHEDULE_OPTIONS = [
   { value: 'flexible', title: 'Bem flexível', description: 'Tenho liberdade para organizar os horários ao longo do dia.' },
 ] satisfies readonly ChoiceCardOption<MealScheduleFlexibility>[];
 const MEAL_SCHEDULE_LABELS = Object.fromEntries(MEAL_SCHEDULE_OPTIONS.map(({ value, title }) => [value, title])) as Record<MealScheduleFlexibility, string>;
+const PREFERRED_MEALS_OPTIONS = [
+  { value: 'none', title: 'Sem preferência', description: 'O sistema poderá usar um padrão explícito mais tarde.' },
+  ...([2, 3, 4, 5, 6] as const).map((value) => ({ value: String(value), title: `${value} refeições` })),
+] as const;
 const PREPARATION_OPTIONS = [
   { value: 'very_quick', title: 'O mais prático possível', description: 'Refeições rápidas e montagem simples.' },
   { value: 'cook_some', title: 'Cozinho um pouco', description: 'Equilíbrio entre praticidade e preparo.' },
@@ -176,6 +189,7 @@ const STEP_COPY: Record<OnboardingV2StepId, { eyebrow: string; title: string; su
   'birth-date': { eyebrow: 'Você', title: 'Quando você nasceu?', subtitle: 'Isso ajuda a personalizar seu plano com segurança.' },
   'biological-sex': { eyebrow: 'Você', title: 'Qual opção descreve seu sexo biológico?', subtitle: 'Usamos essa informação apenas para personalizar seus cálculos.' },
   measurements: { eyebrow: 'Você', title: 'Quais são suas medidas?', subtitle: 'O peso-alvo é opcional e pode ser alterado depois.' },
+  'activity-level': { eyebrow: 'Você', title: 'Quanto você se movimenta no dia a dia?', subtitle: 'Considere sua rotina inteira, além dos treinos.' },
   'training-experience': { eyebrow: 'Treino', title: 'Há quanto tempo você treina?', subtitle: 'Não existe resposta certa — o plano se adapta a você.' },
   'training-break': { eyebrow: 'Treino', title: 'Você ficou quanto tempo sem treinar?', subtitle: 'Vamos ajustar o ritmo da sua volta.' },
   'exercise-confidence': { eyebrow: 'Treino', title: 'Como você se sente treinando por conta própria?' },
@@ -187,6 +201,7 @@ const STEP_COPY: Record<OnboardingV2StepId, { eyebrow: string; title: string; su
   pain: { eyebrow: 'Treino', title: 'Sente dor ou tem alguma limitação?', subtitle: 'Isso não substitui avaliação profissional; serve para adaptar o plano.' },
   'pain-areas': { eyebrow: 'Treino', title: 'Quais regiões precisam de atenção?', subtitle: 'Selecione todas que se aplicam.' },
   'meal-schedule-flexibility': { eyebrow: 'Nutrição', title: 'Quanto espaço sua rotina oferece para organizar a alimentação?', subtitle: 'Isso ajuda o PACE a montar uma estrutura alimentar que caiba no seu dia.' },
+  'preferred-meals-per-day': { eyebrow: 'Nutrição', title: 'Quantas refeições você prefere fazer por dia?', subtitle: 'Você pode deixar o sistema definir isso mais tarde.' },
   'preparation-style': { eyebrow: 'Nutrição', title: 'Como você prefere preparar sua comida?' },
   'budget-style': { eyebrow: 'Nutrição', title: 'Como quer equilibrar custo e variedade?' },
   'dietary-pattern': { eyebrow: 'Nutrição', title: 'Qual padrão combina com você?' },
@@ -256,6 +271,8 @@ function StepContent({ stepId, form, dispatch, issues }: {
         const errorId = fieldIssueIndex === 0 ? 'step-error' : `step-error-${item.id}`;
         return <div key={item.id} className={item.id === 'target-weight' ? 'sm:col-span-2' : ''}><label htmlFor={item.id} className="mb-2 block text-sm font-bold text-zinc-200">{item.label}</label><div className="relative"><input id={item.id} type="number" inputMode="decimal" min="0" step="0.1" value={item.value ?? ''} placeholder={item.placeholder} onChange={(event) => dispatch({ type: 'update-health', changes: { [item.field]: numberOrUndefined(event.target.value) } })} aria-invalid={hasFieldError || undefined} aria-describedby={hasFieldError ? errorId : undefined} className="w-full rounded-2xl border border-white/10 bg-black/25 px-4 py-4 pr-14 text-lg font-bold text-white outline-none placeholder:text-zinc-700 focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20" /><span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm font-bold text-zinc-500">{item.unit}</span></div><FieldError id={errorId} issues={issues} fieldPrefix={`health.${item.field}`} /></div>;
       })}</div>;
+    case 'activity-level':
+      return <><ChoiceCards columns={1} options={ACTIVITY_LEVEL_OPTIONS} value={health.activityLevel} onChange={(activityLevel) => dispatch({ type: 'update-health', changes: { activityLevel } })} ariaLabel="Nível de atividade diária total" /><FieldError issues={issues} /></>;
     case 'training-experience':
       return <><ChoiceCards columns={1} options={EXPERIENCE_OPTIONS} value={training.trainingExperience} onChange={(trainingExperience) => dispatch({ type: 'update-training', changes: { trainingExperience } })} ariaLabel="Experiência de treino" /><FieldError issues={issues} /></>;
     case 'training-break':
@@ -296,6 +313,14 @@ function StepContent({ stepId, form, dispatch, issues }: {
     }
     case 'meal-schedule-flexibility':
       return <><ChoiceCards columns={1} options={MEAL_SCHEDULE_OPTIONS} value={nutrition.mealScheduleFlexibility} onChange={(mealScheduleFlexibility) => dispatch({ type: 'update-nutrition', changes: { mealScheduleFlexibility } })} ariaLabel="Flexibilidade da rotina para organizar a alimentação" /><FieldError issues={issues} /></>;
+    case 'preferred-meals-per-day': {
+      const value = nutrition.preferredMealsPerDay === undefined
+        ? undefined
+        : nutrition.preferredMealsPerDay === null
+          ? 'none'
+          : String(nutrition.preferredMealsPerDay);
+      return <><ChoiceCards columns={1} options={PREFERRED_MEALS_OPTIONS} value={value} onChange={(selected) => dispatch({ type: 'update-nutrition', changes: { preferredMealsPerDay: selected === 'none' ? null : Number(selected) as PreferredMealsPerDay } })} ariaLabel="Quantidade preferida de refeições por dia" /><FieldError issues={issues} /></>;
+    }
     case 'preparation-style':
       return <><ChoiceCards columns={1} options={PREPARATION_OPTIONS} value={nutrition.preparationStyle} onChange={(preparationStyle) => dispatch({ type: 'update-nutrition', changes: { preparationStyle } })} ariaLabel="Estilo de preparo" /><FieldError issues={issues} /></>;
     case 'budget-style':
@@ -348,6 +373,7 @@ function ReviewContent({ form, onEdit, editingDisabled = false }: { form: Onboar
       <ReviewRow label="Nascimento" value={health.birthDate ?? 'Não informado'} />
       <ReviewRow label="Sexo biológico" value={health.biologicalSex ? sexLabels[health.biologicalSex] : 'Não informado'} />
       <ReviewRow label="Medidas" value={`${health.heightCm ?? '—'} cm · ${health.weightKg ?? '—'} kg${health.targetWeightKg ? ` · meta ${health.targetWeightKg} kg` : ''}`} />
+      <ReviewRow label="Atividade diária" value={health.activityLevel ? ACTIVITY_LEVEL_LABELS[health.activityLevel] : 'Não informada'} />
     </ReviewCard>
     <ReviewCard title="Treino" editLabel="Editar dados de treino" onEdit={() => onEdit('training-experience')} editingDisabled={editingDisabled}>
       <ReviewRow label="Experiência" value={training.trainingExperience ? experienceLabels[training.trainingExperience] : 'Não informada'} />
@@ -359,6 +385,7 @@ function ReviewContent({ form, onEdit, editingDisabled = false }: { form: Onboar
     </ReviewCard>
     <ReviewCard title="Nutrição" editLabel="Editar dados de nutrição" onEdit={() => onEdit('meal-schedule-flexibility')} editingDisabled={editingDisabled}>
       <ReviewRow label="Flexibilidade da rotina" value={nutrition.mealScheduleFlexibility ? MEAL_SCHEDULE_LABELS[nutrition.mealScheduleFlexibility] : 'Não informada'} />
+      <ReviewRow label="Refeições por dia" value={nutrition.preferredMealsPerDay === null ? 'Sem preferência declarada' : nutrition.preferredMealsPerDay ? `${nutrition.preferredMealsPerDay} refeições` : 'Não informada'} />
       <ReviewRow label="Preparo" value={nutrition.preparationStyle ? PREPARATION_LABELS[nutrition.preparationStyle] : 'Não informado'} />
       <ReviewRow label="Orçamento" value={nutrition.budgetStyle ? BUDGET_LABELS[nutrition.budgetStyle] : 'Não informado'} />
       <ReviewRow label="Padrão" value={nutrition.dietaryPattern ? nutrition.dietaryPattern === 'other' ? nutrition.dietaryPatternOtherLabel || 'Outro' : DIETARY_LABELS[nutrition.dietaryPattern] : 'Não informado'} />
@@ -445,7 +472,7 @@ export function OnboardingV2Flow({ draftScope, onSubmit, onCompleted }: Onboardi
           setSubmissionPhase(finishOnboardingSubmission(true));
         }
       } catch (error) {
-        console.error('[PRAXE] Unexpected V2.1 submit handler failure.', error);
+        console.error('[PRAXE] Unexpected onboarding schema 4 submit handler failure.', error);
         setNotice('Não foi possível concluir seu cadastro agora. Tente novamente.');
         submitInFlightRef.current = false;
         setSubmissionPhase(finishOnboardingSubmission(false));

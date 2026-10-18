@@ -17,6 +17,7 @@ export const ONBOARDING_V2_STEPS: readonly OnboardingV2StepDefinition[] = [
   { id: 'birth-date', section: 'health' },
   { id: 'biological-sex', section: 'health' },
   { id: 'measurements', section: 'health' },
+  { id: 'activity-level', section: 'health' },
   { id: 'training-experience', section: 'training' },
   {
     id: 'training-break',
@@ -42,6 +43,7 @@ export const ONBOARDING_V2_STEPS: readonly OnboardingV2StepDefinition[] = [
     isVisible: ({ training }) => training.hasPainOrLimitation === true,
   },
   { id: 'meal-schedule-flexibility', section: 'nutrition' },
+  { id: 'preferred-meals-per-day', section: 'nutrition' },
   { id: 'preparation-style', section: 'nutrition' },
   { id: 'budget-style', section: 'nutrition' },
   { id: 'dietary-pattern', section: 'nutrition' },

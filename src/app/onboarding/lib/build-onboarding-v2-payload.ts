@@ -12,9 +12,12 @@ const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export class OnboardingV2PayloadBuildError extends Error {
-  constructor(public readonly issues: OnboardingV2ValidationIssue[]) {
+  readonly issues: OnboardingV2ValidationIssue[];
+
+  constructor(issues: OnboardingV2ValidationIssue[]) {
     super('O estado do Onboarding V2 não pode ser serializado.');
     this.name = 'OnboardingV2PayloadBuildError';
+    this.issues = issues;
   }
 }
 
@@ -52,7 +55,7 @@ export function buildOnboardingV2Payload(
 
   return {
     idempotency_key: idempotencyKey,
-    payload_schema_version: 2,
+    payload_schema_version: 4,
     health: {
       birth_date: required(health.birthDate, 'health.birthDate'),
       biological_sex: required(health.biologicalSex, 'health.biologicalSex'),
@@ -60,6 +63,7 @@ export function buildOnboardingV2Payload(
       weight_kg: required(health.weightKg, 'health.weightKg'),
       target_weight_kg: health.targetWeightKg ?? null,
       primary_goal: primaryGoal,
+      activity_level: required(health.activityLevel, 'health.activityLevel'),
     },
     training: {
       primary_goal: primaryGoal,
@@ -102,6 +106,10 @@ export function buildOnboardingV2Payload(
       meal_schedule_flexibility: required(
         nutrition.mealScheduleFlexibility,
         'nutrition.mealScheduleFlexibility',
+      ),
+      preferred_meals_per_day: required(
+        nutrition.preferredMealsPerDay,
+        'nutrition.preferredMealsPerDay',
       ),
       food_preparation_style: required(
         nutrition.preparationStyle,

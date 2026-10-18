@@ -85,6 +85,8 @@ export const ACTIVITY_CODES = [
 ] as const;
 export const ACTIVITY_SCHEDULE_TYPES = ['fixed_weekdays', 'variable'] as const;
 export const MEAL_SCHEDULE_FLEXIBILITIES = ['limited', 'moderate', 'flexible'] as const;
+export const ACTIVITY_LEVELS = ['sedentary', 'light', 'moderate', 'high'] as const;
+export const PREFERRED_MEALS_PER_DAY = [2, 3, 4, 5, 6] as const;
 export const FOOD_PREPARATION_STYLES = [
   'very_quick',
   'cook_some',
@@ -140,6 +142,8 @@ export type BodyArea = (typeof BODY_AREAS)[number];
 export type ActivityCode = (typeof ACTIVITY_CODES)[number];
 export type ActivityScheduleType = (typeof ACTIVITY_SCHEDULE_TYPES)[number];
 export type MealScheduleFlexibility = (typeof MEAL_SCHEDULE_FLEXIBILITIES)[number];
+export type ActivityLevel = (typeof ACTIVITY_LEVELS)[number];
+export type PreferredMealsPerDay = (typeof PREFERRED_MEALS_PER_DAY)[number];
 export type FoodPreparationStyle = (typeof FOOD_PREPARATION_STYLES)[number];
 export type FoodBudgetStyle = (typeof FOOD_BUDGET_STYLES)[number];
 export type DietaryPattern = (typeof DIETARY_PATTERNS)[number];
@@ -178,6 +182,7 @@ export interface OnboardingV2HealthForm {
   heightCm: number | undefined;
   weightKg: number | undefined;
   targetWeightKg: number | null | undefined;
+  activityLevel: ActivityLevel | undefined;
 }
 
 export interface OnboardingV2TrainingForm {
@@ -198,6 +203,7 @@ export interface OnboardingV2TrainingForm {
 
 export interface OnboardingV2NutritionForm {
   mealScheduleFlexibility: MealScheduleFlexibility | undefined;
+  preferredMealsPerDay: PreferredMealsPerDay | null | undefined;
   preparationStyle: FoodPreparationStyle | undefined;
   budgetStyle: FoodBudgetStyle | undefined;
   dietaryPattern: DietaryPattern | undefined;
@@ -223,6 +229,7 @@ export type OnboardingV2StepId =
   | 'birth-date'
   | 'biological-sex'
   | 'measurements'
+  | 'activity-level'
   | 'training-experience'
   | 'training-break'
   | 'exercise-confidence'
@@ -234,6 +241,7 @@ export type OnboardingV2StepId =
   | 'pain'
   | 'pain-areas'
   | 'meal-schedule-flexibility'
+  | 'preferred-meals-per-day'
   | 'preparation-style'
   | 'budget-style'
   | 'dietary-pattern'
@@ -273,7 +281,7 @@ export interface OnboardingV2SupplementPayload {
 
 export interface CompleteOnboardingV2Payload {
   idempotency_key: string;
-  payload_schema_version: 2;
+  payload_schema_version: 4;
   health: {
     birth_date: string;
     biological_sex: BiologicalSex;
@@ -281,6 +289,7 @@ export interface CompleteOnboardingV2Payload {
     weight_kg: number;
     target_weight_kg: number | null;
     primary_goal: Goal;
+    activity_level: ActivityLevel;
   };
   training: {
     primary_goal: Goal;
@@ -302,6 +311,7 @@ export interface CompleteOnboardingV2Payload {
   };
   nutrition: {
     meal_schedule_flexibility: MealScheduleFlexibility;
+    preferred_meals_per_day: PreferredMealsPerDay | null;
     food_preparation_style: FoodPreparationStyle;
     food_budget_style: FoodBudgetStyle;
     dietary_pattern: DietaryPattern;

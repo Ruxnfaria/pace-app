@@ -1,5 +1,7 @@
 import {
+  ACTIVITY_LEVELS,
   MEAL_SCHEDULE_FLEXIBILITIES,
+  PREFERRED_MEALS_PER_DAY,
   PRIMARY_GOALS,
   type CompleteOnboardingV2Payload,
   type CompleteOnboardingV2Result,
@@ -9,7 +11,7 @@ export class OnboardingV2PreflightError extends Error {
   readonly reasons: string[];
 
   constructor(reasons: string[]) {
-    super('O payload do Onboarding V2.1 falhou no preflight local.');
+    super('O payload do Onboarding V2 com Nutrição V1 falhou no preflight local.');
     this.name = 'OnboardingV2PreflightError';
     this.reasons = reasons;
   }
@@ -32,14 +34,23 @@ export function assertOnboardingV2SubmissionPreflight(
   const nutrition = payload.nutrition as CompleteOnboardingV2Payload['nutrition'] &
     Record<string, unknown>;
 
-  if (payload.payload_schema_version !== 2) reasons.push('payload_schema_version precisa ser 2');
+  if (payload.payload_schema_version !== 4) reasons.push('payload_schema_version precisa ser 4');
   if (!PRIMARY_GOALS.some((goal) => goal === payload.health.primary_goal)) {
     reasons.push('primary_goal inválido');
+  }
+  if (!ACTIVITY_LEVELS.includes(payload.health.activity_level)) {
+    reasons.push('activity_level ausente ou inválido');
   }
   if (payload.training.priority_muscles.length !== 0) reasons.push('priority_muscles precisa ser vazio');
   if (payload.training.activities.length !== 0) reasons.push('activities precisa ser vazio');
   if (!MEAL_SCHEDULE_FLEXIBILITIES.includes(payload.nutrition.meal_schedule_flexibility)) {
     reasons.push('meal_schedule_flexibility ausente ou inválido');
+  }
+  if (
+    payload.nutrition.preferred_meals_per_day !== null &&
+    !PREFERRED_MEALS_PER_DAY.includes(payload.nutrition.preferred_meals_per_day)
+  ) {
+    reasons.push('preferred_meals_per_day ausente ou inválido');
   }
   if ('meals_per_day' in nutrition || 'accepts_eggs' in nutrition || 'accepts_dairy' in nutrition) {
     reasons.push('o payload contém campos removidos');

@@ -25,6 +25,7 @@ export function createInitialOnboardingV2Form(): OnboardingV2FormState {
       heightCm: undefined,
       weightKg: undefined,
       targetWeightKg: undefined,
+      activityLevel: undefined,
     },
     training: {
       trainingExperience: undefined,
@@ -43,6 +44,7 @@ export function createInitialOnboardingV2Form(): OnboardingV2FormState {
     },
     nutrition: {
       mealScheduleFlexibility: undefined,
+      preferredMealsPerDay: undefined,
       preparationStyle: undefined,
       budgetStyle: undefined,
       dietaryPattern: undefined,

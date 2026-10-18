@@ -1,4 +1,3 @@
-import { createClient } from '@/lib/supabase/client';
 import type {
   CompleteOnboardingV2Payload,
   CompleteOnboardingV2Result,
@@ -26,28 +25,33 @@ export async function completeOnboardingV2(
   assertOnboardingV2SubmissionPreflight(payload);
 
   try {
-    const supabase = createClient();
-    const { data: authData, error: authError } = await supabase.auth.getUser();
-    if (authError || !authData.user) return { status: 'unauthenticated' };
-
-    const { data, error } = await supabase.rpc('complete_onboarding_v2', {
-      p_payload: payload,
+    const response = await fetch('/api/onboarding/complete-v2', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
     });
 
-    if (error) {
+    if (response.status === 401) return { status: 'unauthenticated' };
+
+    const data: unknown = await response.json();
+    if (!response.ok) {
+      const failure = typeof data === 'object' && data !== null
+        ? data as Record<string, unknown>
+        : {};
       return {
         status: 'backend_error',
-        message: error.message,
-        code: error.code,
+        message: typeof failure.error === 'string'
+          ? failure.error
+          : 'Não foi possível concluir o onboarding.',
+        code: typeof failure.code === 'string' ? failure.code : undefined,
       };
     }
 
-    const result = Array.isArray(data) ? data[0] : data;
-    if (!isCompleteOnboardingV2Result(result)) {
+    if (!isCompleteOnboardingV2Result(data)) {
       return { status: 'unexpected_error', error: new Error('Resposta inesperada da RPC.') };
     }
 
-    return { status: 'success', data: result };
+    return { status: 'success', data };
   } catch (error) {
     return { status: 'unexpected_error', error };
   }

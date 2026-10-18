@@ -1,5 +1,6 @@
 import { getVisibleOnboardingV2Steps, type OnboardingV2StepId } from './onboarding-v2-steps';
 import {
+  ACTIVITY_LEVELS,
   BIOLOGICAL_SEXES,
   BODY_AREAS,
   DIETARY_PATTERNS,
@@ -9,6 +10,7 @@ import {
   FOOD_PREPARATION_STYLES,
   PRIMARY_GOALS,
   MEAL_SCHEDULE_FLEXIBILITIES,
+  PREFERRED_MEALS_PER_DAY,
   RECENT_TRAINING_BREAKS,
   RESTRICTION_CODES,
   RESTRICTION_TYPES,
@@ -188,6 +190,11 @@ export function validateOnboardingV2Step(
         );
       }
       break;
+    case 'activity-level':
+      if (!isOneOf(ACTIVITY_LEVELS, health.activityLevel)) {
+        issues.push(issue(stepId, 'health.activityLevel', 'Escolha seu nível de atividade diária.'));
+      }
+      break;
     case 'training-experience':
       if (!isOneOf(TRAINING_EXPERIENCES, training.trainingExperience)) {
         issues.push(issue(stepId, 'training.trainingExperience', 'Escolha uma experiência válida.'));
@@ -291,6 +298,14 @@ export function validateOnboardingV2Step(
     case 'meal-schedule-flexibility':
       if (!isOneOf(MEAL_SCHEDULE_FLEXIBILITIES, nutrition.mealScheduleFlexibility)) {
         issues.push(issue(stepId, 'nutrition.mealScheduleFlexibility', 'Escolha quanto espaço sua rotina oferece para organizar a alimentação.'));
+      }
+      break;
+    case 'preferred-meals-per-day':
+      if (
+        nutrition.preferredMealsPerDay !== null &&
+        !isOneOf(PREFERRED_MEALS_PER_DAY, nutrition.preferredMealsPerDay)
+      ) {
+        issues.push(issue(stepId, 'nutrition.preferredMealsPerDay', 'Escolha entre 2 e 6 refeições ou marque sem preferência.'));
       }
       break;
     case 'preparation-style':

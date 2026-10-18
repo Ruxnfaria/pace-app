@@ -4,11 +4,17 @@ import { useCallback, useEffect, useEffectEvent, useMemo, useState } from 'react
 import { ONBOARDING_V2_STEPS } from '../lib/onboarding-v2-steps';
 import type { OnboardingV2State } from '../lib/onboarding-v2-types';
 
-const DRAFT_VERSION = 2;
+const DRAFT_VERSION = 3;
 const DRAFT_KEY_PREFIX = 'pace:onboarding-v2:draft:v2';
 
 interface DraftEnvelope {
   version: typeof DRAFT_VERSION;
+  state: OnboardingV2State;
+  scopeComplete?: boolean;
+}
+
+interface LegacyDraftEnvelope {
+  version: 2;
   state: OnboardingV2State;
   scopeComplete?: boolean;
 }
@@ -58,12 +64,30 @@ export function parseOnboardingV2Draft(serialized: string): OnboardingV2State | 
 function parseOnboardingV2DraftEnvelope(serialized: string): DraftEnvelope | null {
   try {
     const value: unknown = JSON.parse(serialized);
-    if (!isRecord(value) || value.version !== DRAFT_VERSION || !isOnboardingV2State(value.state)) {
+    if (
+      !isRecord(value) ||
+      (value.version !== DRAFT_VERSION && value.version !== 2) ||
+      !isOnboardingV2State(value.state)
+    ) {
       return null;
     }
+    const legacy = value as unknown as LegacyDraftEnvelope;
+    const state: OnboardingV2State = value.version === 2
+      ? {
+          ...legacy.state,
+          form: {
+            ...legacy.state.form,
+            health: { ...legacy.state.form.health, activityLevel: undefined },
+            nutrition: {
+              ...legacy.state.form.nutrition,
+              preferredMealsPerDay: undefined,
+            },
+          },
+        }
+      : value.state;
     return {
       version: DRAFT_VERSION,
-      state: value.state,
+      state,
       scopeComplete: value.scopeComplete === true,
     };
   } catch {
