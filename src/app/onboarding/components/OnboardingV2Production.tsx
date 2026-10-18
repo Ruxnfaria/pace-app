@@ -30,7 +30,7 @@ export function OnboardingV2Production({ userId }: { userId: string }) {
         }
 
         if (outcome.status === 'unauthenticated') {
-          console.error('[PRAXE] Onboarding schema 4 submission rejected because the session is no longer valid.');
+          console.error('[PRAXE] Onboarding schema 5 submission rejected because the session is no longer valid.');
           return { ok: false, message: 'Sua sessão expirou. Entre novamente antes de concluir.' };
         }
 
@@ -43,7 +43,7 @@ export function OnboardingV2Production({ userId }: { userId: string }) {
           console.error('[PRAXE] Unexpected complete_onboarding_v2 failure.', outcome.error);
         }
       } catch (error) {
-        console.error('[PRAXE] Onboarding schema 4 preflight or serialization failed.', error);
+        console.error('[PRAXE] Onboarding schema 5 preflight or serialization failed.', error);
         return { ok: false, message: 'Algumas respostas precisam ser revisadas antes de concluir.' };
       }
 

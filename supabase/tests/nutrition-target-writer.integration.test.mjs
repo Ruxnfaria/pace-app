@@ -54,10 +54,11 @@ function onboardingPayload({
   biologicalSex = 'male',
   weightKg = 80,
   activityLevel = 'moderate',
+  schemaVersion = 4,
 } = {}) {
-  return {
+  const value = {
     idempotency_key: idempotencyKey,
-    payload_schema_version: 4,
+    payload_schema_version: schemaVersion,
     health: {
       birth_date: '1996-10-18', biological_sex: biologicalSex, height_cm: 180,
       weight_kg: weightKg, target_weight_kg: null, primary_goal: 'fat_loss',
@@ -80,6 +81,18 @@ function onboardingPayload({
       restrictions: [], disliked_foods: [], preferred_foods: [], supplements: [],
     },
   };
+  if (schemaVersion === 2) {
+    delete value.health.activity_level;
+    delete value.nutrition.preferred_meals_per_day;
+  }
+  if (schemaVersion === 5) {
+    value.routine = {
+      wake_time: '07:00', sleep_time: '23:00',
+      routine_predictability: 'predictable', meal_break_availability: 'limited',
+      preferred_training_period: 'evening',
+    };
+  }
+  return value;
 }
 
 function targetFor(payload, effectiveDate = '2026-10-18') {
@@ -124,6 +137,7 @@ async function bootstrap(local) {
     `select md5(pg_get_functiondef('public.complete_onboarding_v22(jsonb)'::regprocedure)) hash`,
   );
   await local.db.query(await readMigration('20261018040000_nutrition_target_writer.sql'));
+  await local.db.query(await readMigration('20261018050000_onboarding_vnext_routine_context.sql'));
   const after = await local.db.query(
     `select md5(pg_get_functiondef('public.complete_onboarding_v22(jsonb)'::regprocedure)) hash`,
   );
@@ -160,8 +174,10 @@ test('authoritative writer is atomic, idempotent, versioned, concurrent, and rev
 
     const eligibleUser = '11111111-1111-4111-8111-111111111111';
     const otherUser = '22222222-2222-4222-8222-222222222222';
+    const schema5User = '88888888-8888-4888-8888-888888888888';
     await createUser(db, eligibleUser);
     await createUser(db, otherUser);
+    await createUser(db, schema5User);
 
     const payload = onboardingPayload();
     const expected = targetFor(payload);
@@ -194,6 +210,132 @@ test('authoritative writer is atomic, idempotent, versioned, concurrent, and rev
     ]) assert.equal(first.rows[0][column], value);
     assert.deepEqual(first.rows[0].metadata.reasons, []);
     const immutableFirstCalories = first.rows[0].calories;
+
+    const schema5Payload = onboardingPayload({
+      idempotencyKey: '98989898-9898-4989-8989-989898989898',
+      schemaVersion: 5,
+    });
+    const schema5PayloadWithoutMeals = structuredClone(schema5Payload);
+    delete schema5PayloadWithoutMeals.nutrition.preferred_meals_per_day;
+    const schema5Target = targetFor(schema5Payload);
+
+    await db.query("select set_config('request.jwt.claim.sub',$1,false)", [schema5User]);
+    await db.query('set role authenticated');
+    const schema5Direct = await db.query(
+      'select * from public.complete_onboarding_v2($1::jsonb)',
+      [JSON.stringify(schema5PayloadWithoutMeals)],
+    );
+    assert.equal(schema5Direct.rows[0].result, 'completed');
+    const schema5ReplayWithoutKey = await db.query(
+      'select * from public.complete_onboarding_v2($1::jsonb)',
+      [JSON.stringify(schema5PayloadWithoutMeals)],
+    );
+    assert.equal(schema5ReplayWithoutKey.rows[0].result, 'replay');
+    const schema5ReplayWithNull = await db.query(
+      'select * from public.complete_onboarding_v2($1::jsonb)',
+      [JSON.stringify(schema5Payload)],
+    );
+    assert.equal(schema5ReplayWithNull.rows[0].result, 'replay');
+    await db.query('reset role');
+
+    await db.query('set role service_role');
+    const schema5Completion = await atomicOnboarding(
+      db, schema5User, schema5Payload, schema5Target,
+    );
+    const schema5AtomicReplayWithoutKey = await atomicOnboarding(
+      db, schema5User, schema5PayloadWithoutMeals, schema5Target,
+    );
+    await db.query('reset role');
+    assert.equal(schema5Completion.rows[0].result, 'replay');
+    assert.equal(schema5AtomicReplayWithoutKey.rows[0].result, 'replay');
+    const routineContext = await db.query(`
+      select n.wake_time::text, n.sleep_time::text, n.routine_predictability,
+             n.meal_break_availability, n.preferred_meals_per_day,
+             t.preferred_training_period,
+             r.payload_schema_version, r.canonicalization_version
+      from public.nutrition_profiles n
+      join public.training_profiles t using (user_id)
+      join public.onboarding_completion_receipts r using (user_id)
+      where n.user_id = $1
+    `, [schema5User]);
+    assert.deepEqual(routineContext.rows[0], {
+      wake_time: '07:00:00', sleep_time: '23:00:00',
+      routine_predictability: 'predictable', meal_break_availability: 'limited',
+      preferred_meals_per_day: null, preferred_training_period: 'evening',
+      payload_schema_version: 5,
+      canonicalization_version: 5,
+    });
+    const schema5Targets = await db.query(
+      `select count(*)::int count, min(calories)::float8 calories
+       from public.nutrition_target_snapshots where user_id=$1`,
+      [schema5User],
+    );
+    assert.deepEqual(schema5Targets.rows[0], {
+      count: 1,
+      calories: schema5Target.calories,
+    });
+
+    const schema5NullUser = '89898989-8989-4989-8989-898989898989';
+    await createUser(db, schema5NullUser);
+    const schema5NullPayload = onboardingPayload({
+      idempotencyKey: '96969696-9696-4969-8969-969696969696',
+      schemaVersion: 5,
+    });
+    const schema5NullPayloadWithoutMeals = structuredClone(schema5NullPayload);
+    delete schema5NullPayloadWithoutMeals.nutrition.preferred_meals_per_day;
+    const schema5NullTarget = targetFor(schema5NullPayload);
+    await db.query("select set_config('request.jwt.claim.sub',$1,false)", [schema5NullUser]);
+    await db.query('set role authenticated');
+    const schema5DirectWithNull = await db.query(
+      'select * from public.complete_onboarding_v2($1::jsonb)',
+      [JSON.stringify(schema5NullPayload)],
+    );
+    assert.equal(schema5DirectWithNull.rows[0].result, 'completed');
+    const schema5NullCrossFormReplay = await db.query(
+      'select * from public.complete_onboarding_v2($1::jsonb)',
+      [JSON.stringify(schema5NullPayloadWithoutMeals)],
+    );
+    assert.equal(schema5NullCrossFormReplay.rows[0].result, 'replay');
+    await db.query('reset role');
+    await db.query('set role service_role');
+    const schema5NullAtomicReplay = await atomicOnboarding(
+      db, schema5NullUser, schema5NullPayloadWithoutMeals, schema5NullTarget,
+    );
+    await db.query('reset role');
+    assert.equal(schema5NullAtomicReplay.rows[0].result, 'replay');
+    const schema5NullState = await db.query(`
+      select n.preferred_meals_per_day,
+             (select count(*)::int from public.onboarding_completion_receipts r
+              where r.user_id=n.user_id) receipt_count,
+             (select count(*)::int from public.nutrition_target_snapshots s
+              where s.user_id=n.user_id) target_count
+      from public.nutrition_profiles n where n.user_id=$1
+    `, [schema5NullUser]);
+    assert.deepEqual(schema5NullState.rows[0], {
+      preferred_meals_per_day: null,
+      receipt_count: 1,
+      target_count: 1,
+    });
+
+    const schema4MissingMealsUser = '99999999-9999-4999-8999-999999999999';
+    await createUser(db, schema4MissingMealsUser);
+    const schema4MissingMeals = onboardingPayload({
+      idempotencyKey: '97979797-9797-4979-8979-979797979797',
+    });
+    delete schema4MissingMeals.nutrition.preferred_meals_per_day;
+    await db.query(
+      "select set_config('request.jwt.claim.sub',$1,false)",
+      [schema4MissingMealsUser],
+    );
+    await db.query('set role authenticated');
+    await assert.rejects(
+      db.query(
+        'select * from public.complete_onboarding_v2($1::jsonb)',
+        [JSON.stringify(schema4MissingMeals)],
+      ),
+      (error) => error?.code === '22023',
+    );
+    await db.query('reset role');
 
     await db.query('set role service_role');
     const replay = await atomicOnboarding(db, eligibleUser, payload, expected);

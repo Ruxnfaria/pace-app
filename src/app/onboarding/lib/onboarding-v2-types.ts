@@ -7,6 +7,8 @@ export const GOALS = [
   'health',
 ] as const;
 
+export const ONBOARDING_SCHEMA_VERSION = 5 as const;
+
 // Keep the complete backend contract above, while limiting the initial V2.1
 // question to the three product-facing intentions currently offered.
 export const PRIMARY_GOALS = ['fat_loss', 'hypertrophy', 'conditioning'] as const;
@@ -86,6 +88,14 @@ export const ACTIVITY_CODES = [
 export const ACTIVITY_SCHEDULE_TYPES = ['fixed_weekdays', 'variable'] as const;
 export const MEAL_SCHEDULE_FLEXIBILITIES = ['limited', 'moderate', 'flexible'] as const;
 export const ACTIVITY_LEVELS = ['sedentary', 'light', 'moderate', 'high'] as const;
+export const ROUTINE_PREDICTABILITIES = ['predictable', 'variable'] as const;
+export const MEAL_BREAK_AVAILABILITIES = ['flexible', 'limited', 'difficult'] as const;
+export const PREFERRED_TRAINING_PERIODS = [
+  'morning',
+  'afternoon',
+  'evening',
+  'variable',
+] as const;
 export const PREFERRED_MEALS_PER_DAY = [2, 3, 4, 5, 6] as const;
 export const FOOD_PREPARATION_STYLES = [
   'very_quick',
@@ -143,6 +153,9 @@ export type ActivityCode = (typeof ACTIVITY_CODES)[number];
 export type ActivityScheduleType = (typeof ACTIVITY_SCHEDULE_TYPES)[number];
 export type MealScheduleFlexibility = (typeof MEAL_SCHEDULE_FLEXIBILITIES)[number];
 export type ActivityLevel = (typeof ACTIVITY_LEVELS)[number];
+export type RoutinePredictability = (typeof ROUTINE_PREDICTABILITIES)[number];
+export type MealBreakAvailability = (typeof MEAL_BREAK_AVAILABILITIES)[number];
+export type PreferredTrainingPeriod = (typeof PREFERRED_TRAINING_PERIODS)[number];
 export type PreferredMealsPerDay = (typeof PREFERRED_MEALS_PER_DAY)[number];
 export type FoodPreparationStyle = (typeof FOOD_PREPARATION_STYLES)[number];
 export type FoodBudgetStyle = (typeof FOOD_BUDGET_STYLES)[number];
@@ -216,10 +229,21 @@ export interface OnboardingV2NutritionForm {
   supplements: OnboardingV2SupplementForm[];
 }
 
+// Daily-routine context informs a future meal-plan recommendation. These are
+// declared constraints, never nutrition recommendations or meal-count targets.
+export interface OnboardingV2RoutineForm {
+  wakeTime: string | undefined;
+  sleepTime: string | undefined;
+  routinePredictability: RoutinePredictability | undefined;
+  mealBreakAvailability: MealBreakAvailability | undefined;
+  preferredTrainingPeriod: PreferredTrainingPeriod | undefined;
+}
+
 export interface OnboardingV2FormState {
   health: OnboardingV2HealthForm;
   training: OnboardingV2TrainingForm;
   nutrition: OnboardingV2NutritionForm;
+  routine: OnboardingV2RoutineForm;
 }
 
 export type OnboardingV2Section = 'health' | 'training' | 'nutrition' | 'review';
@@ -230,20 +254,13 @@ export type OnboardingV2StepId =
   | 'biological-sex'
   | 'measurements'
   | 'activity-level'
+  | 'daily-routine'
   | 'training-experience'
-  | 'training-break'
-  | 'exercise-confidence'
   | 'training-frequency'
-  | 'training-weekdays'
-  | 'session-duration'
   | 'training-location'
-  | 'equipment'
   | 'pain'
-  | 'pain-areas'
+  | 'meal-training-routine'
   | 'meal-schedule-flexibility'
-  | 'preferred-meals-per-day'
-  | 'preparation-style'
-  | 'budget-style'
   | 'dietary-pattern'
   | 'restrictions'
   | 'food-preferences'
@@ -281,7 +298,7 @@ export interface OnboardingV2SupplementPayload {
 
 export interface CompleteOnboardingV2Payload {
   idempotency_key: string;
-  payload_schema_version: 4;
+  payload_schema_version: 4 | 5;
   health: {
     birth_date: string;
     biological_sex: BiologicalSex;
@@ -322,6 +339,13 @@ export interface CompleteOnboardingV2Payload {
     disliked_foods: OnboardingV2DeclaredFoodPayload[];
     preferred_foods: OnboardingV2DeclaredFoodPayload[];
     supplements: OnboardingV2SupplementPayload[];
+  };
+  routine?: {
+    wake_time: string;
+    sleep_time: string;
+    routine_predictability: RoutinePredictability;
+    meal_break_availability: MealBreakAvailability;
+    preferred_training_period: PreferredTrainingPeriod;
   };
 }
 

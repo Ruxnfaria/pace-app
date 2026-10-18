@@ -72,24 +72,24 @@ export function TagListInput({
               addValue();
             }
           }}
-          className="min-h-12 min-w-0 flex-1 rounded-2xl border border-white/10 bg-black/25 px-4 text-base text-white outline-none transition placeholder:text-zinc-600 focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20"
+          className="min-h-12 min-w-0 flex-1 rounded-2xl border border-white/10 bg-black/25 px-4 text-base text-white outline-none transition placeholder:text-zinc-600 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
         />
         <button
           type="button"
           onClick={addValue}
-          className="flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-violet-400/30 bg-violet-500/10 px-5 text-sm font-black text-violet-200 transition hover:bg-violet-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+          className="flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-amber-400/30 bg-amber-500/10 px-5 text-sm font-black text-amber-200 transition hover:bg-amber-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
         >
           <Plus aria-hidden="true" className="size-4" />
           Adicionar
         </button>
       </div>
-      <p id={messageId} role="status" className="min-h-5 text-xs font-semibold text-violet-300">
+      <p id={messageId} role="status" className="min-h-5 text-xs font-semibold text-amber-300">
         {message}
       </p>
       {values.length > 0 ? (
         <ul className="flex flex-wrap gap-2" aria-label={`${label}: itens adicionados`}>
           {values.map((item, index) => (
-            <li key={`${item}-${index}`} className="flex max-w-full items-center gap-2 rounded-full border border-violet-400/25 bg-violet-500/10 py-2 pl-3 pr-2 text-sm text-violet-100">
+            <li key={`${item}-${index}`} className="flex max-w-full items-center gap-2 rounded-full border border-amber-400/25 bg-amber-500/10 py-2 pl-3 pr-2 text-sm text-amber-100">
               <span className="break-all">{item}</span>
               <button
                 type="button"
@@ -98,7 +98,7 @@ export function TagListInput({
                   setMessage(`${item} removido.`);
                 }}
                 aria-label={`Remover ${item}`}
-                className="grid size-7 shrink-0 place-items-center rounded-full text-violet-300 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300"
+                className="grid size-7 shrink-0 place-items-center rounded-full text-amber-300 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300"
               >
                 <X aria-hidden="true" className="size-4" />
               </button>

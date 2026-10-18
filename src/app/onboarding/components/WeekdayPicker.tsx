@@ -48,10 +48,10 @@ export function WeekdayPicker({
             aria-pressed={selected}
             disabled={disabled}
             onClick={() => toggle(day)}
-            className={`flex aspect-square min-h-10 items-center justify-center rounded-xl border text-sm font-black transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 disabled:cursor-not-allowed disabled:opacity-35 ${
+            className={`flex aspect-square min-h-10 items-center justify-center rounded-xl border text-sm font-black transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 disabled:cursor-not-allowed disabled:opacity-35 ${
               selected
-                ? 'border-violet-500 bg-violet-500 text-white shadow-lg shadow-violet-950/40'
-                : 'border-white/10 bg-white/[0.035] text-zinc-400 hover:border-violet-400/50 hover:text-white'
+                ? 'border-amber-500 bg-amber-500 text-white shadow-lg shadow-amber-950/40'
+                : 'border-white/10 bg-white/[0.035] text-zinc-400 hover:border-amber-400/50 hover:text-white'
             }`}
           >
             <span className="sr-only">{selected ? 'Selecionado: ' : ''}</span>

@@ -1,12 +1,13 @@
 import type {
   CompleteOnboardingV2Payload,
   OnboardingV2FormState,
-} from './onboarding-v2-types';
+} from './onboarding-v2-types.ts';
+import { ONBOARDING_SCHEMA_VERSION } from './onboarding-v2-types.ts';
 import {
   validateOnboardingV2,
   type OnboardingV2ValidationIssue,
   type OnboardingV2ValidationOptions,
-} from './onboarding-v2-validation';
+} from './onboarding-v2-validation.ts';
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -46,7 +47,7 @@ export function buildOnboardingV2Payload(
     ]);
   }
 
-  const { health, training, nutrition } = form;
+  const { health, training, nutrition, routine } = form;
   const primaryGoal = required(health.primaryGoal, 'health.primaryGoal');
   const trainingExperience = required(
     training.trainingExperience,
@@ -55,7 +56,7 @@ export function buildOnboardingV2Payload(
 
   return {
     idempotency_key: idempotencyKey,
-    payload_schema_version: 4,
+    payload_schema_version: ONBOARDING_SCHEMA_VERSION,
     health: {
       birth_date: required(health.birthDate, 'health.birthDate'),
       biological_sex: required(health.biologicalSex, 'health.biologicalSex'),
@@ -107,10 +108,9 @@ export function buildOnboardingV2Payload(
         nutrition.mealScheduleFlexibility,
         'nutrition.mealScheduleFlexibility',
       ),
-      preferred_meals_per_day: required(
-        nutrition.preferredMealsPerDay,
-        'nutrition.preferredMealsPerDay',
-      ),
+      // Meal count is intentionally left for the future authoritative meal-plan writer.
+      // Older drafts may still carry a declared value, so preserve it when present.
+      preferred_meals_per_day: nutrition.preferredMealsPerDay ?? null,
       food_preparation_style: required(
         nutrition.preparationStyle,
         'nutrition.preparationStyle',
@@ -144,6 +144,22 @@ export function buildOnboardingV2Payload(
         supplement_code: supplement.supplementCode,
         declared_label: supplement.declaredLabel.trim(),
       })),
+    },
+    routine: {
+      wake_time: required(routine.wakeTime, 'routine.wakeTime'),
+      sleep_time: required(routine.sleepTime, 'routine.sleepTime'),
+      routine_predictability: required(
+        routine.routinePredictability,
+        'routine.routinePredictability',
+      ),
+      meal_break_availability: required(
+        routine.mealBreakAvailability,
+        'routine.mealBreakAvailability',
+      ),
+      preferred_training_period: required(
+        routine.preferredTrainingPeriod,
+        'routine.preferredTrainingPeriod',
+      ),
     },
   };
 }

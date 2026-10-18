@@ -20,7 +20,15 @@ export async function POST(request: Request) {
 
   let payload: CompleteOnboardingV2Payload;
   try {
-    payload = await request.json() as CompleteOnboardingV2Payload;
+    const submitted = await request.json() as CompleteOnboardingV2Payload;
+    payload = {
+      ...submitted,
+      nutrition: {
+        ...submitted.nutrition,
+        // Keep older/future clients compatible while the schema-4/schema-5 RPC still expects the key.
+        preferred_meals_per_day: submitted.nutrition?.preferred_meals_per_day ?? null,
+      },
+    };
     assertOnboardingV2SubmissionPreflight(payload);
   } catch (error) {
     const reasons = error instanceof OnboardingV2PreflightError ? error.reasons : undefined;
@@ -37,7 +45,7 @@ export async function POST(request: Request) {
     const code = typeof error === 'object' && error !== null && 'code' in error
       ? String(error.code)
       : undefined;
-    console.error('[PRAXE] Atomic schema-4 onboarding writer failed.', { code });
+    console.error('[PRAXE] Atomic schema-4/schema-5 onboarding writer failed.', { code });
     return NextResponse.json(
       { error: 'Não foi possível concluir o onboarding.', code },
       { status: 409 },

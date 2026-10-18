@@ -2,19 +2,20 @@ import {
   ONBOARDING_V2_STEPS,
   getNextOnboardingV2Step,
   getPreviousOnboardingV2Step,
-} from './onboarding-v2-steps';
+} from './onboarding-v2-steps.ts';
 import type {
   OnboardingV2DeclaredFoodForm,
   OnboardingV2FormState,
   OnboardingV2HealthForm,
   OnboardingV2NutritionForm,
+  OnboardingV2RoutineForm,
   OnboardingV2RestrictionForm,
   OnboardingV2State,
   OnboardingV2StepId,
   OnboardingV2SupplementForm,
   OnboardingV2TrainingForm,
-} from './onboarding-v2-types';
-import { PRIMARY_GOALS } from './onboarding-v2-types';
+} from './onboarding-v2-types.ts';
+import { PRIMARY_GOALS } from './onboarding-v2-types.ts';
 
 export function createInitialOnboardingV2Form(): OnboardingV2FormState {
   return {
@@ -44,7 +45,7 @@ export function createInitialOnboardingV2Form(): OnboardingV2FormState {
     },
     nutrition: {
       mealScheduleFlexibility: undefined,
-      preferredMealsPerDay: undefined,
+      preferredMealsPerDay: null,
       preparationStyle: undefined,
       budgetStyle: undefined,
       dietaryPattern: undefined,
@@ -55,6 +56,13 @@ export function createInitialOnboardingV2Form(): OnboardingV2FormState {
       preferredFoods: [],
       usesSupplements: undefined,
       supplements: [],
+    },
+    routine: {
+      wakeTime: undefined,
+      sleepTime: undefined,
+      routinePredictability: undefined,
+      mealBreakAvailability: undefined,
+      preferredTrainingPeriod: undefined,
     },
   };
 }
@@ -69,6 +77,7 @@ export type OnboardingV2Action =
   | { type: 'update-health'; changes: Partial<OnboardingV2HealthForm> }
   | { type: 'update-training'; changes: Partial<OnboardingV2TrainingForm> }
   | { type: 'update-nutrition'; changes: Partial<OnboardingV2NutritionForm> }
+  | { type: 'update-routine'; changes: Partial<OnboardingV2RoutineForm> }
   | { type: 'add-restriction'; item: OnboardingV2RestrictionForm }
   | { type: 'remove-restriction'; index: number }
   | { type: 'add-disliked-food'; item: OnboardingV2DeclaredFoodForm }
@@ -167,6 +176,11 @@ export function onboardingV2Reducer(
       };
     case 'update-nutrition':
       return withNutrition(state, { ...state.form.nutrition, ...action.changes });
+    case 'update-routine':
+      return {
+        ...state,
+        form: { ...state.form, routine: { ...state.form.routine, ...action.changes } },
+      };
     case 'add-restriction':
       return withNutrition(state, {
         ...state.form.nutrition,

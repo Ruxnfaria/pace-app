@@ -102,10 +102,10 @@ export function OnboardingV1Flow() {
     return (
       <main className="grid min-h-dvh place-items-center bg-[#0a0a0a] px-6 text-white">
         <div role="status" aria-live="polite" className="max-w-md text-center">
-          <span aria-hidden="true" className="mx-auto block size-10 animate-spin rounded-full border-4 border-violet-400 border-r-transparent" />
+          <span aria-hidden="true" className="mx-auto block size-10 animate-spin rounded-full border-4 border-amber-400 border-r-transparent" />
           <h1 className="mt-6 text-2xl font-black">Finalizando seu cadastro...</h1>
           <p className="mt-3 text-sm leading-6 text-zinc-400">Seus dados foram salvos. Estamos abrindo seu dashboard.</p>
-          <a href={ONBOARDING_COMPLETION_DESTINATION} className="mt-6 inline-flex min-h-12 items-center justify-center rounded-2xl border border-white/10 px-6 text-sm font-black text-violet-200 hover:bg-white/5">
+          <a href={ONBOARDING_COMPLETION_DESTINATION} className="mt-6 inline-flex min-h-12 items-center justify-center rounded-2xl border border-white/10 px-6 text-sm font-black text-amber-200 hover:bg-white/5">
             Ir para o dashboard se a página não avançar
           </a>
         </div>
@@ -125,7 +125,7 @@ export function OnboardingV1Flow() {
           </div>
           <div className="h-1.5 w-full bg-[#1f1f1f] rounded-full overflow-hidden">
             <div
-              className="h-full bg-[#7c3aed] transition-all duration-300 ease-out rounded-full shadow-lg shadow-purple-500/40"
+              className="h-full bg-[#f59e0b] transition-all duration-300 ease-out rounded-full shadow-lg shadow-amber-500/40"
               style={{ width: `${(step / 4) * 100}%` }}
             />
           </div>
@@ -157,11 +157,11 @@ export function OnboardingV1Flow() {
                         onClick={() => setGoal(item.id)}
                         className={`flex flex-col items-center justify-center p-5 rounded-xl border text-center transition-all ${
                           isSelected
-                            ? 'bg-[#7c3aed]/10 border-[#7c3aed] text-white shadow-lg shadow-purple-500/5'
+                            ? 'bg-[#f59e0b]/10 border-[#f59e0b] text-white shadow-lg shadow-amber-500/5'
                             : 'bg-[#111111] border-[#1f1f1f] text-zinc-400 hover:border-zinc-800'
                         }`}
                       >
-                        <Icon className={`w-6 h-6 mb-2 ${isSelected ? 'text-[#7c3aed]' : 'text-zinc-500'}`} />
+                        <Icon className={`w-6 h-6 mb-2 ${isSelected ? 'text-[#f59e0b]' : 'text-zinc-500'}`} />
                         <span className="text-xs font-bold">{item.label}</span>
                       </button>
                     );
@@ -190,11 +190,11 @@ export function OnboardingV1Flow() {
                         onClick={() => setLevel(item.id)}
                         className={`w-full p-4 rounded-xl border text-left transition-all ${
                           isSelected
-                            ? 'bg-[#7c3aed]/10 border-[#7c3aed] shadow-lg shadow-purple-500/5'
+                            ? 'bg-[#f59e0b]/10 border-[#f59e0b] shadow-lg shadow-amber-500/5'
                             : 'bg-[#111111] border-[#1f1f1f] hover:border-zinc-800'
                         }`}
                       >
-                        <h3 className={`text-xs font-bold ${isSelected ? 'text-[#7c3aed]' : 'text-white'}`}>{item.title}</h3>
+                        <h3 className={`text-xs font-bold ${isSelected ? 'text-[#f59e0b]' : 'text-white'}`}>{item.title}</h3>
                         <p className="text-[11px] text-zinc-500 mt-0.5">{item.desc}</p>
                       </button>
                     );
@@ -213,21 +213,21 @@ export function OnboardingV1Flow() {
                 <div className="grid grid-cols-2 gap-3 pt-2">
                   <div className="space-y-1">
                     <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Peso (kg)</label>
-                    <input type="number" placeholder="ex: 75" value={weight} onChange={(e) => setWeight(e.target.value)} className="w-full px-3 py-2.5 rounded-xl bg-[#111111] border border-[#1f1f1f] text-white focus:outline-none focus:border-[#7c3aed] text-xs" />
+                    <input type="number" placeholder="ex: 75" value={weight} onChange={(e) => setWeight(e.target.value)} className="w-full px-3 py-2.5 rounded-xl bg-[#111111] border border-[#1f1f1f] text-white focus:outline-none focus:border-[#f59e0b] text-xs" />
                   </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Altura (cm)</label>
-                    <input type="number" placeholder="ex: 175" value={height} onChange={(e) => setHeight(e.target.value)} className="w-full px-3 py-2.5 rounded-xl bg-[#111111] border border-[#1f1f1f] text-white focus:outline-none focus:border-[#7c3aed] text-xs" />
+                    <input type="number" placeholder="ex: 175" value={height} onChange={(e) => setHeight(e.target.value)} className="w-full px-3 py-2.5 rounded-xl bg-[#111111] border border-[#1f1f1f] text-white focus:outline-none focus:border-[#f59e0b] text-xs" />
                   </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Idade</label>
-                    <input type="number" placeholder="ex: 24" value={age} onChange={(e) => setAge(e.target.value)} className="w-full px-3 py-2.5 rounded-xl bg-[#111111] border border-[#1f1f1f] text-white focus:outline-none focus:border-[#7c3aed] text-xs" />
+                    <input type="number" placeholder="ex: 24" value={age} onChange={(e) => setAge(e.target.value)} className="w-full px-3 py-2.5 rounded-xl bg-[#111111] border border-[#1f1f1f] text-white focus:outline-none focus:border-[#f59e0b] text-xs" />
                   </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Biotipo / Sexo</label>
                     <div className="grid grid-cols-2 gap-2">
-                      <button onClick={() => setGender('M')} className={`py-2.5 rounded-xl border text-xs font-bold transition-all ${gender === 'M' ? 'bg-[#7c3aed] border-[#7c3aed]' : 'bg-[#111111] border-[#1f1f1f]'}`}>M</button>
-                      <button onClick={() => setGender('F')} className={`py-2.5 rounded-xl border text-xs font-bold transition-all ${gender === 'F' ? 'bg-[#7c3aed] border-[#7c3aed]' : 'bg-[#111111] border-[#1f1f1f]'}`}>F</button>
+                      <button onClick={() => setGender('M')} className={`py-2.5 rounded-xl border text-xs font-bold transition-all ${gender === 'M' ? 'bg-[#f59e0b] border-[#f59e0b]' : 'bg-[#111111] border-[#1f1f1f]'}`}>M</button>
+                      <button onClick={() => setGender('F')} className={`py-2.5 rounded-xl border text-xs font-bold transition-all ${gender === 'F' ? 'bg-[#f59e0b] border-[#f59e0b]' : 'bg-[#111111] border-[#1f1f1f]'}`}>F</button>
                     </div>
                   </div>
                 </div>
@@ -242,7 +242,7 @@ export function OnboardingV1Flow() {
                   <p className="text-xs text-zinc-400">Ajuste sua divisão semanal perfeita.</p>
                 </div>
                 <div className="flex flex-col items-center justify-center py-4 space-y-4">
-                  <div className="text-4xl font-black text-[#7c3aed]">{days} <span className="text-lg text-white">dias</span></div>
+                  <div className="text-4xl font-black text-[#f59e0b]">{days} <span className="text-lg text-white">dias</span></div>
                   <div className="flex gap-1.5 w-full justify-between">
                     {[2, 3, 4, 5, 6].map((num) => (
                       <button
@@ -250,7 +250,7 @@ export function OnboardingV1Flow() {
                         onClick={() => setDays(num)}
                         className={`w-12 h-12 rounded-xl border font-bold text-xs transition-all ${
                           days === num
-                            ? 'bg-[#7c3aed] border-[#7c3aed]'
+                            ? 'bg-[#f59e0b] border-[#f59e0b]'
                             : 'bg-[#111111] border-[#1f1f1f] hover:border-zinc-800 text-zinc-400'
                         }`}
                       >
@@ -258,8 +258,8 @@ export function OnboardingV1Flow() {
                       </button>
                     ))}
                   </div>
-                  <div className="bg-[#7c3aed]/5 p-3 rounded-xl border border-[#7c3aed]/10 flex items-start gap-2.5 mt-2">
-                    <Zap className="w-4 h-4 text-[#7c3aed] mt-0.5 shrink-0" />
+                  <div className="bg-[#f59e0b]/5 p-3 rounded-xl border border-[#f59e0b]/10 flex items-start gap-2.5 mt-2">
+                    <Zap className="w-4 h-4 text-[#f59e0b] mt-0.5 shrink-0" />
                     <p className="text-[11px] text-zinc-400 leading-relaxed">&ldquo;O sucesso é a soma de pequenos esforços repetidos dia após dia. Configuração pronta para esmagar as metas!&rdquo;</p>
                   </div>
                 </div>
@@ -285,7 +285,7 @@ export function OnboardingV1Flow() {
               <button
                 onClick={nextStep}
                 disabled={(step === 1 && !goal) || (step === 2 && !level) || (step === 3 && (!weight || !height || !age || !gender))}
-                className="flex items-center gap-1 py-2.5 px-4 rounded-xl bg-[#7c3aed] hover:bg-[#6d28d9] text-xs font-bold disabled:opacity-30 disabled:hover:bg-[#7c3aed] transition-all"
+                className="flex items-center gap-1 py-2.5 px-4 rounded-xl bg-[#f59e0b] hover:bg-[#d97706] text-xs font-bold disabled:opacity-30 disabled:hover:bg-[#f59e0b] transition-all"
               >
                 Avançar <ChevronRight className="w-4 h-4" />
               </button>
@@ -293,7 +293,7 @@ export function OnboardingV1Flow() {
               <button
                 onClick={handleFinish}
                 disabled={loading}
-                className="py-2.5 px-5 rounded-xl bg-gradient-to-r from-[#7c3aed] to-purple-500 hover:opacity-90 text-xs font-black tracking-wide uppercase transition-all shadow-lg shadow-purple-500/20"
+                className="py-2.5 px-5 rounded-xl bg-gradient-to-r from-[#f59e0b] to-amber-500 hover:opacity-90 text-xs font-black tracking-wide uppercase transition-all shadow-lg shadow-amber-500/20"
               >
                 {loading ? 'Montando Ecossistema...' : 'Concluir Perfil'}
               </button>

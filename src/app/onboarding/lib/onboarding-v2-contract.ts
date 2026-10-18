@@ -1,8 +1,11 @@
 import {
   ACTIVITY_LEVELS,
+  MEAL_BREAK_AVAILABILITIES,
   MEAL_SCHEDULE_FLEXIBILITIES,
   PREFERRED_MEALS_PER_DAY,
   PRIMARY_GOALS,
+  PREFERRED_TRAINING_PERIODS,
+  ROUTINE_PREDICTABILITIES,
   type CompleteOnboardingV2Payload,
   type CompleteOnboardingV2Result,
 } from './onboarding-v2-types.ts';
@@ -34,7 +37,9 @@ export function assertOnboardingV2SubmissionPreflight(
   const nutrition = payload.nutrition as CompleteOnboardingV2Payload['nutrition'] &
     Record<string, unknown>;
 
-  if (payload.payload_schema_version !== 4) reasons.push('payload_schema_version precisa ser 4');
+  if (payload.payload_schema_version !== 4 && payload.payload_schema_version !== 5) {
+    reasons.push('payload_schema_version precisa ser 4 ou 5');
+  }
   if (!PRIMARY_GOALS.some((goal) => goal === payload.health.primary_goal)) {
     reasons.push('primary_goal inválido');
   }
@@ -47,13 +52,38 @@ export function assertOnboardingV2SubmissionPreflight(
     reasons.push('meal_schedule_flexibility ausente ou inválido');
   }
   if (
+    payload.nutrition.preferred_meals_per_day !== undefined &&
     payload.nutrition.preferred_meals_per_day !== null &&
     !PREFERRED_MEALS_PER_DAY.includes(payload.nutrition.preferred_meals_per_day)
   ) {
-    reasons.push('preferred_meals_per_day ausente ou inválido');
+    reasons.push('preferred_meals_per_day inválido');
   }
   if ('meals_per_day' in nutrition || 'accepts_eggs' in nutrition || 'accepts_dairy' in nutrition) {
     reasons.push('o payload contém campos removidos');
+  }
+  if (payload.payload_schema_version === 5) {
+    const routine = payload.routine;
+    const localTimePattern = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
+    if (!routine || !localTimePattern.test(routine.wake_time)) {
+      reasons.push('wake_time ausente ou inválido');
+    }
+    if (!routine || !localTimePattern.test(routine.sleep_time)) {
+      reasons.push('sleep_time ausente ou inválido');
+    }
+    if (routine && routine.wake_time === routine.sleep_time) {
+      reasons.push('wake_time e sleep_time precisam ser diferentes');
+    }
+    if (!routine || !ROUTINE_PREDICTABILITIES.includes(routine.routine_predictability)) {
+      reasons.push('routine_predictability ausente ou inválido');
+    }
+    if (!routine || !MEAL_BREAK_AVAILABILITIES.includes(routine.meal_break_availability)) {
+      reasons.push('meal_break_availability ausente ou inválido');
+    }
+    if (!routine || !PREFERRED_TRAINING_PERIODS.includes(routine.preferred_training_period)) {
+      reasons.push('preferred_training_period ausente ou inválido');
+    }
+  } else if (payload.routine !== undefined) {
+    reasons.push('routine pertence ao schema 5');
   }
   if (
     payload.training.training_location === 'full_gym' &&

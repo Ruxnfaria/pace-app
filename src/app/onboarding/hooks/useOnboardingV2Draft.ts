@@ -1,98 +1,20 @@
 'use client';
 
 import { useCallback, useEffect, useEffectEvent, useMemo, useState } from 'react';
-import { ONBOARDING_V2_STEPS } from '../lib/onboarding-v2-steps';
+import {
+  ONBOARDING_V2_DRAFT_VERSION,
+  parseOnboardingV2DraftEnvelope,
+  type OnboardingV2DraftEnvelope,
+} from '../lib/onboarding-v2-draft';
 import type { OnboardingV2State } from '../lib/onboarding-v2-types';
 
-const DRAFT_VERSION = 3;
 const DRAFT_KEY_PREFIX = 'pace:onboarding-v2:draft:v2';
-
-interface DraftEnvelope {
-  version: typeof DRAFT_VERSION;
-  state: OnboardingV2State;
-  scopeComplete?: boolean;
-}
-
-interface LegacyDraftEnvelope {
-  version: 2;
-  state: OnboardingV2State;
-  scopeComplete?: boolean;
-}
 
 export interface UseOnboardingV2DraftOptions {
   userId: string | null | undefined;
   state: OnboardingV2State;
   scopeComplete?: boolean;
   onHydrate: (state: OnboardingV2State, scopeComplete: boolean) => void;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function isOnboardingV2State(value: unknown): value is OnboardingV2State {
-  if (!isRecord(value) || typeof value.currentStepId !== 'string' || !isRecord(value.form)) {
-    return false;
-  }
-
-  const { form } = value;
-  if (!isRecord(form.health) || !isRecord(form.training) || !isRecord(form.nutrition)) {
-    return false;
-  }
-
-  const nutritionListsAreSafe = [
-    form.nutrition.restrictions,
-    form.nutrition.dislikedFoods,
-    form.nutrition.preferredFoods,
-    form.nutrition.supplements,
-  ].every((items) => Array.isArray(items) && items.every(isRecord));
-
-  return (
-    ONBOARDING_V2_STEPS.some(({ id }) => id === value.currentStepId) &&
-    Array.isArray(form.training.priorityMuscles) &&
-    Array.isArray(form.training.availableWeekdays) &&
-    Array.isArray(form.training.availableEquipment) &&
-    Array.isArray(form.training.painAreas) &&
-    nutritionListsAreSafe
-  );
-}
-
-export function parseOnboardingV2Draft(serialized: string): OnboardingV2State | null {
-  return parseOnboardingV2DraftEnvelope(serialized)?.state ?? null;
-}
-
-function parseOnboardingV2DraftEnvelope(serialized: string): DraftEnvelope | null {
-  try {
-    const value: unknown = JSON.parse(serialized);
-    if (
-      !isRecord(value) ||
-      (value.version !== DRAFT_VERSION && value.version !== 2) ||
-      !isOnboardingV2State(value.state)
-    ) {
-      return null;
-    }
-    const legacy = value as unknown as LegacyDraftEnvelope;
-    const state: OnboardingV2State = value.version === 2
-      ? {
-          ...legacy.state,
-          form: {
-            ...legacy.state.form,
-            health: { ...legacy.state.form.health, activityLevel: undefined },
-            nutrition: {
-              ...legacy.state.form.nutrition,
-              preferredMealsPerDay: undefined,
-            },
-          },
-        }
-      : value.state;
-    return {
-      version: DRAFT_VERSION,
-      state,
-      scopeComplete: value.scopeComplete === true,
-    };
-  } catch {
-    return null;
-  }
 }
 
 export function getOnboardingV2DraftKey(userId: string): string {
@@ -136,7 +58,11 @@ export function useOnboardingV2Draft({
   useEffect(() => {
     if (!storageKey || hydratedKey !== storageKey || typeof window === 'undefined') return;
 
-    const envelope: DraftEnvelope = { version: DRAFT_VERSION, state, scopeComplete };
+    const envelope: OnboardingV2DraftEnvelope = {
+      version: ONBOARDING_V2_DRAFT_VERSION,
+      state,
+      scopeComplete,
+    };
     try {
       window.sessionStorage.setItem(storageKey, JSON.stringify(envelope));
     } catch {

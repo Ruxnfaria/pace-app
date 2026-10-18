@@ -23,7 +23,7 @@ export function buildOnboardingNutritionTarget(
     biologicalSex: payload.health.biological_sex,
     activityLevel: payload.health.activity_level,
     goal: payload.health.primary_goal,
-    // Schema 4 does not collect these clinical states. The calculator routes
+    // Schema 4/5 does not collect these clinical states. The calculator routes
     // a female metabolic basis to review until both are explicitly known.
     pregnant: undefined,
     lactating: undefined,

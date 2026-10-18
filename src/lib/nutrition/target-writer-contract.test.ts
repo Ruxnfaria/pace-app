@@ -64,6 +64,24 @@ test('routes a female basis to review until pregnancy and lactation are known', 
   assert.deepEqual(target.reasons, ['pregnancy_status_unknown', 'lactation_status_unknown']);
 });
 
+test('schema-5 routine context does not change calories or macros', () => {
+  const schema4 = payload();
+  const schema5 = payload();
+  schema5.payload_schema_version = 5;
+  schema5.routine = {
+    wake_time: '06:30',
+    sleep_time: '22:45',
+    routine_predictability: 'variable',
+    meal_break_availability: 'difficult',
+    preferred_training_period: 'morning',
+  };
+
+  assert.deepEqual(
+    buildOnboardingNutritionTarget(schema5, '2026-10-18'),
+    buildOnboardingNutritionTarget(schema4, '2026-10-18'),
+  );
+});
+
 test('rejects identities and event keys that are not UUIDs', () => {
   assert.throws(
     () => buildAtomicNutritionOnboardingRpcArgs('client-value', payload(), '2026-10-18'),

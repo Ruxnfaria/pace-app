@@ -76,6 +76,40 @@ test('rejeita activity level e preferência de refeições fora do contrato', ()
   );
 });
 
+test('aceita preferred_meals_per_day ausente no preflight forward-compatible', () => {
+  const payload = validPayload();
+  delete (payload.nutrition as Partial<typeof payload.nutrition>).preferred_meals_per_day;
+  assert.doesNotThrow(() => assertOnboardingV2SubmissionPreflight(payload));
+});
+
+test('aceita schema 5 com contexto de rotina local completo', () => {
+  const payload = validPayload();
+  payload.payload_schema_version = 5;
+  payload.routine = {
+    wake_time: '07:00',
+    sleep_time: '23:00',
+    routine_predictability: 'predictable',
+    meal_break_availability: 'limited',
+    preferred_training_period: 'evening',
+  };
+
+  assert.doesNotThrow(() => assertOnboardingV2SubmissionPreflight(payload));
+});
+
+test('schema 5 rejeita horários iguais e enums de contexto inválidos', () => {
+  const payload = validPayload();
+  payload.payload_schema_version = 5;
+  payload.routine = {
+    wake_time: '23:00',
+    sleep_time: '23:00',
+    routine_predictability: 'predictable',
+    meal_break_availability: 'limited',
+    preferred_training_period: 'evening',
+  };
+
+  assert.throws(() => assertOnboardingV2SubmissionPreflight(payload), /Nutrição V1/);
+});
+
 for (const result of ['completed', 'replay'] as const) {
   test(`reconhece ${result} como conclusão válida da RPC`, () => {
     assert.equal(

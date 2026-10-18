@@ -2,7 +2,7 @@ import type {
   OnboardingV2FormState,
   OnboardingV2Section,
   OnboardingV2StepId,
-} from './onboarding-v2-types';
+} from './onboarding-v2-types.ts';
 
 export interface OnboardingV2StepDefinition {
   id: OnboardingV2StepId;
@@ -10,7 +10,7 @@ export interface OnboardingV2StepDefinition {
   isVisible?: (form: OnboardingV2FormState) => boolean;
 }
 
-export type { OnboardingV2StepId } from './onboarding-v2-types';
+export type { OnboardingV2StepId } from './onboarding-v2-types.ts';
 
 export const ONBOARDING_V2_STEPS: readonly OnboardingV2StepDefinition[] = [
   { id: 'goal', section: 'health' },
@@ -18,34 +18,13 @@ export const ONBOARDING_V2_STEPS: readonly OnboardingV2StepDefinition[] = [
   { id: 'biological-sex', section: 'health' },
   { id: 'measurements', section: 'health' },
   { id: 'activity-level', section: 'health' },
+  { id: 'daily-routine', section: 'health' },
   { id: 'training-experience', section: 'training' },
-  {
-    id: 'training-break',
-    section: 'training',
-    isVisible: ({ training }) =>
-      training.trainingExperience !== undefined && training.trainingExperience !== 'none',
-  },
-  { id: 'exercise-confidence', section: 'training' },
   { id: 'training-frequency', section: 'training' },
-  { id: 'training-weekdays', section: 'training' },
-  { id: 'session-duration', section: 'training' },
   { id: 'training-location', section: 'training' },
-  {
-    id: 'equipment',
-    section: 'training',
-    isVisible: ({ training }) =>
-      training.trainingLocation !== undefined && training.trainingLocation !== 'full_gym',
-  },
   { id: 'pain', section: 'training' },
-  {
-    id: 'pain-areas',
-    section: 'training',
-    isVisible: ({ training }) => training.hasPainOrLimitation === true,
-  },
+  { id: 'meal-training-routine', section: 'nutrition' },
   { id: 'meal-schedule-flexibility', section: 'nutrition' },
-  { id: 'preferred-meals-per-day', section: 'nutrition' },
-  { id: 'preparation-style', section: 'nutrition' },
-  { id: 'budget-style', section: 'nutrition' },
   { id: 'dietary-pattern', section: 'nutrition' },
   { id: 'restrictions', section: 'nutrition' },
   { id: 'food-preferences', section: 'nutrition' },

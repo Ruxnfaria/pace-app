@@ -1,4 +1,4 @@
-import { getVisibleOnboardingV2Steps, type OnboardingV2StepId } from './onboarding-v2-steps';
+import { getVisibleOnboardingV2Steps, type OnboardingV2StepId } from './onboarding-v2-steps.ts';
 import {
   ACTIVITY_LEVELS,
   BIOLOGICAL_SEXES,
@@ -10,10 +10,12 @@ import {
   FOOD_PREPARATION_STYLES,
   PRIMARY_GOALS,
   MEAL_SCHEDULE_FLEXIBILITIES,
-  PREFERRED_MEALS_PER_DAY,
+  MEAL_BREAK_AVAILABILITIES,
+  PREFERRED_TRAINING_PERIODS,
   RECENT_TRAINING_BREAKS,
   RESTRICTION_CODES,
   RESTRICTION_TYPES,
+  ROUTINE_PREDICTABILITIES,
   SESSION_DURATIONS,
   SUPPLEMENT_CODES,
   TRAINING_DAYS_PER_WEEK,
@@ -21,7 +23,7 @@ import {
   TRAINING_LOCATIONS,
   WEEKDAYS,
   type OnboardingV2FormState,
-} from './onboarding-v2-types';
+} from './onboarding-v2-types.ts';
 
 export interface OnboardingV2ValidationIssue {
   stepId: OnboardingV2StepId;
@@ -55,6 +57,10 @@ function isFiniteInRange(value: unknown, maximum: number): value is number {
 
 function isUnique<T>(values: readonly T[]): boolean {
   return new Set(values).size === values.length;
+}
+
+function isLocalTime(value: unknown): value is string {
+  return typeof value === 'string' && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);
 }
 
 function validConditionalLabel(label: string | null, maximum: number): boolean {
@@ -155,7 +161,7 @@ export function validateOnboardingV2Step(
   options: OnboardingV2ValidationOptions = {},
 ): OnboardingV2ValidationResult {
   const issues: OnboardingV2ValidationIssue[] = [];
-  const { health, training, nutrition } = form;
+  const { health, training, nutrition, routine } = form;
 
   switch (stepId) {
     case 'goal':
@@ -195,12 +201,28 @@ export function validateOnboardingV2Step(
         issues.push(issue(stepId, 'health.activityLevel', 'Escolha seu nível de atividade diária.'));
       }
       break;
+    case 'daily-routine':
+      if (!isLocalTime(routine.wakeTime)) {
+        issues.push(issue(stepId, 'routine.wakeTime', 'Informe um horário aproximado para acordar.'));
+      }
+      if (!isLocalTime(routine.sleepTime)) {
+        issues.push(issue(stepId, 'routine.sleepTime', 'Informe um horário aproximado para dormir.'));
+      }
+      if (
+        isLocalTime(routine.wakeTime) &&
+        isLocalTime(routine.sleepTime) &&
+        routine.wakeTime === routine.sleepTime
+      ) {
+        issues.push(issue(stepId, 'routine.sleepTime', 'Os horários de acordar e dormir precisam ser diferentes.'));
+      }
+      if (!isOneOf(ROUTINE_PREDICTABILITIES, routine.routinePredictability)) {
+        issues.push(issue(stepId, 'routine.routinePredictability', 'Escolha como seu ritmo varia ao longo dos dias.'));
+      }
+      break;
     case 'training-experience':
       if (!isOneOf(TRAINING_EXPERIENCES, training.trainingExperience)) {
         issues.push(issue(stepId, 'training.trainingExperience', 'Escolha uma experiência válida.'));
       }
-      break;
-    case 'training-break':
       if (training.trainingExperience === 'none') {
         if (training.recentTrainingBreak !== null) {
           issues.push(
@@ -210,8 +232,6 @@ export function validateOnboardingV2Step(
       } else if (!isOneOf(RECENT_TRAINING_BREAKS, training.recentTrainingBreak)) {
         issues.push(issue(stepId, 'training.recentTrainingBreak', 'Escolha uma pausa válida.'));
       }
-      break;
-    case 'exercise-confidence':
       if (!isOneOf(EXERCISE_CONFIDENCES, training.exerciseConfidence)) {
         issues.push(issue(stepId, 'training.exerciseConfidence', 'Escolha uma autonomia válida.'));
       }
@@ -220,8 +240,6 @@ export function validateOnboardingV2Step(
       if (!isOneOf(TRAINING_DAYS_PER_WEEK, training.trainingDaysPerWeek)) {
         issues.push(issue(stepId, 'training.trainingDaysPerWeek', 'Escolha de 2 a 6 dias.'));
       }
-      break;
-    case 'training-weekdays':
       if (
         !isUnique(training.availableWeekdays) ||
         training.availableWeekdays.some((value) => !isOneOf(WEEKDAYS, value)) ||
@@ -236,8 +254,6 @@ export function validateOnboardingV2Step(
           ),
         );
       }
-      break;
-    case 'session-duration':
       if (!isOneOf(SESSION_DURATIONS, training.sessionDurationMin)) {
         issues.push(issue(stepId, 'training.sessionDurationMin', 'Escolha uma duração válida.'));
       }
@@ -255,8 +271,6 @@ export function validateOnboardingV2Step(
       } else if (training.trainingLocation !== 'other' && training.otherLocationLabel !== null) {
         issues.push(issue(stepId, 'training.otherLocationLabel', 'Remova o local alternativo oculto.'));
       }
-      break;
-    case 'equipment': {
       const hasOther = training.availableEquipment.includes('other');
       if (training.trainingLocation === 'full_gym') {
         if (training.availableEquipment.length !== 0 || training.otherEquipmentLabel !== null) {
@@ -279,13 +293,10 @@ export function validateOnboardingV2Step(
         issues.push(issue(stepId, 'training.otherEquipmentLabel', 'Remova o equipamento oculto.'));
       }
       break;
-    }
     case 'pain':
       if (typeof training.hasPainOrLimitation !== 'boolean') {
         issues.push(issue(stepId, 'training.hasPainOrLimitation', 'Responda sim ou não.'));
       }
-      break;
-    case 'pain-areas':
       if (
         !isUnique(training.painAreas) ||
         training.painAreas.some((value) => !isOneOf(BODY_AREAS, value)) ||
@@ -295,25 +306,21 @@ export function validateOnboardingV2Step(
         issues.push(issue(stepId, 'training.painAreas', 'Mantenha as áreas coerentes com a resposta de dor.'));
       }
       break;
+    case 'meal-training-routine':
+      if (!isOneOf(MEAL_BREAK_AVAILABILITIES, routine.mealBreakAvailability)) {
+        issues.push(issue(stepId, 'routine.mealBreakAvailability', 'Escolha sua disponibilidade para pausas.'));
+      }
+      if (!isOneOf(PREFERRED_TRAINING_PERIODS, routine.preferredTrainingPeriod)) {
+        issues.push(issue(stepId, 'routine.preferredTrainingPeriod', 'Escolha o período em que costuma treinar.'));
+      }
+      break;
     case 'meal-schedule-flexibility':
       if (!isOneOf(MEAL_SCHEDULE_FLEXIBILITIES, nutrition.mealScheduleFlexibility)) {
         issues.push(issue(stepId, 'nutrition.mealScheduleFlexibility', 'Escolha quanto espaço sua rotina oferece para organizar a alimentação.'));
       }
-      break;
-    case 'preferred-meals-per-day':
-      if (
-        nutrition.preferredMealsPerDay !== null &&
-        !isOneOf(PREFERRED_MEALS_PER_DAY, nutrition.preferredMealsPerDay)
-      ) {
-        issues.push(issue(stepId, 'nutrition.preferredMealsPerDay', 'Escolha entre 2 e 6 refeições ou marque sem preferência.'));
-      }
-      break;
-    case 'preparation-style':
       if (!isOneOf(FOOD_PREPARATION_STYLES, nutrition.preparationStyle)) {
         issues.push(issue(stepId, 'nutrition.preparationStyle', 'Escolha um preparo válido.'));
       }
-      break;
-    case 'budget-style':
       if (!isOneOf(FOOD_BUDGET_STYLES, nutrition.budgetStyle)) {
         issues.push(issue(stepId, 'nutrition.budgetStyle', 'Escolha um orçamento válido.'));
       }
