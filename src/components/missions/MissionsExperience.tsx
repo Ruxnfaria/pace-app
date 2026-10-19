@@ -25,7 +25,12 @@ const chestAssets: Record<Rarity, string> = {
 const chestTier: Record<Rarity, string> = { common: "Tier 1", rare: "Tier 2", epic: "Tier 3" };
 
 function MissionCard({ mission }: { mission: MissionView }) {
-  const Icon = mission.category === "workout" ? Dumbbell : mission.category === "nutrition" ? Apple : Target;
+  const category = mission.category?.toUpperCase();
+  const Icon = category === "WORKOUT" || category === "TRAINING"
+    ? Dumbbell
+    : category === "NUTRITION"
+      ? Apple
+      : Target;
   const target = Math.max(mission.targetValue, 1);
   const current = mission.completed ? target : Math.min(Math.max(mission.currentValue, 0), target);
   const percent = Math.round((current / target) * 100);

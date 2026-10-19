@@ -32,9 +32,10 @@ function getWeekDates() {
 }
 
 function getMissionIcon(category?: string | null) {
-  if (category === "workout") return Dumbbell;
-  if (category === "water") return Droplets;
-  if (category === "nutrition") return Apple;
+  const normalized = category?.toUpperCase();
+  if (normalized === "WORKOUT" || normalized === "TRAINING") return Dumbbell;
+  if (normalized === "WATER" || normalized === "ACTIVITY") return Droplets;
+  if (normalized === "NUTRITION") return Apple;
   return Target;
 }
 
@@ -52,6 +53,7 @@ export default function DashboardPage() {
       if (!user || cancelled) { if (!cancelled) setLoading(false); return; }
       const today = formatLocalDate(new Date());
       const weekStart = getWeekDates()[0].date;
+      await fetch("/api/missions/generate", { method: "POST" });
       const [profileResult, missionsResult, workoutsResult, nutritionResult, waterResult, cardioResult, sleepResult] = await Promise.all([
         supabase.from("profiles").select("total_xp, level, streak").eq("user_id", user.id).maybeSingle(),
         supabase.from("daily_missions").select("id, title, description, category, completed, xp_reward").eq("user_id", user.id).eq("for_date", today).order("created_at", { ascending: true }),
@@ -63,14 +65,7 @@ export default function DashboardPage() {
       ]);
       if (cancelled) return;
       setProfile(profileResult.data);
-      let todayMissions = missionsResult.data ?? [];
-      if (todayMissions.length === 0) {
-        const response = await fetch("/api/missions/generate", { method: "POST" });
-        if (response.ok) {
-          const refreshed = await supabase.from("daily_missions").select("id, title, description, category, completed, xp_reward").eq("user_id", user.id).eq("for_date", today).order("created_at", { ascending: true });
-          todayMissions = refreshed.data ?? [];
-        }
-      }
+      const todayMissions = missionsResult.data ?? [];
       if (cancelled) return;
       setMissions(todayMissions);
       const dates = new Set<string>();
