@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
-import { Apple, Clock3, Target } from 'lucide-react';
+import { Clock3, Target } from 'lucide-react';
 
 import { createClient } from '@/lib/supabase/client';
+import MealPlanPreparation from '@/components/post-onboarding/MealPlanPreparation';
 import { formatNutritionTarget, loadActiveNutritionTarget, type ActiveNutritionTarget } from '@/lib/nutrition/active-target';
 
 function progressPercent(value: number, target: number) {
@@ -111,10 +112,7 @@ export default function NutritionPage() {
       <section className="mt-6">
         <p className="text-[9px] font-bold uppercase tracking-[.2em] text-[#d96818]">Plano alimentar</p>
         <h2 className="mt-1 text-[17px] font-semibold tracking-[-.02em] text-white">Sua estratégia nutricional</h2>
-        <div className="mt-3 flex items-center gap-3.5 rounded-[22px] border border-white/[0.055] bg-white/[0.018] p-4">
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-white/[0.05] text-zinc-700"><Apple className="h-5 w-5" /></span>
-          <div><p className="text-[11px] font-medium text-zinc-400">Nenhum plano alimentar ativo.</p><p className="mt-1 text-[9px] leading-4 text-zinc-700">Suas metas já estão disponíveis; refeições planejadas chegarão em uma próxima etapa.</p></div>
-        </div>
+        <MealPlanPreparation />
       </section>
 
       <section className="mt-6">

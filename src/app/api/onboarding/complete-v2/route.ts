@@ -5,6 +5,7 @@ import {
 } from '@/app/onboarding/lib/onboarding-v2-contract';
 import type { CompleteOnboardingV2Payload } from '@/app/onboarding/lib/onboarding-v2-types';
 import { completeOnboardingWithNutritionTarget } from '@/lib/nutrition/target-writer-server';
+import { initializePostOnboardingJobs } from '@/lib/post-onboarding/server';
 import { createClient } from '@/lib/supabase/server';
 
 export async function POST(request: Request) {
@@ -40,6 +41,17 @@ export async function POST(request: Request) {
 
   try {
     const result = await completeOnboardingWithNutritionTarget(user.id, payload);
+    if (payload.payload_schema_version === 5) {
+      try {
+        await initializePostOnboardingJobs(user.id, result.completed_at);
+      } catch {
+        // Onboarding is already committed. The authenticated process endpoint
+        // retries this idempotent initialization when the user reaches the app.
+        console.error('[PRAXE] Post-onboarding initialization deferred.', {
+          code: 'POST_ONBOARDING_INITIALIZATION_DEFERRED',
+        });
+      }
+    }
     return NextResponse.json(result);
   } catch (error) {
     const code = typeof error === 'object' && error !== null && 'code' in error

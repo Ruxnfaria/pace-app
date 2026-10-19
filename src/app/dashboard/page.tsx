@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Apple, Check, ChevronRight, Circle, Droplets, Dumbbell, Flame, Target } from "lucide-react";
 
 import CoreHero from "@/components/dashboard/cards/CoreHero";
+import PostOnboardingProgress from "@/components/post-onboarding/PostOnboardingProgress";
 import { getCoreRankProgress } from "@/lib/gamification/coreStages";
 import { createClient } from "@/lib/supabase/client";
 
@@ -53,7 +54,13 @@ export default function DashboardPage() {
       if (!user || cancelled) { if (!cancelled) setLoading(false); return; }
       const today = formatLocalDate(new Date());
       const weekStart = getWeekDates()[0].date;
-      await fetch("/api/missions/generate", { method: "POST" });
+      const orchestrationResponse = await fetch("/api/post-onboarding/status", { cache: "no-store" });
+      const orchestration = orchestrationResponse.ok
+        ? await orchestrationResponse.json() as { workout?: string | null }
+        : null;
+      if (!orchestration?.workout || orchestration.workout === "ready") {
+        await fetch("/api/missions/generate", { method: "POST" });
+      }
       const [profileResult, missionsResult, workoutsResult, nutritionResult, waterResult, cardioResult, sleepResult] = await Promise.all([
         supabase.from("profiles").select("total_xp, level, streak").eq("user_id", user.id).maybeSingle(),
         supabase.from("daily_missions").select("id, title, description, category, completed, xp_reward").eq("user_id", user.id).eq("for_date", today).order("created_at", { ascending: true }),
@@ -99,6 +106,8 @@ export default function DashboardPage() {
         <Image src="/brand/praxe-logo.svg" alt="PRAXE" width={520} height={110} preload unoptimized className="h-auto w-[116px]" />
         <div className="flex items-center gap-1.5" aria-label={`${streak} dias de consistência`}><Flame className="h-5 w-5 fill-[#ff6a00] text-[#ff6a00]" aria-hidden="true" /><span className="text-base font-bold tabular-nums text-white">{streak}</span></div>
       </header>
+
+      <PostOnboardingProgress />
 
       <section className="mt-3 text-center" aria-labelledby="core-title">
         <h1 id="core-title" className="text-[1.55rem] font-medium tracking-[-0.04em] text-[#f7f4ef]">Seu Núcleo</h1>
