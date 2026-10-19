@@ -1,0 +1,17 @@
+{
+  "provenance": {
+    "source": "TACO",
+    "sourceVersion": "4_edicao_2011",
+    "publication": "Tabela Brasileira de Composição de Alimentos — TACO, 4ª edição revisada e ampliada, NEPA/UNICAMP, 2011",
+    "extractedFrom": "official NEPA/UNICAMP XLSX, CMVCol taco3",
+    "basis": "per 100 g edible portion"
+  },
+  "foods": [
+    { "sourceFoodId": "3", "canonicalName": "Arroz, tipo 1, cozido", "calories": 128.25848566666664, "proteinG": 2.5208166666666667, "carbsG": 28.059849999999994, "fatG": 0.22699999999999998, "fiberG": 1.561 },
+    { "sourceFoodId": "561", "canonicalName": "Feijão, carioca, cozido", "calories": 76.42408566666668, "proteinG": 4.775, "carbsG": 13.591033333333334, "fatG": 0.5423333333333334, "fiberG": 8.510333333333334 },
+    { "sourceFoodId": "410", "canonicalName": "Frango, peito, sem pele, grelhado", "calories": 159.18500719261172, "proteinG": 32.03333333333334, "carbsG": 0, "fatG": 2.4836666666666667, "fiberG": null },
+    { "sourceFoodId": "488", "canonicalName": "Ovo, de galinha, inteiro, cozido/10minutos", "calories": 145.70017, "proteinG": 13.29375, "carbsG": 0.6149166666666736, "fatG": 9.476333333333333, "fiberG": null },
+    { "sourceFoodId": "182", "canonicalName": "Banana, prata, crua", "calories": 98.24970217391306, "proteinG": 1.2681159420289856, "carbsG": 25.956884057971017, "fatG": 0.065, "fiberG": 2.0433333333333334 },
+    { "sourceFoodId": "455", "canonicalName": "Leite, de vaca, achocolatado", "calories": 82.82099627199361, "proteinG": 2.099020037651062, "carbsG": 14.158313333333325, "fatG": 2.169, "fiberG": 0.6456666666666666 }
+  ]
+}
