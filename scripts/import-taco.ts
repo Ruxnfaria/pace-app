@@ -9,6 +9,7 @@ import {
   chunkTacoRows,
 } from "../src/lib/nutrition/food-catalog/taco/database-import";
 import { TACO_SOURCE_REFERENCE, TACO_SOURCE_VERSION } from "../src/lib/nutrition/food-catalog/taco/constants";
+import { assertAuthorizedTacoImportTarget } from "../src/lib/nutrition/food-catalog/taco/import-guard";
 import { parseTacoDataset } from "../src/lib/nutrition/food-catalog/taco/parser";
 
 function requiredEnvironment(name: string): string {
@@ -18,13 +19,11 @@ function requiredEnvironment(name: string): string {
 }
 
 async function main(): Promise<void> {
+  const authorizedTarget = assertAuthorizedTacoImportTarget(
+    process.env.TACO_TARGET_PROJECT_REF,
+    process.env.SUPABASE_URL,
+  );
   const sourceFile = requiredEnvironment("TACO_SOURCE_FILE");
-  const supabaseUrl = requiredEnvironment("SUPABASE_URL");
-  const serviceRoleKey = requiredEnvironment("SUPABASE_SERVICE_ROLE_KEY");
-  const targetProjectRef = requiredEnvironment("TACO_TARGET_PROJECT_REF");
-  if (new URL(supabaseUrl).hostname !== `${targetProjectRef}.supabase.co`) {
-    throw new Error("SUPABASE_URL does not match TACO_TARGET_PROJECT_REF");
-  }
   const parsed = await parseTacoDataset(sourceFile);
   const rejectionRate = parsed.report.totalRows === 0 ? 1 : parsed.report.rejected / parsed.report.totalRows;
   if (rejectionRate > 0.01 || parsed.report.duplicateSourceIds.length > 0) {
@@ -41,7 +40,8 @@ async function main(): Promise<void> {
 
   const databaseRows = buildTacoDatabaseRows(parsed.records);
   const sourceIds = new Set(databaseRows.map((row) => row.source_food_id));
-  const client = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
+  const serviceRoleKey = requiredEnvironment("SUPABASE_SERVICE_ROLE_KEY");
+  const client = createClient(authorizedTarget.supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
   const { data: existing, error: existingError } = await client
     .from("nutrition_food_catalog")
     .select("source_food_id,source_version")

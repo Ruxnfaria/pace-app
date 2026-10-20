@@ -8,13 +8,60 @@ import { calculateFoodNutrients } from "../nutrients";
 import { importNutritionCatalog } from "../importer";
 import fixture from "./official-test-fixture.json" with { type: "json" };
 import { TACO_SOURCE_REFERENCE, TACO_SOURCE_VERSION, TACO_WORKSHEET } from "./constants";
-import { parseTacoDataset, parseTacoNutrientCell } from "./parser";
+import {
+  NUTRIENT_ZERO_EPSILON,
+  NUTRIENT_ZERO_EPSILON_POLICY_VERSION,
+  normalizeNearZeroNegativeCarbohydrate,
+  parseTacoDataset,
+  parseTacoNutrientCell,
+} from "./parser";
 
 test("special values stay null and retain their documented TACO meaning", () => {
   assert.deepEqual(parseTacoNutrientCell("Tr"), { value: null, marker: "TRACE" });
   assert.deepEqual(parseTacoNutrientCell("NA"), { value: null, marker: "NOT_APPLICABLE" });
   assert.deepEqual(parseTacoNutrientCell("*"), { value: null, marker: "NOT_REEVALUATED" });
   assert.deepEqual(parseTacoNutrientCell(null), { value: null, marker: "NOT_REQUESTED" });
+});
+
+test("carbohydrate-by-difference residuals normalize only within the documented reporting epsilon", () => {
+  assert.deepEqual(normalizeNearZeroNegativeCarbohydrate(-0.045), {
+    value: 0,
+    normalization: {
+      nutrient: "carbsG",
+      rawSourceValue: -0.045,
+      normalizedValue: 0,
+      policyVersion: NUTRIENT_ZERO_EPSILON_POLICY_VERSION,
+    },
+  });
+  assert.equal(normalizeNearZeroNegativeCarbohydrate(-NUTRIENT_ZERO_EPSILON).value, 0);
+  assert.equal(normalizeNearZeroNegativeCarbohydrate(-0.050001).value, -0.050001);
+  assert.equal(normalizeNearZeroNegativeCarbohydrate(0).normalization, null);
+});
+
+test("parser records near-zero normalization provenance and rejects negatives beyond epsilon", async () => {
+  const workbook = new Workbook();
+  const sheet = workbook.addWorksheet(TACO_WORKSHEET);
+  sheet.addRow(["Pescados e frutos do mar"]);
+  sheet.addRow([288, "Corimba, cru", 75.64, 128.15, 536, 17.36, 5.98, "NA", -0.045, "NA"]);
+  sheet.addRow([999, "Negativo não normalizável", 75, 100, 418, 18, 6, "NA", -0.050001, "NA"]);
+  const path = join(tmpdir(), `taco-epsilon-${process.pid}-${Date.now()}.xlsx`);
+  await workbook.xlsx.writeFile(path);
+  try {
+    const result = await parseTacoDataset(path);
+    assert.equal(result.report.totalRows, 2);
+    assert.equal(result.report.accepted, 1);
+    assert.equal(result.report.rejected, 1);
+    assert.ok(result.report.warnings.includes("288:NORMALIZED_NEAR_ZERO_NEGATIVE_TO_ZERO"));
+    assert.equal(result.records[0].nutrientsPer100g.carbsG, 0);
+    assert.deepEqual(result.records[0].sourceMetadata.nutrientNormalizations, [{
+      nutrient: "carbsG",
+      rawSourceValue: -0.045,
+      normalizedValue: 0,
+      policyVersion: NUTRIENT_ZERO_EPSILON_POLICY_VERSION,
+    }]);
+  } finally {
+    await rm(path, { force: true });
+  }
 });
 
 test("offline XLSX parser preserves preparation state and rejects duplicate source IDs", async () => {

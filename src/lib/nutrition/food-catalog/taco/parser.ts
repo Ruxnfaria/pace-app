@@ -38,6 +38,36 @@ export interface TacoParseResult {
   report: TacoImportReport;
 }
 
+export const NUTRIENT_ZERO_EPSILON_POLICY_VERSION = "NUTRIENT_ZERO_EPSILON_V1" as const;
+// TACO reports carbohydrate by difference and formats this column to one
+// decimal place. Half of that reporting increment is the narrowest justified
+// tolerance for a negative residual that displays as zero.
+export const NUTRIENT_ZERO_EPSILON = 0.05;
+
+export interface NearZeroNutrientNormalization {
+  nutrient: "carbsG";
+  rawSourceValue: number;
+  normalizedValue: 0;
+  policyVersion: typeof NUTRIENT_ZERO_EPSILON_POLICY_VERSION;
+}
+
+export function normalizeNearZeroNegativeCarbohydrate(
+  value: number | null,
+): { value: number | null; normalization: NearZeroNutrientNormalization | null } {
+  if (value !== null && value < 0 && value >= -NUTRIENT_ZERO_EPSILON) {
+    return {
+      value: 0,
+      normalization: {
+        nutrient: "carbsG",
+        rawSourceValue: value,
+        normalizedValue: 0,
+        policyVersion: NUTRIENT_ZERO_EPSILON_POLICY_VERSION,
+      },
+    };
+  }
+  return { value, normalization: null };
+}
+
 const PAGE_HEADERS = new Set(["número do", "numero do", "alimento", "legenda"]);
 
 function textValue(value: unknown): string {
@@ -149,12 +179,16 @@ export async function parseTacoDataset(file: string): Promise<TacoParseResult> {
     const fat = parseTacoNutrientCell(row.getCell(7).value);
     const carbs = parseTacoNutrientCell(row.getCell(9).value);
     const fiber = parseTacoNutrientCell(row.getCell(10).value);
+    const normalizedCarbs = normalizeNearZeroNegativeCarbohydrate(carbs.value);
     const nutrientsPer100g: NutrientsPer100g = {
-      calories: calories.value, proteinG: protein.value, carbsG: carbs.value, fatG: fat.value, fiberG: fiber.value,
+      calories: calories.value, proteinG: protein.value, carbsG: normalizedCarbs.value, fatG: fat.value, fiberG: fiber.value,
     };
     const macroDerivedEnergy = macroEnergy(nutrientsPer100g);
     const sourceFoodId = String(sourceNumber);
     if (isEnergyWarning(calories.value, macroDerivedEnergy)) parserWarnings.push(`${sourceFoodId}:ENERGY_DISCREPANCY`);
+    if (normalizedCarbs.normalization) {
+      parserWarnings.push(`${sourceFoodId}:NORMALIZED_NEAR_ZERO_NEGATIVE_TO_ZERO`);
+    }
     const coverageCategories = classifyTacoCoverage(currentGroup, canonicalName);
     raw.push({
       canonicalName,
@@ -183,6 +217,7 @@ export async function parseTacoDataset(file: string): Promise<TacoParseResult> {
           moisture: moisture.marker, calories: calories.marker, protein: protein.marker,
           fat: fat.marker, carbs: carbs.marker, fiber: fiber.marker,
         },
+        nutrientNormalizations: normalizedCarbs.normalization ? [normalizedCarbs.normalization] : [],
       },
     });
   });
