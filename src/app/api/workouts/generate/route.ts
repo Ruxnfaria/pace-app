@@ -10,6 +10,7 @@ import {
   type WorkoutRpcClient,
 } from "@/lib/workouts/persistence";
 import { isWorkoutPersistenceV2Enabled } from "@/lib/workouts/runtime-policy";
+import { buildExerciseCatalogPrompt } from "@/lib/workouts/validation/exercise-metadata";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -20,21 +21,30 @@ ${fitnessPrompt}
 
 Retorne somente JSON neste formato:
 {
-  "workouts": [{
-    "name": "Peito + Tríceps",
-    "muscle_group": "Peito + Tríceps",
+  "sessions": [{
+    "session_id": "session-01",
+    "session_kind": "RESISTANCE",
+    "iso_weekday": 1,
+    "title": "Título humano compatível com o foco prescrito",
     "exercises": [{
+      "slot_id": "copie exatamente o id do requiredSlot",
       "name": "Nome do exercício",
-      "sets": "4",
-      "reps": "10 a 12",
-      "rest": "60s",
+      "sets": 3,
+      "rep_min": 5,
+      "rep_max": 12,
+      "rest_seconds": 120,
       "tip": "Dica técnica de execução"
-    }]
+    }],
+    "cardio": null
   }]
 }
 
-O campo name deve ser curto, em português e descrever a divisão muscular real (por exemplo: Peito + Tríceps, Costas + Bíceps, Pernas ou Full Body), nunca apenas Treino A/B/C.
-Todos os campos são obrigatórios. Não inclua links, GIFs, vídeos ou qualquer mídia de terceiros; a mídia é resolvida separadamente pelo PRAXE.`;
+Quando a sessão tiver cardio, substitua null por um objeto que copie exatamente kind, duration_minutes, effort_method, target_rpe_min, target_rpe_max, talk_test, interval_work_seconds, interval_recovery_seconds e rounds da prescrição.
+Inclua exatamente uma sessão para cada session id e exatamente um exercício para cada required slot. Copie session_kind, iso_weekday, sets, repMin/repMax e restSeconds sem alterar. Para aerobic_modality, escolha somente uma modalidade compatível do catálogo e mantenha os números sentinela prescritos.
+O título deve ser curto, em português e refletir o foco real prescrito, nunca apenas Treino A/B/C. Todos os campos são obrigatórios. Não inclua links, GIFs, vídeos ou qualquer mídia de terceiros; a mídia é resolvida separadamente pelo PRAXE.
+
+CATÁLOGO CONTROLADO DE EXERCÍCIOS — use somente canonicalName desta lista:
+${buildExerciseCatalogPrompt()}`;
 }
 
 export async function POST() {
@@ -57,6 +67,9 @@ export async function POST() {
         const content = completion.choices[0]?.message?.content;
         if (!content) throw new Error("Empty OpenAI response");
         return content;
+      },
+      onValidationAudit: (audit) => {
+        console.info("workout_validation", audit);
       },
       persistWorkouts: async (access, workouts, context) => {
         const persistence = await persistGeneratedWorkoutPlan({

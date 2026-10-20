@@ -633,18 +633,27 @@ export function buildWorkoutPlanPayload(
   }));
   const preferred = validWeekdays(training.preferredWeekdays);
   const available = validWeekdays(training.availableWeekdays);
-  const scheduledDays = preferred.length
-    ? preferred
-    : training.trainingDaysPerWeek && training.trainingDaysPerWeek > 0
-      ? available.slice(0, training.trainingDaysPerWeek)
-      : available;
+  const prescribedDays = workouts.map((workout) => workout.scheduled_iso_weekday ?? 0);
+  const hasCompletePrescription = prescribedDays.length === workoutRows.length
+    && prescribedDays.every((day) => Number.isInteger(day) && day >= 1 && day <= 7)
+    && new Set(prescribedDays).size === prescribedDays.length;
+  const scheduledDays = hasCompletePrescription
+    ? prescribedDays
+    : preferred.length
+      ? preferred
+      : training.trainingDaysPerWeek && training.trainingDaysPerWeek > 0
+        ? available.slice(0, training.trainingDaysPerWeek)
+        : available;
   let assignmentIndex = 0;
   const schedule = Array.from({ length: 7 }, (_, index) => {
     const isoWeekday = index + 1;
     if (!scheduledDays.includes(isoWeekday)) {
       return { iso_weekday: isoWeekday, workout_key: null };
     }
-    const workoutKey = workoutRows[assignmentIndex % workoutRows.length]?.client_key ?? null;
+    const prescribedIndex = hasCompletePrescription ? prescribedDays.indexOf(isoWeekday) : -1;
+    const workoutKey = prescribedIndex >= 0
+      ? workoutRows[prescribedIndex]?.client_key ?? null
+      : workoutRows[assignmentIndex % workoutRows.length]?.client_key ?? null;
     assignmentIndex += 1;
     return { iso_weekday: isoWeekday, workout_key: workoutKey };
   });

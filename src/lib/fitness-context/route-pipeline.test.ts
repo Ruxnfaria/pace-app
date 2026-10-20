@@ -6,15 +6,19 @@ import { handleChatPost } from "../../app/api/chat/handler.ts";
 import { CHAT_WORKOUT_SAVE_UNAVAILABLE, getChatWorkoutSaveContainment } from "../workouts/runtime-policy.ts";
 import {
   FitnessRouteServiceError,
+  parseGeneratedWorkoutPrescription,
   parseGeneratedWorkouts,
   runFitnessRoutePipeline,
   runWorkoutGenerationRoute,
 } from "./route-pipeline.ts";
+import { resolveWorkoutPrescription } from "../workouts/prescription/engine.ts";
+import { EXERCISE_METADATA_CATALOG } from "../workouts/validation/exercise-metadata.ts";
+import type { UserFitnessContext } from "./model.ts";
 
 const context = buildLegacyFitnessContext({
   nome: "Pessoa",
   onboarding_version: null,
-  objetivo: "saúde",
+  objetivo: "hypertrophy",
   nivel_experiencia: "iniciante",
   dias_treino: 3,
   idade: 30,
@@ -370,6 +374,40 @@ const validWorkoutJson = JSON.stringify({
   }],
 });
 
+function validPrescriptionJson(fitnessContext: UserFitnessContext): string {
+  const prescription = resolveWorkoutPrescription(fitnessContext);
+  return JSON.stringify({
+    sessions: prescription.sessions.map((session) => ({
+      session_id: session.id,
+      session_kind: session.kind,
+      iso_weekday: session.isoWeekday,
+      title: session.displayFocus,
+      exercises: session.requiredSlots.map((exerciseSlot) => ({
+        slot_id: exerciseSlot.id,
+        name: EXERCISE_METADATA_CATALOG.find((item) =>
+          item.movementPattern === exerciseSlot.movementPattern
+        )!.canonicalName,
+        sets: exerciseSlot.sets,
+        rep_min: exerciseSlot.repRange.min,
+        rep_max: exerciseSlot.repRange.max,
+        rest_seconds: exerciseSlot.restSeconds,
+        tip: "Execução controlada e compatível com as restrições declaradas",
+      })),
+      cardio: session.cardio ? {
+        kind: session.cardio.kind,
+        duration_minutes: session.cardio.durationMinutes,
+        effort_method: session.cardio.effortMethod,
+        target_rpe_min: session.cardio.targetRpeRange[0],
+        target_rpe_max: session.cardio.targetRpeRange[1],
+        talk_test: session.cardio.talkTest,
+        interval_work_seconds: session.cardio.intervalWorkSeconds,
+        interval_recovery_seconds: session.cardio.intervalRecoverySeconds,
+        rounds: session.cardio.rounds,
+      } : null,
+    })),
+  });
+}
+
 test("/api/workouts/generate: pipeline real valida saída antes de persistir", async () => {
   const order: string[] = [];
   await runWorkoutGenerationRoute({
@@ -385,12 +423,19 @@ test("/api/workouts/generate: pipeline real valida saída antes de persistir", a
       order.push("openai-mock");
       assert.doesNotMatch(prompt, /internal-id/);
       assert.doesNotMatch(prompt, /nutrition|supplement/i);
-      return validWorkoutJson;
+      return validPrescriptionJson(context);
     },
     persistWorkouts: async (_access, workouts, receivedContext) => {
       order.push("persist");
-      assert.equal(workouts[0].name, "Peito");
-      assert.equal(workouts[0].exercises[0].name, "Supino");
+      const expectedFirst = resolveWorkoutPrescription(context).sessions[0];
+      assert.equal(workouts[0].name, expectedFirst.displayFocus);
+      assert.equal(
+        workouts[0].exercises[0].name,
+        EXERCISE_METADATA_CATALOG.find((item) =>
+          item.movementPattern === expectedFirst.requiredSlots[0].movementPattern
+        )!.canonicalName,
+      );
+      assert.equal(typeof workouts[0].scheduled_iso_weekday, "number");
       assert.equal(receivedContext, context);
     },
   });
@@ -403,7 +448,7 @@ test("/api/workouts/generate: saída inválida falha fechada sem persistência",
     runWorkoutGenerationRoute({
       requireActiveSubscription: async () => ({ client: {}, userId: "id" }),
       loadFitnessContext: async () => context,
-      invokeOpenAI: async () => '{"workouts":[{"name":"sem exercícios"}]}',
+      invokeOpenAI: async () => '{"sessions":[{"title":"sem exercícios"}]}',
       persistWorkouts: async () => { persistenceCalls += 1; },
     }),
     (error) => error instanceof FitnessRouteServiceError && error.code === "INVALID_AI_RESPONSE" && error.status === 502
@@ -427,7 +472,7 @@ test("/api/workouts/generate aceita FitnessContext V2.2 sem dados nutricionais",
   await runWorkoutGenerationRoute({
     requireActiveSubscription: async () => ({ client: {}, userId: "id" }),
     loadFitnessContext: async () => v22Context,
-    invokeOpenAI: async (prompt) => { receivedPrompt = prompt; return validWorkoutJson; },
+    invokeOpenAI: async (prompt) => { receivedPrompt = prompt; return validPrescriptionJson(v22Context); },
     persistWorkouts: async () => {},
   });
   assert.match(receivedPrompt, /conditioning|preferredWeekdays|walking/);
@@ -440,11 +485,57 @@ test("/api/workouts/generate aceita FitnessContext schema 5 e persiste o resulta
   await runWorkoutGenerationRoute({
     requireActiveSubscription: async () => ({ client: {}, userId: "id" }),
     loadFitnessContext: async () => schema5Context,
-    invokeOpenAI: async (prompt) => { receivedPrompt = prompt; return validWorkoutJson; },
+    invokeOpenAI: async (prompt) => { receivedPrompt = prompt; return validPrescriptionJson(schema5Context); },
     persistWorkouts: async () => { persisted = true; },
   });
   assert.match(receivedPrompt, /hypertrophy|preferredTrainingPeriod|evening/);
+  assert.match(receivedPrompt, /BEGIN_WORKOUT_PRESCRIPTION/);
+  assert.match(receivedPrompt, /VOCÊ PODE ESCOLHER/);
+  assert.match(receivedPrompt, /VOCÊ NÃO PODE ALTERAR/);
   assert.equal(persisted, true);
+});
+
+test("contrato prescrito rejeita alteração de volume, slots ou frequência pela IA", () => {
+  const prescription = resolveWorkoutPrescription(schema5Context);
+  const valid = JSON.parse(validPrescriptionJson(schema5Context)) as {
+    sessions: Array<{ exercises: Array<{ sets: number }> }>;
+  };
+  valid.sessions[0].exercises[0].sets += 2;
+  assert.throws(
+    () => parseGeneratedWorkoutPrescription(JSON.stringify(valid), prescription),
+    (error) => error instanceof FitnessRouteServiceError && error.code === "WORKOUT_VALIDATION_FAILED",
+  );
+
+  const missingSession = JSON.parse(validPrescriptionJson(schema5Context)) as { sessions: unknown[] };
+  missingSession.sessions.pop();
+  assert.throws(
+    () => parseGeneratedWorkoutPrescription(JSON.stringify(missingSession), prescription),
+    (error) => error instanceof FitnessRouteServiceError && error.code === "WORKOUT_VALIDATION_FAILED",
+  );
+});
+
+test("IA pode reordenar slots válidos sem assumir decisões de prescrição", () => {
+  const prescription = resolveWorkoutPrescription(schema5Context);
+  const output = JSON.parse(validPrescriptionJson(schema5Context)) as {
+    sessions: Array<{ exercises: Array<{ name: string }> }>;
+  };
+  output.sessions[0].exercises.reverse();
+  const expectedFirstName = output.sessions[0].exercises[0].name;
+  const parsed = parseGeneratedWorkoutPrescription(JSON.stringify(output), prescription);
+  assert.equal(parsed[0].exercises[0].name, expectedFirstName);
+});
+
+test("IA pode declarar prescrição insatisfatível sem persistência silenciosa", () => {
+  const prescription = resolveWorkoutPrescription(schema5Context);
+  assert.throws(
+    () => parseGeneratedWorkoutPrescription(
+      JSON.stringify({ error: { code: "PRESCRIPTION_UNSATISFIABLE", sessionId: "session-01", slotId: "slot" } }),
+      prescription,
+    ),
+    (error) => error instanceof FitnessRouteServiceError
+      && error.code === "PRESCRIPTION_UNSATISFIABLE"
+      && error.status === 422,
+  );
 });
 
 test("/api/chat aceita FitnessContext V2.2 e minimiza escopo nutricional", async () => {

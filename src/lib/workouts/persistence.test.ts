@@ -137,6 +137,26 @@ test("payload do plano é determinístico e contém sete dias", () => {
   ]);
 });
 
+test("payload respeita a agenda determinística da prescription quando presente", () => {
+  const prescribed = workouts.map((workout, index) => ({
+    ...workout,
+    scheduled_iso_weekday: index === 0 ? 2 : 6,
+  }));
+  const payload = buildWorkoutPlanPayload(prescribed, {
+    ...context.training,
+    preferredWeekdays: [1, 3, 5],
+  });
+  assert.deepEqual(payload.schedule, [
+    { iso_weekday: 1, workout_key: null },
+    { iso_weekday: 2, workout_key: "workout-01" },
+    { iso_weekday: 3, workout_key: null },
+    { iso_weekday: 4, workout_key: null },
+    { iso_weekday: 5, workout_key: null },
+    { iso_weekday: 6, workout_key: "workout-02" },
+    { iso_weekday: 7, workout_key: null },
+  ]);
+});
+
 test("adapter valida as 11 RPCs, cardinalidades, respostas e argumentos exatos", async () => {
   const calls: Array<{ name: string; args?: Record<string, unknown> }> = [];
   const results: Record<string, unknown> = {
