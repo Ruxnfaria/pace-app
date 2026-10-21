@@ -89,3 +89,19 @@ test("conjunto parcialmente existente é preservado sem troca silenciosa", async
   assert.equal(result.materialized, 1);
   assert.equal(result.created, 0);
 });
+
+test("rest day with zero occurrence materializes only capability-backed consistency", async () => {
+  const context = { ...dailyContext(), scheduledWorkout: null, scheduledCardio: null };
+  let codes: string[] = [];
+  const result = await runDailyMissionGeneration({
+    loadContext: async () => context,
+    loadExisting: async () => [],
+    materialize: async (_loadedContext, missions) => {
+      codes = missions.map((mission) => mission.code);
+      return missions.map((mission, index) => ({ id: `rest-${index}`, missionCode: mission.code, completed: false }));
+    },
+    syncProgress: async () => ({ completedNow: false }),
+  });
+  assert.deepEqual(codes, ["weekly_workout_consistency"]);
+  assert.equal(result.created, 1);
+});

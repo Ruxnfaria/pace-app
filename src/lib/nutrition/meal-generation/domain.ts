@@ -44,11 +44,9 @@ export interface MealPlanGenerationContext {
 }
 
 export interface AiMealPlanItemCandidate {
-  foodQuery: string;
-  quantityValue: number;
-  quantityUnit: FoodQuantityUnit;
+  catalogEntryId: string;
+  quantityGrams: number;
   preparationNote?: string;
-  catalogHint?: string;
 }
 
 export interface AiMealCandidate {
@@ -69,12 +67,26 @@ export interface MealPlanCatalogPromptContext {
     catalogVersion: string;
   };
   capabilities: {
-    exactOrAliasResolutionOnly: true;
-    supportedQuantityUnits: FoodQuantityUnit[];
+    catalogEntryIdSelectionOnly: true;
+    supportedQuantityUnit: "g";
     restrictionMetadataComplete: boolean;
     dietaryPatternMetadataComplete: boolean;
   };
-  allowedCatalogNames: string[];
+  candidates: MealPlanCatalogCandidate[];
+}
+
+export interface MealPlanCatalogCandidate {
+  catalogEntryId: string;
+  canonicalName: string;
+  source: "TACO";
+  sourceFoodId: string;
+  sourceVersion: string;
+  preparationState: string;
+  calories: number;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+  fiberG: number;
 }
 
 export interface ResolvedMealPlanItem {
@@ -85,7 +97,7 @@ export interface ResolvedMealPlanItem {
   quantityUnit: FoodQuantityUnit;
   quantityGrams: number;
   preparationNote: string | null;
-  resolution: "EXACT_MATCH" | "ALIAS_MATCH";
+  resolution: "CATALOG_ENTRY_ID";
   nutrients: { calories: number; proteinG: number; carbsG: number; fatG: number; fiberG: number };
 }
 
@@ -111,7 +123,7 @@ export interface ResolvedMealPlan {
 }
 
 export const MEAL_PLAN_VALIDATION_CODES = [
-  "CATALOG_NOT_READY", "USER_NOT_ELIGIBLE", "UNKNOWN_FOOD", "AMBIGUOUS_FOOD", "INVALID_QUANTITY",
+  "CATALOG_NOT_READY", "USER_NOT_ELIGIBLE", "UNKNOWN_CATALOG_ENTRY_ID", "UNKNOWN_FOOD", "AMBIGUOUS_FOOD", "INVALID_QUANTITY",
   "UNKNOWN_REQUIRED_NUTRIENT", "MEAL_COUNT_MISMATCH", "MEAL_ROLE_MISMATCH", "MEAL_WINDOW_CONFLICT",
   "DIETARY_PATTERN_UNVERIFIED", "ALLERGEN_SAFETY_UNVERIFIED", "RESTRICTION_VIOLATION",
   "DISLIKED_FOOD_VIOLATION", "CALORIES_OUT_OF_RANGE", "PROTEIN_OUT_OF_RANGE", "CARBS_OUT_OF_RANGE",

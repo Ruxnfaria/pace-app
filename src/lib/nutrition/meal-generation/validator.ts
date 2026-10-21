@@ -1,8 +1,7 @@
 import { assessTrustedNutritionCatalog } from "../food-catalog/capabilities";
 import { resolveMealPlanGenerationEligibility } from "../food-catalog/eligibility";
-import { resolveFoodCatalogEntry, normalizeFoodQuery } from "../food-catalog/normalization";
+import { normalizeFoodQuery } from "../food-catalog/normalization";
 import { calculateFoodNutrients, sumMealNutrients } from "../food-catalog/nutrients";
-import { FoodQuantityError, normalizeFoodQuantity } from "../food-catalog/quantity";
 import { canUseFoodForRestrictions } from "../food-catalog/restrictions";
 import { TACO_SOURCE_VERSION } from "../food-catalog/taco/constants";
 import {
@@ -12,6 +11,7 @@ import {
   type AiMealPlanCandidate,
   type CatalogSnapshot,
   type MealPlanGenerationContext,
+  type MealPlanCatalogCandidate,
   type MealPlanValidationIssue,
   type MealPlanValidationReport,
   type ResolvedMeal,
@@ -71,6 +71,7 @@ export function validateMealPlanCandidate(
   context: MealPlanGenerationContext,
   candidate: AiMealPlanCandidate,
   catalog: CatalogSnapshot,
+  allowedCandidates: MealPlanCatalogCandidate[],
 ): MealPlanValidationReport {
   const issues: MealPlanValidationIssue[] = [];
   let preferenceScore = 0;
@@ -98,6 +99,8 @@ export function validateMealPlanCandidate(
   if (new Set(structureKeys).size !== structureKeys.length) issues.push(issue("DUPLICATE_MEAL_STRUCTURE", "HARD_FAILURE", "Candidate duplicated a meal structure"));
 
   const resolvedMeals: ResolvedMeal[] = [];
+  const allowedIds = new Set(allowedCandidates.map((value) => value.catalogEntryId));
+  const catalogById = new Map(catalog.entries.map((entry) => [entry.id, entry]));
   const disliked = new Set(context.dislikedFoods.map(normalizeFoodQuery));
   const preferred = new Set(context.preferredFoods.map(normalizeFoodQuery));
   for (let mealIndex = 0; mealIndex < candidate.meals.length; mealIndex += 1) {
@@ -111,12 +114,17 @@ export function validateMealPlanCandidate(
     let mealGrams = 0;
     for (let itemIndex = 0; itemIndex < meal.items.length; itemIndex += 1) {
       const item = meal.items[itemIndex];
-      const resolution = resolveFoodCatalogEntry(item.foodQuery, catalog.entries, catalog.aliases);
-      if (resolution.status === "NOT_FOUND") { issues.push(issue("UNKNOWN_FOOD", "HARD_FAILURE", `Unknown food: ${item.foodQuery}`, position, itemIndex + 1)); continue; }
-      if (resolution.status === "AMBIGUOUS") { issues.push(issue("AMBIGUOUS_FOOD", "HARD_FAILURE", `Ambiguous food: ${item.foodQuery}`, position, itemIndex + 1)); continue; }
-      const food = resolution.entry;
+      if (!allowedIds.has(item.catalogEntryId)) {
+        issues.push(issue("UNKNOWN_CATALOG_ENTRY_ID", "HARD_FAILURE", "Food ID was not offered in the generation candidate set", position, itemIndex + 1));
+        continue;
+      }
+      const food = catalogById.get(item.catalogEntryId);
+      if (!food) {
+        issues.push(issue("UNKNOWN_CATALOG_ENTRY_ID", "HARD_FAILURE", "Food ID is absent from the authoritative catalog", position, itemIndex + 1));
+        continue;
+      }
       if (food.source !== "TACO" || food.sourceVersion !== TACO_SOURCE_VERSION) {
-        issues.push(issue("UNKNOWN_FOOD", "HARD_FAILURE", "Food is outside the recognized TACO authority", position, itemIndex + 1)); continue;
+        issues.push(issue("UNKNOWN_CATALOG_ENTRY_ID", "HARD_FAILURE", "Food is outside the recognized TACO authority", position, itemIndex + 1)); continue;
       }
       const restriction = canUseFoodForRestrictions(food, {
         dietaryPattern: context.dietaryPattern === "unknown" ? "other" : context.dietaryPattern,
@@ -126,18 +134,13 @@ export function validateMealPlanCandidate(
         const code = restriction.reason === "ALLERGEN_DATA_INCOMPLETE" ? "ALLERGEN_SAFETY_UNVERIFIED" : "RESTRICTION_VIOLATION";
         issues.push(issue(code, "HARD_FAILURE", restriction.reason, position, itemIndex + 1));
       }
-      if (disliked.has(food.normalizedName) || disliked.has(normalizeFoodQuery(item.foodQuery))) {
+      if (disliked.has(food.normalizedName)) {
         issues.push(issue("DISLIKED_FOOD_VIOLATION", "HARD_FAILURE", "A disliked food was selected", position, itemIndex + 1));
       }
-      if (preferred.has(food.normalizedName) || preferred.has(normalizeFoodQuery(item.foodQuery))) preferenceScore += 1;
-      const portion = item.quantityUnit === "known_portion"
-        ? catalog.portions.find((value) => value.foodId === food.id && normalizeFoodQuery(value.label) === normalizeFoodQuery(item.catalogHint ?? ""))
-        : undefined;
-      let grams: number;
-      try { grams = normalizeFoodQuantity(food, item.quantityValue, item.quantityUnit, portion); }
-      catch (error) {
-        const code = error instanceof FoodQuantityError && error.code === "IMPOSSIBLE_PORTION" ? "IMPOSSIBLE_PORTION" : "INVALID_QUANTITY";
-        issues.push(issue(code, "HARD_FAILURE", error instanceof Error ? error.message : "Invalid quantity", position, itemIndex + 1));
+      if (preferred.has(food.normalizedName)) preferenceScore += 1;
+      const grams = item.quantityGrams;
+      if (typeof grams !== "number" || !Number.isFinite(grams) || grams <= 0) {
+        issues.push(issue("INVALID_QUANTITY", "HARD_FAILURE", "Quantity in grams must be a positive finite number", position, itemIndex + 1));
         continue;
       }
       const max = food.foodRole === "fat" || food.foodGroup === "oils_fats" ? POLICY.portions.maximumOilFatGrams : POLICY.portions.maximumItemGrams;
@@ -149,9 +152,9 @@ export function validateMealPlanCandidate(
         continue;
       }
       resolvedItems.push({
-        food, foodQuery: item.foodQuery, displayName: food.canonicalName, quantityValue: item.quantityValue,
-        quantityUnit: item.quantityUnit, quantityGrams: grams, preparationNote: item.preparationNote?.trim() || null,
-        resolution: resolution.status,
+        food, foodQuery: food.canonicalName, displayName: food.canonicalName, quantityValue: grams,
+        quantityUnit: "g", quantityGrams: grams, preparationNote: item.preparationNote?.trim() || null,
+        resolution: "CATALOG_ENTRY_ID",
         nutrients: { calories: nutrients.calories, proteinG: nutrients.proteinG, carbsG: nutrients.carbsG, fatG: nutrients.fatG, fiberG: nutrients.fiberG } as ResolvedMeal["items"][number]["nutrients"],
       });
     }

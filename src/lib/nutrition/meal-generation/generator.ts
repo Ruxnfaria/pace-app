@@ -1,7 +1,7 @@
 import { assessTrustedNutritionCatalog } from "../food-catalog/capabilities";
 import { resolveMealPlanGenerationEligibility } from "../food-catalog/eligibility";
-import { normalizeFoodQuery } from "../food-catalog/normalization";
 import { PRAXE_TACO_CATALOG_VERSION, TACO_SOURCE_VERSION } from "../food-catalog/taco/constants";
+import { buildMealPlanCandidateSet } from "./candidate-set";
 import {
   MEAL_PLAN_GENERATOR_VERSION,
   MEAL_PLAN_VALIDATOR_VERSION,
@@ -16,11 +16,10 @@ import {
 } from "./domain";
 import type { NutritionFoodCatalogRepository } from "./repository";
 import { validateMealPlanCandidate } from "./validator";
-import type { NutritionFoodCatalogEntry } from "../food-catalog/domain";
 
 export interface MealPlanCandidateGenerator {
   generate(context: MealPlanGenerationContext, catalog: MealPlanCatalogPromptContext): Promise<AiMealPlanCandidate>;
-  repair(context: MealPlanGenerationContext, previous: AiMealPlanCandidate, issues: MealPlanValidationIssue[], catalogFeedback: string[]): Promise<AiMealPlanCandidate>;
+  repair(context: MealPlanGenerationContext, previous: AiMealPlanCandidate, issues: MealPlanValidationIssue[], catalog: MealPlanCatalogPromptContext): Promise<AiMealPlanCandidate>;
 }
 
 export interface MealPlanActivationRepository {
@@ -45,39 +44,19 @@ function rejected(code: "CATALOG_NOT_READY" | "USER_NOT_ELIGIBLE", message: stri
     plan: null, preferenceScore: 0, issues: [{ code, severity: "HARD_FAILURE", message }] };
 }
 
-export function isMealPlanGenerationCandidate(entry: NutritionFoodCatalogEntry): boolean {
-  return entry.isActive
-    && entry.source === "TACO"
-    && entry.nutrientCompleteness === "COMPLETE"
-    && Object.values(entry.nutrientsPer100g).every((value) => typeof value === "number" && Number.isFinite(value));
-}
-
-function catalogPromptContext(catalog: CatalogSnapshot): MealPlanCatalogPromptContext {
+function catalogPromptContext(context: MealPlanGenerationContext, catalog: CatalogSnapshot): MealPlanCatalogPromptContext {
   const status = assessTrustedNutritionCatalog(catalog.entries);
   return {
     readiness: catalog.readiness,
     authority: { source: "TACO", sourceVersion: TACO_SOURCE_VERSION, catalogVersion: PRAXE_TACO_CATALOG_VERSION },
     capabilities: {
-      exactOrAliasResolutionOnly: true,
-      supportedQuantityUnits: ["g", "kg", "ml", "known_portion"],
+      catalogEntryIdSelectionOnly: true,
+      supportedQuantityUnit: "g",
       restrictionMetadataComplete: status.restrictionMetadataComplete,
       dietaryPatternMetadataComplete: status.restrictionMetadataComplete,
     },
-    allowedCatalogNames: catalog.entries.filter(isMealPlanGenerationCandidate)
-      .slice(0, 120).map((entry) => entry.canonicalName),
+    candidates: buildMealPlanCandidateSet(context, catalog),
   };
-}
-
-function repairFeedback(catalog: CatalogSnapshot, issues: MealPlanValidationIssue[]): string[] {
-  const unknowns = issues.filter((value) => value.code === "UNKNOWN_FOOD").flatMap((value) => {
-    const query = normalizeFoodQuery(value.message.replace(/^Unknown food:\s*/i, ""));
-    const tokens = new Set(query.split(" ").filter((token) => token.length > 2));
-    if (tokens.size === 0) return [];
-    return catalog.entries.filter((entry) => isMealPlanGenerationCandidate(entry)
-      && [...tokens].some((token) => entry.normalizedName.includes(token)))
-      .slice(0, 3).map((entry) => entry.canonicalName);
-  });
-  return [...new Set(unknowns)].slice(0, 8);
 }
 
 export async function generateValidatedMealPlan(args: {
@@ -104,13 +83,14 @@ export async function generateValidatedMealPlan(args: {
   const generationContext = { ...args.context, catalogReadiness: catalog.readiness };
   await args.jobRepository?.begin(args.context, idempotencyKey);
   try {
-    const candidate = await args.candidateGenerator.generate(generationContext, catalogPromptContext(catalog));
-    let report = validateMealPlanCandidate(generationContext, candidate, catalog);
+    const constrainedCatalog = catalogPromptContext(generationContext, catalog);
+    const candidate = await args.candidateGenerator.generate(generationContext, constrainedCatalog);
+    let report = validateMealPlanCandidate(generationContext, candidate, catalog, constrainedCatalog.candidates);
     let repaired = false;
     if (!report.valid) {
       repaired = true;
-      const repairedCandidate = await args.candidateGenerator.repair(generationContext, candidate, report.issues, repairFeedback(catalog, report.issues));
-      report = validateMealPlanCandidate(generationContext, repairedCandidate, catalog);
+      const repairedCandidate = await args.candidateGenerator.repair(generationContext, candidate, report.issues, constrainedCatalog);
+      report = validateMealPlanCandidate(generationContext, repairedCandidate, catalog, constrainedCatalog.candidates);
     }
     if (!report.valid || !report.plan) {
       await args.jobRepository?.finish(idempotencyKey, "requires_review", report.issues.find((value) => value.severity === "HARD_FAILURE")?.code ?? "VALIDATION_FAILED");

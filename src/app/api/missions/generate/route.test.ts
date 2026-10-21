@@ -63,7 +63,10 @@ mock.module("@/lib/missions/server", moduleOptions({
   },
 }));
 
-const { POST } = await import("./route.ts");
+let POST: typeof import("./route.ts")["POST"];
+test.before(async () => {
+  ({ POST } = await import("./route.ts"));
+});
 
 test("POST exige usuário autenticado antes de gerar", async () => {
   authenticated = false;

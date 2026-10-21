@@ -3,7 +3,8 @@ import type OpenAI from "openai";
 import type { AiMealPlanCandidate, MealPlanCatalogPromptContext, MealPlanGenerationContext, MealPlanValidationIssue } from "./domain";
 import type { MealPlanCandidateGenerator } from "./generator";
 
-const RESPONSE_SCHEMA = {
+export function buildMealPlanResponseSchema(catalog: MealPlanCatalogPromptContext) {
+  return {
   name: "praxe_meal_plan_candidate_v1",
   strict: true,
   schema: {
@@ -16,18 +17,19 @@ const RESPONSE_SCHEMA = {
           type: "array", minItems: 1,
           items: {
             type: "object", additionalProperties: false,
-            required: ["foodQuery", "quantityValue", "quantityUnit", "preparationNote", "catalogHint"],
+            required: ["catalogEntryId", "quantityGrams", "preparationNote"],
             properties: {
-              foodQuery: { type: "string" }, quantityValue: { type: "number" },
-              quantityUnit: { type: "string", enum: ["g", "kg", "ml", "known_portion"] },
-              preparationNote: { type: ["string", "null"] }, catalogHint: { type: ["string", "null"] },
+              catalogEntryId: { type: "string", enum: catalog.candidates.map((candidate) => candidate.catalogEntryId) },
+              quantityGrams: { type: "number", exclusiveMinimum: 0 },
+              preparationNote: { type: ["string", "null"] },
             },
           },
         },
       } } },
     },
   },
-} as const;
+  } as const;
+}
 
 function safeContext(context: MealPlanGenerationContext) {
   return {
@@ -44,7 +46,7 @@ function safeContext(context: MealPlanGenerationContext) {
 }
 
 function systemInstruction(): string {
-  return "Você compõe refeições práticas usando somente nomes exatos do catálogo fornecido. Não calcule nem retorne nutrientes. Não altere meta, quantidade de refeições, ordem ou papéis. Use g ou kg; ml/known_portion somente se o catálogo indicar conversão. Retorne somente o JSON do schema.";
+  return "Você compõe refeições práticas escolhendo somente catalogEntryId da lista fornecida. Nunca crie IDs ou use nomes como identidade alimentar. Informe quantityGrams e uma nota de preparo opcional. Não calcule nem retorne nutrientes. Não altere meta, quantidade de refeições, ordem ou papéis. Retorne somente o JSON do schema.";
 }
 
 function parseCandidate(content: string): AiMealPlanCandidate {
@@ -56,12 +58,12 @@ function parseCandidate(content: string): AiMealPlanCandidate {
 export class OpenAiMealPlanCandidateGenerator implements MealPlanCandidateGenerator {
   constructor(private readonly client: OpenAI, private readonly model = "gpt-4o") {}
 
-  private async invoke(payload: object): Promise<AiMealPlanCandidate> {
+  private async invoke(payload: object, catalog: MealPlanCatalogPromptContext): Promise<AiMealPlanCandidate> {
     const completion = await this.client.chat.completions.create({
       model: this.model,
       temperature: 0.2,
       messages: [{ role: "system", content: systemInstruction() }, { role: "user", content: JSON.stringify(payload) }],
-      response_format: { type: "json_schema", json_schema: RESPONSE_SCHEMA },
+      response_format: { type: "json_schema", json_schema: buildMealPlanResponseSchema(catalog) },
     });
     const content = completion.choices[0]?.message?.content;
     if (!content) throw new Error("EMPTY_AI_MEAL_PLAN_OUTPUT");
@@ -69,12 +71,12 @@ export class OpenAiMealPlanCandidateGenerator implements MealPlanCandidateGenera
   }
 
   generate(context: MealPlanGenerationContext, catalog: MealPlanCatalogPromptContext): Promise<AiMealPlanCandidate> {
-    return this.invoke({ task: "generate", context: safeContext(context), catalog });
+    return this.invoke({ task: "generate", context: safeContext(context), catalog }, catalog);
   }
 
-  repair(context: MealPlanGenerationContext, previous: AiMealPlanCandidate, issues: MealPlanValidationIssue[], catalogFeedback: string[]): Promise<AiMealPlanCandidate> {
+  repair(context: MealPlanGenerationContext, previous: AiMealPlanCandidate, issues: MealPlanValidationIssue[], catalog: MealPlanCatalogPromptContext): Promise<AiMealPlanCandidate> {
     return this.invoke({ task: "repair_once", immutableContext: safeContext(context), previous,
       issueCodes: issues.filter((issue) => issue.severity === "HARD_FAILURE").map((issue) => issue.code),
-      controlledCatalogSuggestions: catalogFeedback });
+      catalog }, catalog);
   }
 }

@@ -13,7 +13,7 @@ test("catalog-not-ready stops before any AI call", async () => {
   assert.equal(calls, 0);
 });
 
-test("generation receives explicit catalog authority and capability metadata without nutrients", async () => {
+test("generation receives a bounded catalog-ID candidate set with authoritative nutrient metadata", async () => {
   const context = generationContext();
   let received: MealPlanCatalogPromptContext | null = null;
   const result = await generateValidatedMealPlan({
@@ -31,18 +31,20 @@ test("generation receives explicit catalog authority and capability metadata wit
   assert.deepEqual(promptContext.authority, {
     source: "TACO", sourceVersion: "4_edicao_2011", catalogVersion: "praxe-food-catalog-taco-v1",
   });
-  assert.equal(promptContext.capabilities.exactOrAliasResolutionOnly, true);
+  assert.equal(promptContext.capabilities.catalogEntryIdSelectionOnly, true);
+  assert.equal(promptContext.capabilities.supportedQuantityUnit, "g");
   assert.equal(promptContext.capabilities.restrictionMetadataComplete, false);
-  assert.ok(promptContext.allowedCatalogNames.length > 0);
-  assert.equal(promptContext.allowedCatalogNames.includes("Frango, peito, sem pele, grelhado"), false,
+  assert.ok(promptContext.candidates.length > 0);
+  assert.ok(promptContext.candidates.every((candidate) => candidate.catalogEntryId && candidate.source === "TACO"
+    && [candidate.calories, candidate.proteinG, candidate.carbsG, candidate.fatG, candidate.fiberG].every(Number.isFinite)));
+  assert.equal(promptContext.candidates.some((candidate) => candidate.canonicalName === "Frango, peito, sem pele, grelhado"), false,
     "partial TACO entries must not be offered to the generator");
-  assert.doesNotMatch(JSON.stringify(promptContext), /"(?:calories|proteinG|carbsG|fatG|fiberG)"\s*:/);
 });
 
-test("unknown required nutrient remains a hard failure and its leaf code is persisted", async () => {
+test("a catalog ID outside the server-provided set hard-fails and persists its leaf code", async () => {
   const context = generationContext();
   const invalid = balancedCandidate(context.mealRoles);
-  invalid.meals[0].items[0].foodQuery = "Frango, peito, sem pele, grelhado";
+  invalid.meals[0].items[0].catalogEntryId = officialTestCatalog().entries.find((entry) => entry.canonicalName.startsWith("Frango"))!.id;
   let persistedCode = "";
   const result = await generateValidatedMealPlan({
     context,
@@ -54,18 +56,27 @@ test("unknown required nutrient remains a hard failure and its leaf code is pers
     },
   });
   assert.equal(result.status, "REQUIRES_REVIEW");
-  assert.equal(persistedCode, "UNKNOWN_REQUIRED_NUTRIENT");
+  assert.equal(persistedCode, "UNKNOWN_CATALOG_ENTRY_ID");
 });
 
-test("one controlled repair can fix unknown food and activate", async () => {
+test("one controlled repair keeps the identical catalog constraint and can activate", async () => {
   const catalog = officialTestCatalog();
   const context = generationContext();
   const invalid = balancedCandidate(context.mealRoles);
-  invalid.meals[0].items[0].foodQuery = "arroz genérico";
+  invalid.meals[0].items[0].catalogEntryId = "invented-by-provider";
   let repairs = 0;
+  let generationIds: string[] = [];
   const generator: MealPlanCandidateGenerator = {
-    generate: async () => invalid,
-    repair: async (_context, _previous, issues) => { repairs += 1; assert.ok(issues.some((issue) => issue.code === "UNKNOWN_FOOD")); return balancedCandidate(context.mealRoles); },
+    generate: async (_context, constrainedCatalog) => {
+      generationIds = constrainedCatalog.candidates.map((candidate) => candidate.catalogEntryId);
+      return invalid;
+    },
+    repair: async (_context, _previous, issues, constrainedCatalog) => {
+      repairs += 1;
+      assert.ok(issues.some((issue) => issue.code === "UNKNOWN_CATALOG_ENTRY_ID"));
+      assert.deepEqual(constrainedCatalog.candidates.map((candidate) => candidate.catalogEntryId), generationIds);
+      return balancedCandidate(context.mealRoles);
+    },
   };
   const result = await generateValidatedMealPlan({ context, catalogRepository: new InMemoryNutritionFoodCatalogRepository(catalog.entries), candidateGenerator: generator });
   assert.equal(result.status, "ACTIVE");
@@ -73,14 +84,16 @@ test("one controlled repair can fix unknown food and activate", async () => {
   assert.equal(repairs, 1);
 });
 
-for (const repairCase of ["calorie_mismatch", "protein_mismatch", "disliked_food"] as const) {
+for (const repairCase of ["calorie_mismatch", "protein_mismatch"] as const) {
   test(`one controlled repair fixes ${repairCase}`, async () => {
     const catalog = officialTestCatalog();
     const context = generationContext();
     const invalid = balancedCandidate(context.mealRoles);
-    if (repairCase === "calorie_mismatch") invalid.meals[0].items[0].quantityValue = 500;
-    if (repairCase === "protein_mismatch") invalid.meals.forEach((meal) => { meal.items = meal.items.filter((item) => !item.foodQuery.startsWith("Feijão")); });
-    if (repairCase === "disliked_food") { context.dislikedFoods = ["Frango, peito, sem pele, grelhado"]; invalid.meals[0].items[0].foodQuery = "Frango, peito, sem pele, grelhado"; }
+    if (repairCase === "calorie_mismatch") invalid.meals[0].items[0].quantityGrams = 500;
+    if (repairCase === "protein_mismatch") {
+      const beansId = officialTestCatalog().entries.find((entry) => entry.canonicalName.startsWith("Feijão"))!.id;
+      invalid.meals.forEach((meal) => { meal.items = meal.items.filter((item) => item.catalogEntryId !== beansId); });
+    }
     let repairs = 0;
     const generator: MealPlanCandidateGenerator = { generate: async () => invalid, repair: async () => { repairs += 1; return balancedCandidate(context.mealRoles); } };
     const result = await generateValidatedMealPlan({ context, catalogRepository: new InMemoryNutritionFoodCatalogRepository(catalog.entries), candidateGenerator: generator });

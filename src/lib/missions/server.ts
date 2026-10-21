@@ -50,7 +50,6 @@ function assertMissionRows(value: unknown): MissionDatabaseRow[] {
 
 async function buildDailyContext(
   authClient: SupabaseClient,
-  serviceClient: SupabaseClient,
   userId: string,
   date: string,
 ): Promise<MissionDailyContext> {
@@ -67,13 +66,13 @@ async function buildDailyContext(
   }
 
   const [occurrenceResult, completedSessionsResult, historyResult] = await Promise.all([
-    serviceClient
+    authClient
       .from("workout_schedule_occurrences")
       .select("id, workout_title_snapshot, skipped_at")
       .eq("user_id", userId)
       .eq("scheduled_for_date", date)
       .maybeSingle(),
-    serviceClient
+    authClient
       .from("workout_sessions")
       .select("id, schedule_occurrence_id, completed_at")
       .eq("user_id", userId)
@@ -81,7 +80,7 @@ async function buildDailyContext(
       .not("schedule_occurrence_id", "is", null)
       .gte("completed_at", `${shiftDate(date, -6)}T00:00:00-03:00`)
       .lte("completed_at", `${date}T23:59:59.999-03:00`),
-    serviceClient
+    authClient
       .from("daily_missions")
       .select("mission_code, category, for_date")
       .eq("user_id", userId)
@@ -136,9 +135,9 @@ export async function generateUserDailyMissions(options: {
 }): Promise<MissionRuntimeResult> {
   const serviceClient = createMissionServiceClient();
   const result = await runDailyMissionGeneration({
-    loadContext: () => buildDailyContext(options.authClient, serviceClient, options.userId, options.date),
+    loadContext: () => buildDailyContext(options.authClient, options.userId, options.date),
     loadExisting: async (context) => {
-      const response = await serviceClient
+      const response = await options.authClient
         .from("daily_missions")
         .select("id, mission_code, completed")
         .eq("user_id", context.userId)

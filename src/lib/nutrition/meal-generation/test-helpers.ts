@@ -28,11 +28,12 @@ export function officialTestCatalog(): { entries: NutritionFoodCatalogEntry[]; a
 }
 
 export function balancedCandidate(roles: MealPlanGenerationContext["mealRoles"]): AiMealPlanCandidate {
+  const byName = new Map(officialTestCatalog().entries.map((entry) => [entry.canonicalName, entry.id]));
   return { meals: roles.map((role, index) => ({ role, label: `Refeição ${index + 1}`, items: [
-    { foodQuery: "Arroz, tipo 1, cozido", quantityValue: 100, quantityUnit: "g" },
-    { foodQuery: "Feijão, carioca, cozido", quantityValue: 100, quantityUnit: "g" },
-    { foodQuery: "Banana, prata, crua", quantityValue: 100, quantityUnit: "g" },
-    { foodQuery: "Leite, de vaca, achocolatado", quantityValue: 100, quantityUnit: "g" },
+    { catalogEntryId: byName.get("Arroz, tipo 1, cozido")!, quantityGrams: 100 },
+    { catalogEntryId: byName.get("Feijão, carioca, cozido")!, quantityGrams: 100 },
+    { catalogEntryId: byName.get("Banana, prata, crua")!, quantityGrams: 100 },
+    { catalogEntryId: byName.get("Leite, de vaca, achocolatado")!, quantityGrams: 100 },
   ] })) };
 }
 
