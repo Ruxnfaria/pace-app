@@ -1,6 +1,12 @@
 import "server-only";
 import type OpenAI from "openai";
-import type { AiMealPlanCandidate, MealPlanCatalogPromptContext, MealPlanGenerationContext, MealPlanValidationIssue } from "./domain";
+import type {
+  AiMealPlanCandidate,
+  MealPlanCatalogPromptContext,
+  MealPlanGenerationContext,
+  MealPlanNumericValidationDiagnostics,
+  MealPlanValidationIssue,
+} from "./domain";
 import type { MealPlanCandidateGenerator } from "./generator";
 
 export function buildMealPlanResponseSchema(catalog: MealPlanCatalogPromptContext) {
@@ -74,9 +80,12 @@ export class OpenAiMealPlanCandidateGenerator implements MealPlanCandidateGenera
     return this.invoke({ task: "generate", context: safeContext(context), catalog }, catalog);
   }
 
-  repair(context: MealPlanGenerationContext, previous: AiMealPlanCandidate, issues: MealPlanValidationIssue[], catalog: MealPlanCatalogPromptContext): Promise<AiMealPlanCandidate> {
+  repair(context: MealPlanGenerationContext, previous: AiMealPlanCandidate, issues: MealPlanValidationIssue[],
+    diagnostics: MealPlanNumericValidationDiagnostics | null,
+    catalog: MealPlanCatalogPromptContext): Promise<AiMealPlanCandidate> {
     return this.invoke({ task: "repair_once", immutableContext: safeContext(context), previous,
       issueCodes: issues.filter((issue) => issue.severity === "HARD_FAILURE").map((issue) => issue.code),
+      numericDiagnostics: diagnostics,
       catalog }, catalog);
   }
 }

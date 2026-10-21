@@ -6,6 +6,10 @@ const migrationUrl = new URL(
   "../../../supabase/migrations/20261019043144_praxe_missions_intelligence_v1.sql",
   import.meta.url,
 );
+const conflictFixUrl = new URL(
+  "../../../supabase/migrations/20261021163732_fix_materialize_daily_missions_v1_conflict.sql",
+  import.meta.url,
+);
 
 test("migration cria identidade idempotente sem materializar dados", async () => {
   const sql = await readFile(migrationUrl, "utf8");
@@ -13,6 +17,18 @@ test("migration cria identidade idempotente sem materializar dados", async () =>
   assert.match(sql, /on conflict \(user_id, for_date, algorithm_version, mission_code\) do nothing/i);
   assert.match(sql, /jsonb_array_length\(p_missions\)/i);
   assert.doesNotMatch(sql, /insert into public\.daily_missions[\s\S]*?'[0-9a-f]{8}-[0-9a-f-]{27,}'/i);
+});
+
+test("forward migration removes the PL/pgSQL output-column ambiguity without changing identity", async () => {
+  const original = await readFile(migrationUrl, "utf8");
+  const fixed = await readFile(conflictFixUrl, "utf8");
+  assert.match(original, /returns table \(id uuid, mission_code text, completed boolean\)/i);
+  assert.match(original, /on conflict \(user_id, for_date, algorithm_version, mission_code\) do nothing/i);
+  assert.match(fixed, /create or replace function public\.materialize_daily_missions_v1/i);
+  assert.match(fixed, /on conflict on constraint daily_missions_intelligence_identity_unique do nothing/i);
+  assert.doesNotMatch(fixed, /on conflict \(user_id, for_date, algorithm_version, mission_code\)/i);
+  assert.match(fixed, /security definer[\s\S]*?set search_path = ''/i);
+  assert.doesNotMatch(fixed, /grant |revoke |create policy|alter table|xp_reward\s*\+|reward_transactions/i);
 });
 
 test("RPCs inteligentes são exclusivas de service_role", async () => {

@@ -39,3 +39,10 @@ test("daily dashboard mission generation waits for an active post-onboarding wor
   assert.ok(statusRead >= 0 && missionGeneration > statusRead);
   assert.match(source, /!orchestration\?\.workout \|\| orchestration\.workout === "ready"/);
 });
+
+test("meal failures expose only server-calculated numeric validation diagnostics", async () => {
+  const source = await readFile(new URL("lib/post-onboarding/server.ts", root), "utf8");
+  assert.match(source, /result\.report\.diagnostics/);
+  assert.match(source, /numeric_validation:\s*result\.report\.diagnostics/);
+  assert.doesNotMatch(source, /providerResponse|rawPrompt|completion\.choices/);
+});

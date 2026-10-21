@@ -75,6 +75,7 @@ export async function processPostOnboardingForUser(
             validation_issue_codes: [...new Set(result.report.issues.map((issue) => issue.code))],
             repair_attempted: result.repaired,
             repair_result: result.repaired ? "failed" : "not_attempted",
+            ...(result.report.diagnostics ? { numeric_validation: result.report.diagnostics } : {}),
           },
         };
       } catch {

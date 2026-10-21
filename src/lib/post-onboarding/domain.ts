@@ -38,6 +38,7 @@ export interface SanitizedValidationDiagnostics {
   validation_issue_codes: readonly string[];
   repair_attempted: boolean;
   repair_result: "not_attempted" | "succeeded" | "failed";
+  numeric_validation?: import("@/lib/nutrition/meal-generation/domain").MealPlanNumericValidationDiagnostics;
 }
 
 export type ArtifactProcessOutcome =

@@ -12,6 +12,7 @@ import {
   type CatalogSnapshot,
   type MealPlanGenerationContext,
   type MealPlanCatalogCandidate,
+  type MealPlanNumericValidationDiagnostics,
   type MealPlanValidationIssue,
   type MealPlanValidationReport,
   type ResolvedMeal,
@@ -31,6 +32,44 @@ function knownTotals(values: Array<{ calories: number; proteinG: number; carbsG:
 
 function outside(value: number, target: number, lowRatio: number, highRatio: number): boolean {
   return value < target * lowRatio || value > target * highRatio;
+}
+
+function rounded(value: number): number {
+  return Number(value.toFixed(2));
+}
+
+function numericDiagnostics(
+  plan: ResolvedMealPlan,
+  context: MealPlanGenerationContext,
+): MealPlanNumericValidationDiagnostics {
+  const target = context.target;
+  const mealProteinDistributionIssues = context.goal === "hypertrophy"
+    ? plan.meals.flatMap((meal) => {
+      const minimumProteinG = meal.target.proteinG * POLICY.distribution.minimumHypertrophyMealProteinTargetRatio;
+      if (meal.totals.proteinG >= minimumProteinG) return [];
+      return [{
+        mealPosition: meal.position,
+        targetProteinG: rounded(meal.target.proteinG),
+        minimumProteinG: rounded(minimumProteinG),
+        actualProteinG: rounded(meal.totals.proteinG),
+        proteinDelta: rounded(meal.totals.proteinG - meal.target.proteinG),
+      }];
+    })
+    : [];
+  return {
+    targetKcal: rounded(target.calories), actualKcal: rounded(plan.totals.calories),
+    kcalDelta: rounded(plan.totals.calories - target.calories),
+    kcalDeviationPercent: rounded(((plan.totals.calories - target.calories) / target.calories) * 100),
+    targetProteinG: rounded(target.proteinG), actualProteinG: rounded(plan.totals.proteinG),
+    proteinDelta: rounded(plan.totals.proteinG - target.proteinG),
+    targetCarbsG: rounded(target.carbsG), actualCarbsG: rounded(plan.totals.carbsG),
+    carbsDelta: rounded(plan.totals.carbsG - target.carbsG),
+    targetFatG: rounded(target.fatG), actualFatG: rounded(plan.totals.fatG),
+    fatDelta: rounded(plan.totals.fatG - target.fatG),
+    targetFiberG: rounded(target.fiberG), actualFiberG: rounded(plan.totals.fiberG),
+    fiberDelta: rounded(plan.totals.fiberG - target.fiberG),
+    mealProteinDistributionIssues,
+  };
 }
 
 function validateDaily(plan: ResolvedMealPlan, context: MealPlanGenerationContext, issues: MealPlanValidationIssue[]): void {
@@ -174,5 +213,5 @@ export function validateMealPlanCandidate(
   if (plan) { validateDaily(plan, context, issues); validateDistribution(plan, context, issues); }
   const valid = !issues.some((value) => value.severity === "HARD_FAILURE");
   return { valid, validatorVersion: MEAL_PLAN_VALIDATOR_VERSION, policyVersion: MEAL_VALIDATION_POLICY_VERSION,
-    issues, plan: valid ? plan : null, preferenceScore };
+    issues, plan: valid ? plan : null, preferenceScore, diagnostics: plan ? numericDiagnostics(plan, context) : null };
 }

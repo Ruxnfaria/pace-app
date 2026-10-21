@@ -15,5 +15,6 @@ test("controlled repair receives the same constrained catalog instead of free-te
   const repairBlock = source.match(/repair\([\s\S]*?\n  \}/)?.[0] ?? "";
   assert.match(repairBlock, /catalog:\s*MealPlanCatalogPromptContext/);
   assert.match(repairBlock, /catalog\s*\},\s*catalog\)/);
+  assert.match(repairBlock, /numericDiagnostics:\s*diagnostics/);
   assert.doesNotMatch(repairBlock, /controlledCatalogSuggestions|catalogFeedback/);
 });

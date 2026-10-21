@@ -85,6 +85,14 @@ test("sanitized validation diagnostics reach runtime logs without provider paylo
           validation_issue_codes: ["UNKNOWN_REQUIRED_NUTRIENT"],
           repair_attempted: true,
           repair_result: "failed",
+          numeric_validation: {
+            targetKcal: 2500, actualKcal: 2200, kcalDelta: -300, kcalDeviationPercent: -12,
+            targetProteinG: 110, actualProteinG: 90, proteinDelta: -20,
+            targetCarbsG: 359.75, actualCarbsG: 310, carbsDelta: -49.75,
+            targetFatG: 69, actualFatG: 60, fatDelta: -9,
+            targetFiberG: 35, actualFiberG: 30, fiberDelta: -5,
+            mealProteinDistributionIssues: [],
+          },
         },
       }),
     }),
@@ -99,6 +107,14 @@ test("sanitized validation diagnostics reach runtime logs without provider paylo
     validation_issue_codes: ["UNKNOWN_REQUIRED_NUTRIENT"],
     repair_attempted: true,
     repair_result: "failed",
+    numeric_validation: {
+      targetKcal: 2500, actualKcal: 2200, kcalDelta: -300, kcalDeviationPercent: -12,
+      targetProteinG: 110, actualProteinG: 90, proteinDelta: -20,
+      targetCarbsG: 359.75, actualCarbsG: 310, carbsDelta: -49.75,
+      targetFatG: 69, actualFatG: 60, fatDelta: -9,
+      targetFiberG: 35, actualFiberG: 30, fiberDelta: -5,
+      mealProteinDistributionIssues: [],
+    },
   });
   assert.doesNotMatch(JSON.stringify(entries), /prompt|token|response/i);
 });

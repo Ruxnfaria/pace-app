@@ -63,7 +63,8 @@ test("one controlled repair keeps the identical catalog constraint and can activ
   const catalog = officialTestCatalog();
   const context = generationContext();
   const invalid = balancedCandidate(context.mealRoles);
-  invalid.meals[0].items[0].catalogEntryId = "invented-by-provider";
+  invalid.meals[1].role = invalid.meals[0].role;
+  invalid.meals[1].label = invalid.meals[0].label;
   let repairs = 0;
   let generationIds: string[] = [];
   const generator: MealPlanCandidateGenerator = {
@@ -71,10 +72,13 @@ test("one controlled repair keeps the identical catalog constraint and can activ
       generationIds = constrainedCatalog.candidates.map((candidate) => candidate.catalogEntryId);
       return invalid;
     },
-    repair: async (_context, _previous, issues, constrainedCatalog) => {
+    repair: async (_context, previous, issues, diagnostics, constrainedCatalog) => {
       repairs += 1;
-      assert.ok(issues.some((issue) => issue.code === "UNKNOWN_CATALOG_ENTRY_ID"));
-      assert.deepEqual(constrainedCatalog.candidates.map((candidate) => candidate.catalogEntryId), generationIds);
+      assert.ok(issues.some((issue) => issue.code === "DUPLICATE_MEAL_STRUCTURE"));
+      assert.ok(diagnostics);
+      const selectedIds = new Set(previous.meals.flatMap((meal) => meal.items.map((item) => item.catalogEntryId)));
+      assert.deepEqual(constrainedCatalog.candidates.map((candidate) => candidate.catalogEntryId),
+        generationIds.filter((id) => selectedIds.has(id)));
       return balancedCandidate(context.mealRoles);
     },
   };
@@ -84,21 +88,23 @@ test("one controlled repair keeps the identical catalog constraint and can activ
   assert.equal(repairs, 1);
 });
 
-for (const repairCase of ["calorie_mismatch", "protein_mismatch"] as const) {
-  test(`one controlled repair fixes ${repairCase}`, async () => {
+for (const calibrationCase of ["calorie_mismatch", "protein_mismatch"] as const) {
+  test(`deterministic calibration handles ${calibrationCase} before controlled repair`, async () => {
     const catalog = officialTestCatalog();
     const context = generationContext();
     const invalid = balancedCandidate(context.mealRoles);
-    if (repairCase === "calorie_mismatch") invalid.meals[0].items[0].quantityGrams = 500;
-    if (repairCase === "protein_mismatch") {
+    if (calibrationCase === "calorie_mismatch") {
+      invalid.meals.forEach((meal) => meal.items.forEach((item) => { item.quantityGrams *= 0.85; }));
+    }
+    if (calibrationCase === "protein_mismatch") {
       const beansId = officialTestCatalog().entries.find((entry) => entry.canonicalName.startsWith("Feijão"))!.id;
-      invalid.meals.forEach((meal) => { meal.items = meal.items.filter((item) => item.catalogEntryId !== beansId); });
+      invalid.meals.forEach((meal) => { meal.items.find((item) => item.catalogEntryId === beansId)!.quantityGrams = 50; });
     }
     let repairs = 0;
     const generator: MealPlanCandidateGenerator = { generate: async () => invalid, repair: async () => { repairs += 1; return balancedCandidate(context.mealRoles); } };
     const result = await generateValidatedMealPlan({ context, catalogRepository: new InMemoryNutritionFoodCatalogRepository(catalog.entries), candidateGenerator: generator });
     assert.equal(result.status, "ACTIVE");
-    assert.equal(repairs, 1);
+    assert.equal(repairs, 0);
   });
 }
 
@@ -137,6 +143,22 @@ test("second invalid response fails and immutable meal count cannot be repaired 
   assert.equal(repairs, 1);
   assert.ok(result.report.issues.some((issue) => issue.code === "MEAL_COUNT_MISMATCH"));
   assert.deepEqual(jobEvents, ["processing", "requires_review:MEAL_COUNT_MISMATCH"]);
+});
+
+test("controlled repair cannot replace or invent catalog identities", async () => {
+  const catalog = officialTestCatalog();
+  const context = generationContext();
+  const invalid = balancedCandidate(context.mealRoles);
+  invalid.meals[1].role = invalid.meals[0].role;
+  const replacement = balancedCandidate(context.mealRoles);
+  replacement.meals[0].items[0].catalogEntryId = "invented-by-repair";
+  const result = await generateValidatedMealPlan({
+    context,
+    catalogRepository: new InMemoryNutritionFoodCatalogRepository(catalog.entries),
+    candidateGenerator: { generate: async () => invalid, repair: async () => replacement },
+  });
+  assert.equal(result.status, "REQUIRES_REVIEW");
+  assert.ok(result.report.issues.some((issue) => issue.code === "MEAL_ROLE_MISMATCH"));
 });
 
 test("idempotency includes user, target, strategy and generator version", () => {

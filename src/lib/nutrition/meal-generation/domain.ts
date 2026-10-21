@@ -142,6 +142,34 @@ export interface MealPlanValidationIssue {
   itemPosition?: number;
 }
 
+export interface MealProteinDistributionIssue {
+  mealPosition: number;
+  targetProteinG: number;
+  minimumProteinG: number;
+  actualProteinG: number;
+  proteinDelta: number;
+}
+
+export interface MealPlanNumericValidationDiagnostics {
+  targetKcal: number;
+  actualKcal: number;
+  kcalDelta: number;
+  kcalDeviationPercent: number;
+  targetProteinG: number;
+  actualProteinG: number;
+  proteinDelta: number;
+  targetCarbsG: number;
+  actualCarbsG: number;
+  carbsDelta: number;
+  targetFatG: number;
+  actualFatG: number;
+  fatDelta: number;
+  targetFiberG: number;
+  actualFiberG: number;
+  fiberDelta: number;
+  mealProteinDistributionIssues: MealProteinDistributionIssue[];
+}
+
 export interface MealPlanValidationReport {
   valid: boolean;
   validatorVersion: typeof MEAL_PLAN_VALIDATOR_VERSION;
@@ -149,6 +177,7 @@ export interface MealPlanValidationReport {
   issues: MealPlanValidationIssue[];
   plan: ResolvedMealPlan | null;
   preferenceScore: number;
+  diagnostics: MealPlanNumericValidationDiagnostics | null;
 }
 
 export interface CatalogSnapshot {

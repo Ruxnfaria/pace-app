@@ -10,16 +10,20 @@ import {
   type CatalogSnapshot,
   type MealPlanGenerationContext,
   type MealPlanCatalogPromptContext,
+  type MealPlanNumericValidationDiagnostics,
   type MealPlanValidationIssue,
   type MealPlanValidationReport,
   type ResolvedMealPlan,
 } from "./domain";
+import { calibrateMealPlanPortions } from "./portion-calibration";
 import type { NutritionFoodCatalogRepository } from "./repository";
 import { validateMealPlanCandidate } from "./validator";
 
 export interface MealPlanCandidateGenerator {
   generate(context: MealPlanGenerationContext, catalog: MealPlanCatalogPromptContext): Promise<AiMealPlanCandidate>;
-  repair(context: MealPlanGenerationContext, previous: AiMealPlanCandidate, issues: MealPlanValidationIssue[], catalog: MealPlanCatalogPromptContext): Promise<AiMealPlanCandidate>;
+  repair(context: MealPlanGenerationContext, previous: AiMealPlanCandidate, issues: MealPlanValidationIssue[],
+    diagnostics: MealPlanNumericValidationDiagnostics | null,
+    catalog: MealPlanCatalogPromptContext): Promise<AiMealPlanCandidate>;
 }
 
 export interface MealPlanActivationRepository {
@@ -41,7 +45,24 @@ export function buildMealPlanGenerationIdempotencyKey(context: MealPlanGeneratio
 
 function rejected(code: "CATALOG_NOT_READY" | "USER_NOT_ELIGIBLE", message: string): MealPlanValidationReport {
   return { valid: false, validatorVersion: MEAL_PLAN_VALIDATOR_VERSION, policyVersion: MEAL_VALIDATION_POLICY_VERSION,
-    plan: null, preferenceScore: 0, issues: [{ code, severity: "HARD_FAILURE", message }] };
+    plan: null, preferenceScore: 0, diagnostics: null, issues: [{ code, severity: "HARD_FAILURE", message }] };
+}
+
+function repairCatalog(
+  catalog: MealPlanCatalogPromptContext,
+  candidate: AiMealPlanCandidate,
+): MealPlanCatalogPromptContext {
+  const selectedIds = new Set(candidate.meals.flatMap((meal) => meal.items.map((item) => item.catalogEntryId)));
+  return { ...catalog, candidates: catalog.candidates.filter((candidateItem) => selectedIds.has(candidateItem.catalogEntryId)) };
+}
+
+function hasSameCatalogIdentity(previous: AiMealPlanCandidate, repaired: AiMealPlanCandidate): boolean {
+  return repaired.meals.length === previous.meals.length
+    && repaired.meals.every((meal, mealIndex) => {
+      const previousMeal = previous.meals[mealIndex];
+      return meal.items.length === previousMeal.items.length
+        && meal.items.every((item, itemIndex) => item.catalogEntryId === previousMeal.items[itemIndex].catalogEntryId);
+    });
 }
 
 function catalogPromptContext(context: MealPlanGenerationContext, catalog: CatalogSnapshot): MealPlanCatalogPromptContext {
@@ -85,12 +106,26 @@ export async function generateValidatedMealPlan(args: {
   try {
     const constrainedCatalog = catalogPromptContext(generationContext, catalog);
     const candidate = await args.candidateGenerator.generate(generationContext, constrainedCatalog);
-    let report = validateMealPlanCandidate(generationContext, candidate, catalog, constrainedCatalog.candidates);
+    const initialCalibration = calibrateMealPlanPortions(
+      generationContext, candidate, catalog, constrainedCatalog.candidates,
+    );
+    let calibratedCandidate = initialCalibration.candidate;
+    let report = validateMealPlanCandidate(generationContext, calibratedCandidate, catalog, constrainedCatalog.candidates);
     let repaired = false;
     if (!report.valid) {
       repaired = true;
-      const repairedCandidate = await args.candidateGenerator.repair(generationContext, candidate, report.issues, constrainedCatalog);
-      report = validateMealPlanCandidate(generationContext, repairedCandidate, catalog, constrainedCatalog.candidates);
+      const constrainedRepairCatalog = repairCatalog(constrainedCatalog, calibratedCandidate);
+      const proposedRepair = await args.candidateGenerator.repair(
+        generationContext, calibratedCandidate, report.issues, report.diagnostics, constrainedRepairCatalog,
+      );
+      const repairedCandidate = hasSameCatalogIdentity(calibratedCandidate, proposedRepair)
+        ? proposedRepair
+        : calibratedCandidate;
+      const repairedCalibration = calibrateMealPlanPortions(
+        generationContext, repairedCandidate, catalog, constrainedRepairCatalog.candidates,
+      );
+      calibratedCandidate = repairedCalibration.candidate;
+      report = validateMealPlanCandidate(generationContext, calibratedCandidate, catalog, constrainedRepairCatalog.candidates);
     }
     if (!report.valid || !report.plan) {
       await args.jobRepository?.finish(idempotencyKey, "requires_review", report.issues.find((value) => value.severity === "HARD_FAILURE")?.code ?? "VALIDATION_FAILED");
