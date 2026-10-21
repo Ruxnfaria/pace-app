@@ -5,6 +5,7 @@ export const POST_ONBOARDING_MAX_ATTEMPTS = 3 as const;
 export const POST_ONBOARDING_ARTIFACTS = ["WORKOUT_PLAN", "MISSIONS", "MEAL_PLAN"] as const;
 export type PostOnboardingArtifact = (typeof POST_ONBOARDING_ARTIFACTS)[number];
 export type PostOnboardingJobStatus = "pending" | "processing" | "ready" | "failed_retryable" | "requires_review";
+export type PostOnboardingProcessMode = "initial" | "explicit_retry";
 
 export const POST_ONBOARDING_SAFE_ERROR_CODES = [
   "WORKOUT_GENERATION_FAILED", "WORKOUT_VALIDATION_FAILED", "CATALOG_NOT_READY",
@@ -32,11 +33,18 @@ export interface PostOnboardingJob {
   completedAt: string | null;
 }
 
+export interface SanitizedValidationDiagnostics {
+  validator_version: string;
+  validation_issue_codes: readonly string[];
+  repair_attempted: boolean;
+  repair_result: "not_attempted" | "succeeded" | "failed";
+}
+
 export type ArtifactProcessOutcome =
-  | { status: "ready" }
-  | { status: "failed_retryable"; errorCode: PostOnboardingSafeErrorCode }
-  | { status: "requires_review"; errorCode: PostOnboardingSafeErrorCode }
-  | { status: "dependency_pending"; errorCode: PostOnboardingSafeErrorCode; retryAfterMs: number };
+  | { status: "ready"; diagnostics?: SanitizedValidationDiagnostics }
+  | { status: "failed_retryable"; errorCode: PostOnboardingSafeErrorCode; diagnostics?: SanitizedValidationDiagnostics }
+  | { status: "requires_review"; errorCode: PostOnboardingSafeErrorCode; diagnostics?: SanitizedValidationDiagnostics }
+  | { status: "dependency_pending"; errorCode: PostOnboardingSafeErrorCode; retryAfterMs: number; diagnostics?: SanitizedValidationDiagnostics };
 
 export interface PostOnboardingStatusView {
   workout: PostOnboardingJobStatus | null;

@@ -8,6 +8,7 @@ import { getUserFitnessContext } from "@/lib/fitness-context/server";
 import { persistGeneratedWorkoutPlan, type WorkoutRpcClient } from "@/lib/workouts/persistence";
 import { isWorkoutPersistenceV2Enabled } from "@/lib/workouts/runtime-policy";
 import { buildExerciseCatalogPrompt } from "@/lib/workouts/validation/exercise-metadata";
+import type { WorkoutValidationAudit } from "@/lib/workouts/validation/domain";
 
 function workoutPrompt(fitnessPrompt: string): string {
   return `Você é o Coach Lucas Zanetti, treinador de alta performance, especialista em cinesiologia e musculação da assessoria esportiva Praxe App.
@@ -42,7 +43,11 @@ CATÁLOGO CONTROLADO DE EXERCÍCIOS — use somente canonicalName desta lista:
 ${buildExerciseCatalogPrompt()}`;
 }
 
-export async function generateWorkoutPlanForUser(authClient: SupabaseClient, userId: string): Promise<void> {
+export async function generateWorkoutPlanForUser(
+  authClient: SupabaseClient,
+  userId: string,
+  options: { onValidationAudit?: (audit: WorkoutValidationAudit) => void } = {},
+): Promise<void> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error("OPENAI_CONFIGURATION_MISSING");
   const openai = new OpenAI({ apiKey });
@@ -60,7 +65,10 @@ export async function generateWorkoutPlanForUser(authClient: SupabaseClient, use
       if (!content) throw new Error("EMPTY_OPENAI_RESPONSE");
       return content;
     },
-    onValidationAudit: (audit) => console.info("post_onboarding_workout_validation", audit),
+    onValidationAudit: (audit) => {
+      console.info("post_onboarding_workout_validation", audit);
+      options.onValidationAudit?.(audit);
+    },
     persistWorkouts: async (access, workouts, context) => {
       await persistGeneratedWorkoutPlan({
         persistenceV2Enabled: isWorkoutPersistenceV2Enabled(),

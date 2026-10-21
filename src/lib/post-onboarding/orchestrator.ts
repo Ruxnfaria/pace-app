@@ -6,18 +6,21 @@ import {
   type ArtifactProcessOutcome,
   type PostOnboardingArtifact,
   type PostOnboardingJob,
+  type PostOnboardingProcessMode,
   type PostOnboardingSafeErrorCode,
+  type SanitizedValidationDiagnostics,
 } from "./domain";
+import { isPostOnboardingJobClaimable } from "./processing-policy";
 
 export interface PostOnboardingJobRepository {
   list(userId: string): Promise<PostOnboardingJob[]>;
-  claim(userId: string, artifact: PostOnboardingArtifact): Promise<PostOnboardingJob | null>;
+  claim(userId: string, artifact: PostOnboardingArtifact, mode: PostOnboardingProcessMode): Promise<PostOnboardingJob | null>;
   finish(jobId: string, status: "ready" | "failed_retryable" | "requires_review", errorCode: PostOnboardingSafeErrorCode | null): Promise<PostOnboardingJob>;
   defer(jobId: string, errorCode: PostOnboardingSafeErrorCode, retryAfterMs: number): Promise<PostOnboardingJob>;
 }
 
 export type PostOnboardingProcessors = Record<PostOnboardingArtifact, (job: PostOnboardingJob) => Promise<ArtifactProcessOutcome>>;
-export type SafeJobLog = (entry: { jobId: string; artifact: PostOnboardingArtifact; fromStatus: "processing"; toStatus: string; attempt: number; durationMs: number; errorCode: PostOnboardingSafeErrorCode | null }) => void;
+export type SafeJobLog = (entry: { jobId: string; artifact: PostOnboardingArtifact; fromStatus: "processing"; toStatus: string; attempt: number; durationMs: number; errorCode: PostOnboardingSafeErrorCode | null; diagnostics?: SanitizedValidationDiagnostics }) => void;
 
 const GENERIC_ERROR: Record<PostOnboardingArtifact, PostOnboardingSafeErrorCode> = {
   WORKOUT_PLAN: "WORKOUT_GENERATION_FAILED",
@@ -30,9 +33,10 @@ async function processArtifact(args: {
   artifact: PostOnboardingArtifact;
   repository: PostOnboardingJobRepository;
   processors: PostOnboardingProcessors;
+  mode: PostOnboardingProcessMode;
   log?: SafeJobLog;
 }): Promise<PostOnboardingJob | null> {
-  const job = await args.repository.claim(args.userId, args.artifact);
+  const job = await args.repository.claim(args.userId, args.artifact, args.mode);
   if (!job) return null;
   const started = Date.now();
   let outcome: ArtifactProcessOutcome;
@@ -45,7 +49,8 @@ async function processArtifact(args: {
     ? await args.repository.defer(job.id, outcome.errorCode, outcome.retryAfterMs)
     : await args.repository.finish(job.id, outcome.status, outcome.status === "ready" ? null : outcome.errorCode);
   args.log?.({ jobId: job.id, artifact: job.artifact, fromStatus: "processing", toStatus: result.status, attempt: result.attemptCount,
-    durationMs: Date.now() - started, errorCode: result.errorCode });
+    durationMs: Date.now() - started, errorCode: result.errorCode,
+    ...(outcome.diagnostics ? { diagnostics: outcome.diagnostics } : {}) });
   return result;
 }
 
@@ -53,16 +58,18 @@ export async function processPostOnboardingJobs(args: {
   userId: string;
   repository: PostOnboardingJobRepository;
   processors: PostOnboardingProcessors;
+  mode?: PostOnboardingProcessMode;
   log?: SafeJobLog;
 }): Promise<PostOnboardingJob[]> {
+  const mode = args.mode ?? "initial";
   await Promise.all([
-    processArtifact({ ...args, artifact: "WORKOUT_PLAN" }),
-    processArtifact({ ...args, artifact: "MEAL_PLAN" }),
+    processArtifact({ ...args, mode, artifact: "WORKOUT_PLAN" }),
+    processArtifact({ ...args, mode, artifact: "MEAL_PLAN" }),
   ]);
   const afterIndependent = await args.repository.list(args.userId);
   const workout = afterIndependent.find((job) => job.artifact === "WORKOUT_PLAN");
   if (workout?.status === "ready") {
-    await processArtifact({ ...args, artifact: "MISSIONS" });
+    await processArtifact({ ...args, mode, artifact: "MISSIONS" });
   }
   return args.repository.list(args.userId);
 }
@@ -71,11 +78,9 @@ export class InMemoryPostOnboardingJobRepository implements PostOnboardingJobRep
   private readonly jobs = new Map<string, PostOnboardingJob>();
   constructor(jobs: readonly PostOnboardingJob[]) { jobs.forEach((job) => this.jobs.set(job.id, { ...job })); }
   async list(userId: string) { return [...this.jobs.values()].filter((job) => job.userId === userId).map((job) => ({ ...job })); }
-  async claim(userId: string, artifact: PostOnboardingArtifact) {
+  async claim(userId: string, artifact: PostOnboardingArtifact, mode: PostOnboardingProcessMode) {
     const job = [...this.jobs.values()].find((value) => value.userId === userId && value.artifact === artifact);
-    if (!job || !["pending", "failed_retryable"].includes(job.status)
-      || job.attemptCount >= POST_ONBOARDING_MAX_ATTEMPTS
-      || new Date(job.availableAfter).getTime() > Date.now()) return null;
+    if (!job || !isPostOnboardingJobClaimable(job, mode, POST_ONBOARDING_MAX_ATTEMPTS)) return null;
     job.status = "processing"; job.attemptCount += 1; job.startedAt = new Date().toISOString(); job.errorCode = null;
     return { ...job };
   }

@@ -34,7 +34,27 @@ test("generation receives explicit catalog authority and capability metadata wit
   assert.equal(promptContext.capabilities.exactOrAliasResolutionOnly, true);
   assert.equal(promptContext.capabilities.restrictionMetadataComplete, false);
   assert.ok(promptContext.allowedCatalogNames.length > 0);
+  assert.equal(promptContext.allowedCatalogNames.includes("Frango, peito, sem pele, grelhado"), false,
+    "partial TACO entries must not be offered to the generator");
   assert.doesNotMatch(JSON.stringify(promptContext), /"(?:calories|proteinG|carbsG|fatG|fiberG)"\s*:/);
+});
+
+test("unknown required nutrient remains a hard failure and its leaf code is persisted", async () => {
+  const context = generationContext();
+  const invalid = balancedCandidate(context.mealRoles);
+  invalid.meals[0].items[0].foodQuery = "Frango, peito, sem pele, grelhado";
+  let persistedCode = "";
+  const result = await generateValidatedMealPlan({
+    context,
+    catalogRepository: new InMemoryNutritionFoodCatalogRepository(officialTestCatalog().entries),
+    candidateGenerator: { generate: async () => invalid, repair: async () => invalid },
+    jobRepository: {
+      begin: async () => undefined,
+      finish: async (_key, _status, code) => { persistedCode = code; },
+    },
+  });
+  assert.equal(result.status, "REQUIRES_REVIEW");
+  assert.equal(persistedCode, "UNKNOWN_REQUIRED_NUTRIENT");
 });
 
 test("one controlled repair can fix unknown food and activate", async () => {

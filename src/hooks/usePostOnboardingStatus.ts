@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import type { PostOnboardingStatusView } from "@/lib/post-onboarding/domain";
+import { shouldAutoProcessPostOnboarding } from "@/lib/post-onboarding/processing-policy";
 
 const EMPTY: PostOnboardingStatusView = { workout: null, missions: null, mealPlan: null, errors: {} };
 
@@ -25,11 +26,15 @@ export function usePostOnboardingStatus() {
     return body;
   }, []);
 
-  const process = useCallback(async () => {
+  const process = useCallback(async (retry: boolean) => {
     setProcessing(true);
     setUnavailable(false);
     try {
-      const response = await fetch("/api/post-onboarding/process", { method: "POST" });
+      const response = await fetch("/api/post-onboarding/process", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ retry }),
+      });
       if (!response.ok) throw new Error("PROCESS_UNAVAILABLE");
       const body: unknown = await response.json();
       if (!isView(body)) throw new Error("PROCESS_MALFORMED");
@@ -47,11 +52,7 @@ export function usePostOnboardingStatus() {
       void refresh()
         .then((current) => {
           if (cancelled) return;
-          const values = [current.workout, current.missions, current.mealPlan];
-          if (values.every((value) => value === null)
-            || values.some((value) => value === "pending" || value === "failed_retryable")) {
-            void process();
-          }
+          if (shouldAutoProcessPostOnboarding(current)) void process(false);
         })
         .catch(() => { if (!cancelled) setUnavailable(true); })
         .finally(() => { if (!cancelled) setLoading(false); });
@@ -59,5 +60,6 @@ export function usePostOnboardingStatus() {
     return () => { cancelled = true; window.clearTimeout(timer); };
   }, [process, refresh]);
 
-  return { status, loading, processing, unavailable, retry: process, refresh };
+  const retry = useCallback(() => process(true), [process]);
+  return { status, loading, processing, unavailable, retry, refresh };
 }

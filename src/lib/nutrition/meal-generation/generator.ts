@@ -16,6 +16,7 @@ import {
 } from "./domain";
 import type { NutritionFoodCatalogRepository } from "./repository";
 import { validateMealPlanCandidate } from "./validator";
+import type { NutritionFoodCatalogEntry } from "../food-catalog/domain";
 
 export interface MealPlanCandidateGenerator {
   generate(context: MealPlanGenerationContext, catalog: MealPlanCatalogPromptContext): Promise<AiMealPlanCandidate>;
@@ -44,6 +45,13 @@ function rejected(code: "CATALOG_NOT_READY" | "USER_NOT_ELIGIBLE", message: stri
     plan: null, preferenceScore: 0, issues: [{ code, severity: "HARD_FAILURE", message }] };
 }
 
+export function isMealPlanGenerationCandidate(entry: NutritionFoodCatalogEntry): boolean {
+  return entry.isActive
+    && entry.source === "TACO"
+    && entry.nutrientCompleteness === "COMPLETE"
+    && Object.values(entry.nutrientsPer100g).every((value) => typeof value === "number" && Number.isFinite(value));
+}
+
 function catalogPromptContext(catalog: CatalogSnapshot): MealPlanCatalogPromptContext {
   const status = assessTrustedNutritionCatalog(catalog.entries);
   return {
@@ -55,7 +63,7 @@ function catalogPromptContext(catalog: CatalogSnapshot): MealPlanCatalogPromptCo
       restrictionMetadataComplete: status.restrictionMetadataComplete,
       dietaryPatternMetadataComplete: status.restrictionMetadataComplete,
     },
-    allowedCatalogNames: catalog.entries.filter((entry) => entry.isActive && entry.source === "TACO")
+    allowedCatalogNames: catalog.entries.filter(isMealPlanGenerationCandidate)
       .slice(0, 120).map((entry) => entry.canonicalName),
   };
 }
@@ -65,7 +73,8 @@ function repairFeedback(catalog: CatalogSnapshot, issues: MealPlanValidationIssu
     const query = normalizeFoodQuery(value.message.replace(/^Unknown food:\s*/i, ""));
     const tokens = new Set(query.split(" ").filter((token) => token.length > 2));
     if (tokens.size === 0) return [];
-    return catalog.entries.filter((entry) => [...tokens].some((token) => entry.normalizedName.includes(token)))
+    return catalog.entries.filter((entry) => isMealPlanGenerationCandidate(entry)
+      && [...tokens].some((token) => entry.normalizedName.includes(token)))
       .slice(0, 3).map((entry) => entry.canonicalName);
   });
   return [...new Set(unknowns)].slice(0, 8);

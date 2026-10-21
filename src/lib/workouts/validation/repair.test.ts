@@ -94,6 +94,25 @@ test("repair que tenta alterar split ou dias é rejeitado", async () => {
   assert.ok(result.report.issues.some((item) => item.code === "RECOVERY_STRUCTURE_VIOLATION"));
 });
 
+test("repair determinístico recompõe slot ainda omitido pela segunda resposta", async () => {
+  const prescription = resolveWorkoutPrescription(validationContext({
+    goal: "hypertrophy", level: "intermediate", availableFrequency: 6, duration: 90,
+  }));
+  const valid = validSelectionPlan(prescription);
+  const missing = mutablePlan(valid);
+  const omittedSlot = missing.sessions[0].exercises.pop()!;
+  const result = await runControlledWorkoutRepair({
+    prescription,
+    generated: missing,
+    report: validateWorkoutPrescription(prescription, missing),
+    invokeRepair: async () => missing,
+  });
+  assert.equal(result.repairAttempted, true);
+  assert.equal(result.repairSucceeded, true);
+  assert.equal(result.report.valid, true, JSON.stringify(result.report.issues));
+  assert.ok(result.plan.sessions[0].exercises.some((exercise) => exercise.slot_id === omittedSlot.slot_id));
+});
+
 test("pipeline persiste somente após repair válido", async () => {
   const context = validationContext({ goal: "fat_loss", level: "beginner", availableFrequency: 3, duration: 45 });
   const prescription = resolveWorkoutPrescription(context);

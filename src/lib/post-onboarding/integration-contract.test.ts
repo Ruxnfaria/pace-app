@@ -22,6 +22,16 @@ test("status and process routes require active subscription and return no-store 
   }
 });
 
+test("process route distinguishes initial processing from explicit retry", async () => {
+  const source = await readFile(new URL("app/api/post-onboarding/process/route.ts", root), "utf8");
+  assert.match(source, /parsePostOnboardingProcessMode/);
+  assert.match(source, /processPostOnboardingForUser\(supabase, user\.id, mode\)/);
+  const hook = await readFile(new URL("hooks/usePostOnboardingStatus.ts", root), "utf8");
+  assert.match(hook, /process\(false\)/);
+  assert.match(hook, /process\(true\)/);
+  assert.doesNotMatch(hook, /value === "pending" \|\| value === "failed_retryable"/);
+});
+
 test("daily dashboard mission generation waits for an active post-onboarding workout dependency", async () => {
   const source = await readFile(new URL("app/dashboard/page.tsx", root), "utf8");
   const statusRead = source.indexOf('fetch("/api/post-onboarding/status"');

@@ -14,4 +14,5 @@ test("database repository delegates lifecycle transitions to atomic service-only
   ]) assert.match(source, new RegExp(`rpc\\(\\"${rpc}\\"`));
   assert.match(source, /POST_ONBOARDING_MAX_ATTEMPTS/);
   assert.match(source, /POST_ONBOARDING_SAFE_ERROR_CODES/);
+  assert.match(source, /isPostOnboardingJobClaimable\(current, mode/);
 });

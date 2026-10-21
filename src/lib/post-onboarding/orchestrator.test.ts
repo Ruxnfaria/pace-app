@@ -53,6 +53,56 @@ test("meal validation failure leaves workout and missions ready", async () => {
   assert.equal(jobs.find((job) => job.artifact === "MISSIONS")?.status, "ready");
 });
 
+test("normal processing never reclaims failed_retryable while explicit retry does", async () => {
+  const failedJobs = createPendingPostOnboardingJobs(userId).map((job) => job.artifact === "WORKOUT_PLAN"
+    ? { ...job, status: "failed_retryable" as const, attemptCount: 1, errorCode: "WORKOUT_VALIDATION_FAILED" as const }
+    : { ...job, status: "ready" as const });
+  const repository = new InMemoryPostOnboardingJobRepository(failedJobs);
+  let calls = 0;
+  const retryProcessors = processors({ WORKOUT_PLAN: async () => { calls += 1; return { status: "ready" }; } });
+  await processPostOnboardingJobs({ userId, repository, processors: retryProcessors, mode: "initial" });
+  assert.equal(calls, 0);
+  assert.equal((await repository.list(userId)).find((job) => job.artifact === "WORKOUT_PLAN")?.attemptCount, 1);
+  await processPostOnboardingJobs({ userId, repository, processors: retryProcessors, mode: "explicit_retry" });
+  assert.equal(calls, 1);
+  assert.equal((await repository.list(userId)).find((job) => job.artifact === "WORKOUT_PLAN")?.attemptCount, 2);
+});
+
+test("sanitized validation diagnostics reach runtime logs without provider payloads", async () => {
+  const repository = new InMemoryPostOnboardingJobRepository(
+    createPendingPostOnboardingJobs(userId).filter((job) => job.artifact === "MEAL_PLAN"),
+  );
+  const entries: unknown[] = [];
+  await processPostOnboardingJobs({
+    userId,
+    repository,
+    processors: processors({
+      MEAL_PLAN: async () => ({
+        status: "failed_retryable",
+        errorCode: "MEAL_VALIDATION_FAILED",
+        diagnostics: {
+          validator_version: "praxe-meal-plan-validator-v1",
+          validation_issue_codes: ["UNKNOWN_REQUIRED_NUTRIENT"],
+          repair_attempted: true,
+          repair_result: "failed",
+        },
+      }),
+    }),
+    log: (entry) => { entries.push(entry); },
+  });
+  const entry = entries[0] as { artifact: string; errorCode: string; diagnostics: unknown };
+  assert.equal(entries.length, 1);
+  assert.equal(entry.artifact, "MEAL_PLAN");
+  assert.equal(entry.errorCode, "MEAL_VALIDATION_FAILED");
+  assert.deepEqual(entry.diagnostics, {
+    validator_version: "praxe-meal-plan-validator-v1",
+    validation_issue_codes: ["UNKNOWN_REQUIRED_NUTRIENT"],
+    repair_attempted: true,
+    repair_result: "failed",
+  });
+  assert.doesNotMatch(JSON.stringify(entries), /prompt|token|response/i);
+});
+
 test("catalog dependency does not consume an attempt and restriction review is terminal", async () => {
   const repository = new InMemoryPostOnboardingJobRepository(createPendingPostOnboardingJobs(userId));
   await processPostOnboardingJobs({ userId, repository, processors: processors({
@@ -96,7 +146,10 @@ test("third failed attempt moves a job to requires_review", async () => {
   const jobs = createPendingPostOnboardingJobs(userId).filter((job) => job.artifact === "WORKOUT_PLAN");
   const repository = new InMemoryPostOnboardingJobRepository(jobs);
   const failing = processors({ WORKOUT_PLAN: async () => ({ status: "failed_retryable", errorCode: "WORKOUT_GENERATION_FAILED" }) });
-  for (let index = 0; index < 3; index += 1) await processPostOnboardingJobs({ userId, repository, processors: failing });
+  await processPostOnboardingJobs({ userId, repository, processors: failing });
+  for (let index = 1; index < 3; index += 1) {
+    await processPostOnboardingJobs({ userId, repository, processors: failing, mode: "explicit_retry" });
+  }
   const workout = (await repository.list(userId))[0];
   assert.equal(workout.attemptCount, 3);
   assert.equal(workout.status, "requires_review");

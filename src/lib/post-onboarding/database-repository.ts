@@ -10,9 +10,11 @@ import {
   POST_ONBOARDING_SAFE_ERROR_CODES,
   type PostOnboardingArtifact,
   type PostOnboardingJob,
+  type PostOnboardingProcessMode,
   type PostOnboardingSafeErrorCode,
 } from "./domain";
 import type { PostOnboardingJobRepository } from "./orchestrator";
+import { isPostOnboardingJobClaimable } from "./processing-policy";
 
 type Row = Record<string, unknown>;
 
@@ -78,7 +80,9 @@ export class DatabasePostOnboardingJobRepository implements PostOnboardingJobRep
     return rows("LIST_POST_ONBOARDING", data).map(parseJob);
   }
 
-  async claim(userId: string, artifact: PostOnboardingArtifact): Promise<PostOnboardingJob | null> {
+  async claim(userId: string, artifact: PostOnboardingArtifact, mode: PostOnboardingProcessMode): Promise<PostOnboardingJob | null> {
+    const current = (await this.list(userId)).find((job) => job.artifact === artifact);
+    if (!current || !isPostOnboardingJobClaimable(current, mode, POST_ONBOARDING_MAX_ATTEMPTS)) return null;
     const { data, error } = await this.client.rpc("claim_post_onboarding_job_v1", {
       p_user_id: userId, p_artifact: artifact,
       p_algorithm_version: POST_ONBOARDING_ORCHESTRATOR_VERSION,

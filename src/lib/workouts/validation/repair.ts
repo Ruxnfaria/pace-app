@@ -5,6 +5,7 @@ import {
   type WorkoutValidationReport,
 } from "./domain.ts";
 import { validateWorkoutPrescription } from "./validator.ts";
+import { compatibleExercisesForPattern } from "./exercise-metadata.ts";
 
 export type ControlledRepairResult = {
   plan: GeneratedWorkoutSelectionPlan;
@@ -53,6 +54,39 @@ ${safeJson(input.report.issues.map((item) => ({
 END_VALIDATION_ISSUES`;
 }
 
+export function reconstructMissingRequiredSlots(
+  prescription: ResolvedWorkoutPrescription,
+  generated: GeneratedWorkoutSelectionPlan,
+): GeneratedWorkoutSelectionPlan {
+  return {
+    sessions: generated.sessions.map((session) => {
+      const prescribedSession = prescription.sessions.find((item) => item.id === session.session_id);
+      if (!prescribedSession) return session;
+      const presentSlotIds = new Set(session.exercises.map((exercise) => exercise.slot_id));
+      const reconstructed = prescribedSession.requiredSlots.flatMap((slot) => {
+        if (presentSlotIds.has(slot.id)) return [];
+        const exercise = compatibleExercisesForPattern(
+          slot.movementPattern,
+          slot.selectionConstraints.equipment,
+          slot.selectionConstraints.affectedBodyAreas,
+        )[0];
+        if (!exercise) return [];
+        return [{
+          slot_id: slot.id,
+          name: exercise.canonicalName,
+          sets: slot.sets,
+          rep_min: slot.repRange.min,
+          rep_max: slot.repRange.max,
+          rest_seconds: slot.restSeconds,
+          tip: "Execução controlada e alinhada ao slot prescrito",
+        }];
+      });
+      if (reconstructed.length === 0) return session;
+      return { ...session, exercises: [...session.exercises, ...reconstructed] };
+    }),
+  };
+}
+
 export async function runControlledWorkoutRepair(input: {
   prescription: ResolvedWorkoutPrescription;
   generated: GeneratedWorkoutSelectionPlan;
@@ -78,7 +112,8 @@ export async function runControlledWorkoutRepair(input: {
       repairSucceeded: false,
     };
   }
-  const repaired = await input.invokeRepair(buildWorkoutRepairPrompt(input));
+  const aiRepaired = await input.invokeRepair(buildWorkoutRepairPrompt(input));
+  const repaired = reconstructMissingRequiredSlots(input.prescription, aiRepaired);
   const report = validateWorkoutPrescription(input.prescription, repaired);
   return {
     plan: repaired,
