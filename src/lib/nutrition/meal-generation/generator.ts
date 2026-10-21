@@ -111,6 +111,9 @@ export async function generateValidatedMealPlan(args: {
     );
     let calibratedCandidate = initialCalibration.candidate;
     let report = validateMealPlanCandidate(generationContext, calibratedCandidate, catalog, constrainedCatalog.candidates);
+    if (report.diagnostics && initialCalibration.diagnostics.feedback) {
+      report = { ...report, diagnostics: { ...report.diagnostics, portionCalibration: initialCalibration.diagnostics.feedback } };
+    }
     let repaired = false;
     if (!report.valid) {
       repaired = true;
@@ -126,6 +129,9 @@ export async function generateValidatedMealPlan(args: {
       );
       calibratedCandidate = repairedCalibration.candidate;
       report = validateMealPlanCandidate(generationContext, calibratedCandidate, catalog, constrainedRepairCatalog.candidates);
+      if (report.diagnostics && repairedCalibration.diagnostics.feedback) {
+        report = { ...report, diagnostics: { ...report.diagnostics, portionCalibration: repairedCalibration.diagnostics.feedback } };
+      }
     }
     if (!report.valid || !report.plan) {
       await args.jobRepository?.finish(idempotencyKey, "requires_review", report.issues.find((value) => value.severity === "HARD_FAILURE")?.code ?? "VALIDATION_FAILED");

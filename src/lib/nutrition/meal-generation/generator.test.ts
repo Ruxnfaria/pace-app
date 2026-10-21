@@ -76,7 +76,11 @@ test("one controlled repair keeps the identical catalog constraint and can activ
       repairs += 1;
       assert.ok(issues.some((issue) => issue.code === "DUPLICATE_MEAL_STRUCTURE"));
       assert.ok(diagnostics);
+      assert.ok(diagnostics.portionCalibration);
+      assert.equal(typeof diagnostics.portionCalibration.normalizedDeviations.fatG, "number");
+      assert.ok(["below", "within", "above"].includes(diagnostics.portionCalibration.directions.fatG));
       const selectedIds = new Set(previous.meals.flatMap((meal) => meal.items.map((item) => item.catalogEntryId)));
+      assert.deepEqual(new Set(diagnostics.portionCalibration.existingCatalogEntryIds), selectedIds);
       assert.deepEqual(constrainedCatalog.candidates.map((candidate) => candidate.catalogEntryId),
         generationIds.filter((id) => selectedIds.has(id)));
       return balancedCandidate(context.mealRoles);

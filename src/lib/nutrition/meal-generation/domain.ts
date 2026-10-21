@@ -150,6 +150,30 @@ export interface MealProteinDistributionIssue {
   proteinDelta: number;
 }
 
+export type PortionCalibrationStatus =
+  | "CONVERGED"
+  | "PORTION_CALIBRATION_NO_FEASIBLE_SOLUTION"
+  | "INVALID_INPUT";
+
+export interface MealPlanCalibrationFeedback {
+  status: PortionCalibrationStatus;
+  normalizedDeviations: {
+    calories: number;
+    proteinG: number;
+    carbsG: number;
+    fatG: number;
+    fiberG: number;
+  };
+  directions: {
+    calories: "below" | "within" | "above";
+    proteinG: "below" | "within" | "above";
+    carbsG: "below" | "within" | "above";
+    fatG: "below" | "within" | "above";
+    fiberG: "below" | "within" | "above";
+  };
+  existingCatalogEntryIds: string[];
+}
+
 export interface MealPlanNumericValidationDiagnostics {
   targetKcal: number;
   actualKcal: number;
@@ -168,6 +192,7 @@ export interface MealPlanNumericValidationDiagnostics {
   actualFiberG: number;
   fiberDelta: number;
   mealProteinDistributionIssues: MealProteinDistributionIssue[];
+  portionCalibration?: MealPlanCalibrationFeedback;
 }
 
 export interface MealPlanValidationReport {
