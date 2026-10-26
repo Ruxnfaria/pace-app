@@ -139,6 +139,7 @@ export function validateMealPlanCandidate(
 
   const resolvedMeals: ResolvedMeal[] = [];
   const allowedIds = new Set(allowedCandidates.map((value) => value.catalogEntryId));
+  const allowedById = new Map(allowedCandidates.map((value) => [value.catalogEntryId, value]));
   const catalogById = new Map(catalog.entries.map((entry) => [entry.id, entry]));
   const disliked = new Set(context.dislikedFoods.map(normalizeFoodQuery));
   const preferred = new Set(context.preferredFoods.map(normalizeFoodQuery));
@@ -151,12 +152,19 @@ export function validateMealPlanCandidate(
     }
     const resolvedItems: ResolvedMeal["items"] = [];
     let mealGrams = 0;
+    const seenSlots = new Set<string>();
     for (let itemIndex = 0; itemIndex < meal.items.length; itemIndex += 1) {
       const item = meal.items[itemIndex];
       if (!allowedIds.has(item.catalogEntryId)) {
         issues.push(issue("UNKNOWN_CATALOG_ENTRY_ID", "HARD_FAILURE", "Food ID was not offered in the generation candidate set", position, itemIndex + 1));
         continue;
       }
+      const allowedCandidate = allowedById.get(item.catalogEntryId);
+      if (!allowedCandidate?.pools.includes(item.slot) || seenSlots.has(item.slot)) {
+        issues.push(issue("FOOD_SLOT_MISMATCH", "HARD_FAILURE", "Food ID is not approved for the declared server slot", position, itemIndex + 1));
+        continue;
+      }
+      seenSlots.add(item.slot);
       const food = catalogById.get(item.catalogEntryId);
       if (!food) {
         issues.push(issue("UNKNOWN_CATALOG_ENTRY_ID", "HARD_FAILURE", "Food ID is absent from the authoritative catalog", position, itemIndex + 1));
@@ -196,6 +204,9 @@ export function validateMealPlanCandidate(
         resolution: "CATALOG_ENTRY_ID",
         nutrients: { calories: nutrients.calories, proteinG: nutrients.proteinG, carbsG: nutrients.carbsG, fatG: nutrients.fatG, fiberG: nutrients.fiberG } as ResolvedMeal["items"][number]["nutrients"],
       });
+    }
+    for (const required of ["PROTEIN_ANCHOR", "CARB_ANCHOR", "PRODUCE_FIBER"] as const) {
+      if (!seenSlots.has(required)) issues.push(issue("FOOD_SLOT_MISMATCH", "HARD_FAILURE", `Required ${required} slot is missing`, position));
     }
     if (mealGrams > POLICY.portions.maximumMealGrams) issues.push(issue("IMPOSSIBLE_PORTION", "HARD_FAILURE", "Meal mass exceeds conservative policy", position));
     const totals = sumMealNutrients(resolvedItems.map((item) => ({ ...item.nutrients, grams: item.quantityGrams, macroDerivedEnergy: null, qualityWarnings: [] })));

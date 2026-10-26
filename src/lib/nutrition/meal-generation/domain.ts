@@ -16,6 +16,13 @@ import type {
 export const MEAL_PLAN_GENERATOR_VERSION = "praxe-meal-plan-generator-v1" as const;
 export const MEAL_PLAN_VALIDATOR_VERSION = "praxe-meal-plan-validator-v1" as const;
 export const MEAL_VALIDATION_POLICY_VERSION = "praxe-meal-validation-policy-v1" as const;
+export const MEAL_PLAN_FOOD_POOLS = [
+  "PROTEIN_ANCHOR",
+  "CARB_ANCHOR",
+  "FAT_ANCHOR",
+  "PRODUCE_FIBER",
+] as const;
+export type MealPlanFoodPool = (typeof MEAL_PLAN_FOOD_POOLS)[number];
 
 export interface MealPlanGenerationContext {
   userId: string;
@@ -45,6 +52,7 @@ export interface MealPlanGenerationContext {
 
 export interface AiMealPlanItemCandidate {
   catalogEntryId: string;
+  slot: MealPlanFoodPool;
   quantityGrams: number;
   preparationNote?: string;
 }
@@ -73,6 +81,17 @@ export interface MealPlanCatalogPromptContext {
     dietaryPatternMetadataComplete: boolean;
   };
   candidates: MealPlanCatalogCandidate[];
+  mealSlots: MealPlanMealSlotPrescription[];
+}
+
+export interface MealPlanMealSlotPrescription {
+  position: number;
+  role: MealRole;
+  slots: Array<{
+    pool: MealPlanFoodPool;
+    required: boolean;
+    catalogEntryIds: string[];
+  }>;
 }
 
 export interface MealPlanCatalogCandidate {
@@ -87,6 +106,7 @@ export interface MealPlanCatalogCandidate {
   carbsG: number;
   fatG: number;
   fiberG: number;
+  pools: MealPlanFoodPool[];
 }
 
 export interface ResolvedMealPlanItem {
@@ -124,7 +144,7 @@ export interface ResolvedMealPlan {
 
 export const MEAL_PLAN_VALIDATION_CODES = [
   "CATALOG_NOT_READY", "USER_NOT_ELIGIBLE", "UNKNOWN_CATALOG_ENTRY_ID", "UNKNOWN_FOOD", "AMBIGUOUS_FOOD", "INVALID_QUANTITY",
-  "UNKNOWN_REQUIRED_NUTRIENT", "MEAL_COUNT_MISMATCH", "MEAL_ROLE_MISMATCH", "MEAL_WINDOW_CONFLICT",
+  "UNKNOWN_REQUIRED_NUTRIENT", "MEAL_COUNT_MISMATCH", "MEAL_ROLE_MISMATCH", "MEAL_WINDOW_CONFLICT", "FOOD_SLOT_MISMATCH",
   "DIETARY_PATTERN_UNVERIFIED", "ALLERGEN_SAFETY_UNVERIFIED", "RESTRICTION_VIOLATION",
   "DISLIKED_FOOD_VIOLATION", "CALORIES_OUT_OF_RANGE", "PROTEIN_OUT_OF_RANGE", "CARBS_OUT_OF_RANGE",
   "FAT_OUT_OF_RANGE", "FIBER_TOO_LOW", "EMPTY_MEAL", "IMPOSSIBLE_PORTION", "DUPLICATE_MEAL_STRUCTURE",
@@ -155,6 +175,14 @@ export type PortionCalibrationStatus =
   | "PORTION_CALIBRATION_NO_FEASIBLE_SOLUTION"
   | "INVALID_INPUT";
 
+export interface MealPlanNutrientTotals {
+  calories: number;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+  fiberG: number;
+}
+
 export interface MealPlanCalibrationFeedback {
   status: PortionCalibrationStatus;
   normalizedDeviations: {
@@ -172,6 +200,11 @@ export interface MealPlanCalibrationFeedback {
     fiberG: "below" | "within" | "above";
   };
   existingCatalogEntryIds: string[];
+  iterations: number;
+  adjustedItemCount: number;
+  violatedConstraints: string[];
+  before: MealPlanNutrientTotals;
+  after: MealPlanNutrientTotals;
 }
 
 export interface MealPlanNumericValidationDiagnostics {

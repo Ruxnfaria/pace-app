@@ -1,4 +1,5 @@
 import type { NutritionFoodCatalogEntry, NutrientsPer100g } from "./domain";
+import { resolveEffectiveNutrients } from "./effective-nutrients";
 
 export interface CalculatedFoodNutrients extends NutrientsPer100g {
   grams: number;
@@ -12,11 +13,12 @@ function scale(value: number | null, grams: number): number | null {
 
 export function calculateFoodNutrients(entry: NutritionFoodCatalogEntry, grams: number): CalculatedFoodNutrients {
   if (!Number.isFinite(grams) || grams <= 0 || grams > 5000) throw new Error("Invalid grams for nutrient calculation");
-  const calories = scale(entry.nutrientsPer100g.calories, grams);
-  const proteinG = scale(entry.nutrientsPer100g.proteinG, grams);
-  const carbsG = scale(entry.nutrientsPer100g.carbsG, grams);
-  const fatG = scale(entry.nutrientsPer100g.fatG, grams);
-  const fiberG = scale(entry.nutrientsPer100g.fiberG, grams);
+  const effective = resolveEffectiveNutrients(entry);
+  const calories = scale(effective.calories, grams);
+  const proteinG = scale(effective.proteinG, grams);
+  const carbsG = scale(effective.carbsG, grams);
+  const fatG = scale(effective.fatG, grams);
+  const fiberG = scale(effective.fiberG, grams);
   const macroDerivedEnergy = proteinG === null || carbsG === null || fatG === null
     ? null
     : Number((proteinG * 4 + carbsG * 4 + fatG * 9).toFixed(2));

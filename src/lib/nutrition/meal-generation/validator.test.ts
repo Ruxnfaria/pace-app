@@ -34,7 +34,7 @@ for (const [goal, roles] of [
 test("fat-loss rejects low protein, high calories and disliked food with exact codes", () => {
   const context = generationContext("fat_loss");
   context.target = { ...context.target, calories: context.target.calories * 0.7, proteinG: context.target.proteinG * 1.5 };
-  context.dislikedFoods = ["Banana, prata, crua"];
+  context.dislikedFoods = ["Frango, peito, sem pele, grelhado"];
   const result = codes(validate(context, balancedCandidate(context.mealRoles)));
   assert.ok(result.includes("CALORIES_OUT_OF_RANGE"));
   assert.ok(result.includes("PROTEIN_OUT_OF_RANGE"));
@@ -88,7 +88,7 @@ test("display names and nutrients always come from the authoritative catalog", (
   const context = generationContext();
   const candidate = balancedCandidate(context.mealRoles);
   const report = validate(context, candidate);
-  assert.equal(report.plan?.meals[0].items[0].displayName, "Arroz, tipo 1, cozido");
+  assert.equal(report.plan?.meals[0].items[0].displayName, "Frango, peito, sem pele, grelhado");
   assert.equal(report.plan?.meals[0].items[0].resolution, "CATALOG_ENTRY_ID");
-  assert.equal(report.plan?.meals[0].items[0].nutrients.calories, 128.26);
+  assert.equal(report.plan?.meals[0].items[0].nutrients.calories, 159.19);
 });

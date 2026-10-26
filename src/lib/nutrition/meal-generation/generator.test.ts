@@ -13,6 +13,25 @@ test("catalog-not-ready stops before any AI call", async () => {
   assert.equal(calls, 0);
 });
 
+test("missing required nutritional pool stops before any AI call", async () => {
+  let calls = 0;
+  const entries = officialTestCatalog().entries.map((entry) => ({
+    ...entry,
+    nutrientsPer100g: { ...entry.nutrientsPer100g, proteinG: 0 },
+  }));
+  const generator: MealPlanCandidateGenerator = {
+    generate: async () => { calls += 1; return { meals: [] }; },
+    repair: async () => { calls += 1; return { meals: [] }; },
+  };
+  const result = await generateValidatedMealPlan({
+    context: generationContext(),
+    catalogRepository: new InMemoryNutritionFoodCatalogRepository(entries),
+    candidateGenerator: generator,
+  });
+  assert.equal(result.status, "CATALOG_NOT_READY");
+  assert.equal(calls, 0);
+});
+
 test("generation receives a bounded catalog-ID candidate set with authoritative nutrient metadata", async () => {
   const context = generationContext();
   let received: MealPlanCatalogPromptContext | null = null;
@@ -37,14 +56,15 @@ test("generation receives a bounded catalog-ID candidate set with authoritative 
   assert.ok(promptContext.candidates.length > 0);
   assert.ok(promptContext.candidates.every((candidate) => candidate.catalogEntryId && candidate.source === "TACO"
     && [candidate.calories, candidate.proteinG, candidate.carbsG, candidate.fatG, candidate.fiberG].every(Number.isFinite)));
-  assert.equal(promptContext.candidates.some((candidate) => candidate.canonicalName === "Frango, peito, sem pele, grelhado"), false,
-    "partial TACO entries must not be offered to the generator");
+  assert.equal(promptContext.candidates.some((candidate) => candidate.canonicalName === "Frango, peito, sem pele, grelhado"
+    && candidate.fiberG === 0 && candidate.pools.includes("PROTEIN_ANCHOR")), true);
+  assert.equal(promptContext.mealSlots.length, context.mealCount);
 });
 
 test("a catalog ID outside the server-provided set hard-fails and persists its leaf code", async () => {
   const context = generationContext();
   const invalid = balancedCandidate(context.mealRoles);
-  invalid.meals[0].items[0].catalogEntryId = officialTestCatalog().entries.find((entry) => entry.canonicalName.startsWith("Frango"))!.id;
+  invalid.meals[0].items[0].catalogEntryId = "not-offered-by-server";
   let persistedCode = "";
   const result = await generateValidatedMealPlan({
     context,
@@ -81,8 +101,8 @@ test("one controlled repair keeps the identical catalog constraint and can activ
       assert.ok(["below", "within", "above"].includes(diagnostics.portionCalibration.directions.fatG));
       const selectedIds = new Set(previous.meals.flatMap((meal) => meal.items.map((item) => item.catalogEntryId)));
       assert.deepEqual(new Set(diagnostics.portionCalibration.existingCatalogEntryIds), selectedIds);
-      assert.deepEqual(constrainedCatalog.candidates.map((candidate) => candidate.catalogEntryId),
-        generationIds.filter((id) => selectedIds.has(id)));
+      assert.ok(constrainedCatalog.candidates.length > selectedIds.size);
+      assert.ok(constrainedCatalog.candidates.every((candidate) => generationIds.includes(candidate.catalogEntryId)));
       return balancedCandidate(context.mealRoles);
     },
   };
@@ -101,8 +121,8 @@ for (const calibrationCase of ["calorie_mismatch", "protein_mismatch"] as const)
       invalid.meals.forEach((meal) => meal.items.forEach((item) => { item.quantityGrams *= 0.85; }));
     }
     if (calibrationCase === "protein_mismatch") {
-      const beansId = officialTestCatalog().entries.find((entry) => entry.canonicalName.startsWith("Feijão"))!.id;
-      invalid.meals.forEach((meal) => { meal.items.find((item) => item.catalogEntryId === beansId)!.quantityGrams = 50; });
+      const chickenId = officialTestCatalog().entries.find((entry) => entry.canonicalName.startsWith("Frango"))!.id;
+      invalid.meals.forEach((meal) => { meal.items.find((item) => item.catalogEntryId === chickenId)!.quantityGrams = 50; });
     }
     let repairs = 0;
     const generator: MealPlanCandidateGenerator = { generate: async () => invalid, repair: async () => { repairs += 1; return balancedCandidate(context.mealRoles); } };
@@ -146,7 +166,7 @@ test("second invalid response fails and immutable meal count cannot be repaired 
   assert.equal(result.status, "REQUIRES_REVIEW");
   assert.equal(repairs, 1);
   assert.ok(result.report.issues.some((issue) => issue.code === "MEAL_COUNT_MISMATCH"));
-  assert.deepEqual(jobEvents, ["processing", "requires_review:MEAL_COUNT_MISMATCH"]);
+  assert.deepEqual(jobEvents, ["processing", "failed_retryable:MEAL_COUNT_MISMATCH"]);
 });
 
 test("controlled repair cannot replace or invent catalog identities", async () => {
@@ -160,6 +180,38 @@ test("controlled repair cannot replace or invent catalog identities", async () =
     context,
     catalogRepository: new InMemoryNutritionFoodCatalogRepository(catalog.entries),
     candidateGenerator: { generate: async () => invalid, repair: async () => replacement },
+  });
+  assert.equal(result.status, "REQUIRES_REVIEW");
+  assert.ok(result.report.issues.some((issue) => issue.code === "MEAL_ROLE_MISMATCH"));
+});
+
+test("controlled repair may swap a protein anchor only within its approved pool", async () => {
+  const catalog = officialTestCatalog();
+  const context = generationContext();
+  const invalid = balancedCandidate(context.mealRoles);
+  invalid.meals[1].role = invalid.meals[0].role;
+  const repaired = balancedCandidate(context.mealRoles);
+  repaired.meals[0].items[0].catalogEntryId = catalog.entries.find((entry) => entry.canonicalName.includes("patinho"))!.id;
+  const result = await generateValidatedMealPlan({
+    context,
+    catalogRepository: new InMemoryNutritionFoodCatalogRepository(catalog.entries),
+    candidateGenerator: { generate: async () => invalid, repair: async () => repaired },
+  });
+  assert.equal(result.status, "ACTIVE", JSON.stringify(result.report.issues));
+  if (result.status === "ACTIVE") assert.equal(result.plan.meals[0].items[0].food.canonicalName.includes("patinho"), true);
+});
+
+test("controlled repair rejects a catalog ID assigned to the wrong pool", async () => {
+  const catalog = officialTestCatalog();
+  const context = generationContext();
+  const invalid = balancedCandidate(context.mealRoles);
+  invalid.meals[1].role = invalid.meals[0].role;
+  const wrongPool = balancedCandidate(context.mealRoles);
+  wrongPool.meals[0].items[0].catalogEntryId = catalog.entries.find((entry) => entry.canonicalName.startsWith("Arroz"))!.id;
+  const result = await generateValidatedMealPlan({
+    context,
+    catalogRepository: new InMemoryNutritionFoodCatalogRepository(catalog.entries),
+    candidateGenerator: { generate: async () => invalid, repair: async () => wrongPool },
   });
   assert.equal(result.status, "REQUIRES_REVIEW");
   assert.ok(result.report.issues.some((issue) => issue.code === "MEAL_ROLE_MISMATCH"));

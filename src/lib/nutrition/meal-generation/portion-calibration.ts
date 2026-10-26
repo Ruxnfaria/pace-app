@@ -1,11 +1,13 @@
 import { calculateFoodNutrients } from "../food-catalog/nutrients";
 import type { NutritionFoodCatalogEntry } from "../food-catalog/domain";
+import { resolveEffectiveNutrients } from "../food-catalog/effective-nutrients";
 import type {
   AiMealPlanCandidate,
   CatalogSnapshot,
   MealPlanCatalogCandidate,
   MealPlanGenerationContext,
   MealPlanCalibrationFeedback,
+  MealPlanFoodPool,
   MealPlanNumericValidationDiagnostics,
   PortionCalibrationStatus,
 } from "./domain";
@@ -21,6 +23,7 @@ type Totals = Record<NutrientKey, number>;
 export interface MealPortionCalibrationDiagnostics {
   iterations: number;
   adjustedItemCount: number;
+  jointAdjustmentUsed: boolean;
   before: MealPlanNumericValidationDiagnostics | null;
   after: MealPlanNumericValidationDiagnostics | null;
   feedback: MealPlanCalibrationFeedback | null;
@@ -38,6 +41,7 @@ interface AdjustableItem {
   maximumGrams: number;
   food: NutritionFoodCatalogEntry;
   perGram: Totals;
+  pool: MealPlanFoodPool;
 }
 
 const NUTRIENT_KEYS: NutrientKey[] = ["calories", "proteinG", "carbsG", "fatG", "fiberG"];
@@ -200,6 +204,9 @@ function calibrationFeedback(
   state: ReturnType<typeof calculateState>,
   status: PortionCalibrationStatus,
   candidate: AiMealPlanCandidate,
+  beforeState: ReturnType<typeof calculateState>,
+  iterations: number,
+  adjustedItemCount: number,
 ): MealPlanCalibrationFeedback {
   const ranges = acceptedRanges(context);
   const normalized = (actual: number, target: number) => round((actual - target) / Math.max(target, 1), 6);
@@ -220,6 +227,22 @@ function calibrationFeedback(
       fiberG: direction(state.daily.fiberG, ranges.fiberG),
     },
     existingCatalogEntryIds: [...new Set(candidate.meals.flatMap((meal) => meal.items.map((item) => item.catalogEntryId)))],
+    iterations,
+    adjustedItemCount,
+    violatedConstraints: [
+      ...NUTRIENT_KEYS.filter((key) => direction(state.daily[key], ranges[key]) !== "within"),
+      ...state.meals.flatMap((meal, index) => {
+        const values: string[] = [];
+        if (meal.grams > POLICY.portions.maximumMealGrams) values.push(`meal_${index + 1}_maximum_grams`);
+        if (context.goal === "hypertrophy"
+          && meal.proteinG < context.mealMacroTargets[index].proteinG * POLICY.distribution.minimumHypertrophyMealProteinTargetRatio) {
+          values.push(`meal_${index + 1}_protein_distribution`);
+        }
+        return values;
+      }),
+    ],
+    before: { ...beforeState.daily },
+    after: { ...state.daily },
   };
 }
 
@@ -289,6 +312,37 @@ function findFeasibleBoundaryAdjustment(
   return bestCandidate;
 }
 
+function buildRoleScaledCandidate(
+  context: MealPlanGenerationContext,
+  candidate: AiMealPlanCandidate,
+  items: AdjustableItem[],
+): AiMealPlanCandidate {
+  const scaled = cloneCandidate(candidate);
+  const state = calculateState(candidate, items);
+  const poolTargets: Array<[MealPlanFoodPool, NutrientKey]> = [
+    ["PROTEIN_ANCHOR", "proteinG"],
+    ["CARB_ANCHOR", "carbsG"],
+    ["FAT_ANCHOR", "fatG"],
+    ["PRODUCE_FIBER", "fiberG"],
+  ];
+  for (const [pool, nutrient] of poolTargets) {
+    const poolItems = items.filter((item) => item.pool === pool);
+    const poolContribution = poolItems.reduce((total, item) => {
+      const grams = candidate.meals[item.mealIndex].items[item.itemIndex].quantityGrams;
+      return total + item.perGram[nutrient] * grams;
+    }, 0);
+    if (poolContribution <= 0) continue;
+    const contributionOutsidePool = state.daily[nutrient] - poolContribution;
+    const desiredPoolContribution = Math.max(0, context.target[nutrient] - contributionOutsidePool);
+    const scale = desiredPoolContribution / poolContribution;
+    for (const item of poolItems) {
+      const value = scaled.meals[item.mealIndex].items[item.itemIndex];
+      value.quantityGrams = round(clamp(value.quantityGrams * scale, MIN_PORTION_GRAMS, item.maximumGrams), 1);
+    }
+  }
+  return scaled;
+}
+
 function findFeasibleJointAdjustment(
   context: MealPlanGenerationContext,
   candidate: AiMealPlanCandidate,
@@ -296,21 +350,22 @@ function findFeasibleJointAdjustment(
 ): AiMealPlanCandidate | null {
   const baselineState = calculateState(candidate, items);
   const ranges = acceptedRanges(context);
-  const violatedKey = NUTRIENT_KEYS.find((key) => direction(baselineState.daily[key], ranges[key]) !== "within");
-  if (!violatedKey) return cloneCandidate(candidate);
-  const requiredDirection = direction(baselineState.daily[violatedKey], ranges[violatedKey]);
+  const violatedKeys = NUTRIENT_KEYS.filter((key) => direction(baselineState.daily[key], ranges[key]) !== "within");
+  if (violatedKeys.length === 0) return cloneCandidate(candidate);
+  const preferredPool: Partial<Record<NutrientKey, MealPlanFoodPool>> = {
+    proteinG: "PROTEIN_ANCHOR", carbsG: "CARB_ANCHOR", fatG: "FAT_ANCHOR", fiberG: "PRODUCE_FIBER",
+  };
   const primaryItems = [...items]
-    .filter((item) => item.perGram[violatedKey] > 0)
     .sort((left, right) => {
-      if (requiredDirection === "below") {
-        return (right.perGram[violatedKey] / Math.max(right.perGram.calories, 0.01))
-          - (left.perGram[violatedKey] / Math.max(left.perGram.calories, 0.01));
-      }
-      const leftGrams = candidate.meals[left.mealIndex].items[left.itemIndex].quantityGrams;
-      const rightGrams = candidate.meals[right.mealIndex].items[right.itemIndex].quantityGrams;
-      return right.perGram[violatedKey] * rightGrams - left.perGram[violatedKey] * leftGrams;
+      const relevance = (item: AdjustableItem) => violatedKeys.reduce((score, key) => {
+        const roleBoost = preferredPool[key] === item.pool ? 10 : 0;
+        return score + roleBoost + item.perGram[key] / Math.max(item.perGram.calories, 0.01);
+      }, 0);
+      return relevance(right) - relevance(left)
+        || left.mealIndex - right.mealIndex
+        || left.itemIndex - right.itemIndex;
     })
-    .slice(0, 6);
+    .slice(0, 8);
   let bestObjective = objective(context, baselineState);
   let bestCandidate: AiMealPlanCandidate | null = null;
   for (const primary of primaryItems) {
@@ -318,7 +373,7 @@ function findFeasibleJointAdjustment(
     const primaryOriginal = primaryCandidate.quantityGrams;
     const primaryQuantities = possibleQuantities(
       primary, primaryOriginal, context, baselineState, MAX_CALIBRATION_ITERATIONS - 1,
-    ).filter((quantity) => requiredDirection === "below" ? quantity > primaryOriginal : quantity < primaryOriginal);
+    ).filter((quantity) => quantity !== primaryOriginal).slice(0, 20);
     for (const primaryQuantity of primaryQuantities) {
       primaryCandidate.quantityGrams = primaryQuantity;
       const intermediateState = calculateState(candidate, items);
@@ -328,7 +383,7 @@ function findFeasibleJointAdjustment(
         const secondaryOriginal = secondaryCandidate.quantityGrams;
         for (const secondaryQuantity of possibleQuantities(
           secondary, secondaryOriginal, context, intermediateState, MAX_CALIBRATION_ITERATIONS - 1,
-        )) {
+        ).slice(0, 20)) {
           if (secondaryQuantity === secondaryOriginal) continue;
           secondaryCandidate.quantityGrams = secondaryQuantity;
           const trialObjective = objective(context, calculateState(candidate, items));
@@ -360,8 +415,8 @@ export function calibrateMealPlanPortions(
       const candidateItem = candidate.meals[mealIndex].items[itemIndex];
       const food = catalogById.get(candidateItem.catalogEntryId);
       if (!food || !allowedIds.has(candidateItem.catalogEntryId) || !Number.isFinite(candidateItem.quantityGrams)
-        || candidateItem.quantityGrams <= 0 || Object.values(food.nutrientsPer100g).some((value) => value === null)) {
-        return { candidate: input, diagnostics: { iterations: 0, adjustedItemCount: 0, before: null, after: null, feedback: null } };
+        || candidateItem.quantityGrams <= 0 || Object.values(resolveEffectiveNutrients(food)).some((value) => value === null)) {
+        return { candidate: input, diagnostics: { iterations: 0, adjustedItemCount: 0, jointAdjustmentUsed: false, before: null, after: null, feedback: null } };
       }
       const per100g = calculateFoodNutrients(food, 100);
       items.push({
@@ -371,12 +426,13 @@ export function calibrateMealPlanPortions(
           calories: per100g.calories! / 100, proteinG: per100g.proteinG! / 100,
           carbsG: per100g.carbsG! / 100, fatG: per100g.fatG! / 100, fiberG: per100g.fiberG! / 100,
         },
+        pool: candidateItem.slot,
       });
       candidateItem.quantityGrams = round(clamp(candidateItem.quantityGrams, MIN_PORTION_GRAMS, items.at(-1)!.maximumGrams), 1);
     }
   }
   if (items.length === 0 || candidate.meals.length !== context.mealCount) {
-    return { candidate: input, diagnostics: { iterations: 0, adjustedItemCount: 0, before: null, after: null, feedback: null } };
+    return { candidate: input, diagnostics: { iterations: 0, adjustedItemCount: 0, jointAdjustmentUsed: false, before: null, after: null, feedback: null } };
   }
 
   const beforeState = calculateState(candidate, items);
@@ -386,8 +442,11 @@ export function calibrateMealPlanPortions(
     const value = scaled.meals[item.mealIndex].items[item.itemIndex];
     value.quantityGrams = round(clamp(value.quantityGrams * energyScale, MIN_PORTION_GRAMS, item.maximumGrams), 1);
   }
-  if (isBetter(objective(context, calculateState(scaled, items)), objective(context, beforeState))) {
-    candidate.meals = scaled.meals;
+  const roleScaled = buildRoleScaledCandidate(context, candidate, items);
+  for (const seed of [scaled, roleScaled]) {
+    if (isBetter(objective(context, calculateState(seed, items)), objective(context, calculateState(candidate, items)))) {
+      candidate.meals = seed.meals;
+    }
   }
 
   let iterations = 0;
@@ -429,25 +488,29 @@ export function calibrateMealPlanPortions(
   candidate.meals = bestCandidate.meals;
   const feasibleBoundaryCandidate = findFeasibleBoundaryAdjustment(context, candidate, items);
   if (feasibleBoundaryCandidate) candidate.meals = feasibleBoundaryCandidate.meals;
-  const finalPreJointState = calculateState(candidate, items);
-  const finalPreJointObjective = objective(context, finalPreJointState);
-  const fatRange = acceptedRanges(context).fatG;
-  if (finalPreJointObjective.violationCount === 1 && direction(finalPreJointState.daily.fatG, fatRange) !== "within") {
+  const finalPreJointObjective = objective(context, calculateState(candidate, items));
+  let jointAdjustmentUsed = false;
+  if (finalPreJointObjective.violationCount > 0) {
     const feasibleJointCandidate = findFeasibleJointAdjustment(context, candidate, items);
-    if (feasibleJointCandidate) candidate.meals = feasibleJointCandidate.meals;
+    if (feasibleJointCandidate) {
+      candidate.meals = feasibleJointCandidate.meals;
+      jointAdjustmentUsed = true;
+    }
   }
   const afterState = calculateState(candidate, items);
   const status: PortionCalibrationStatus = objective(context, afterState).violationCount === 0
     ? "CONVERGED"
     : "PORTION_CALIBRATION_NO_FEASIBLE_SOLUTION";
+  const adjustedItemCount = items.filter((item) => candidate.meals[item.mealIndex].items[item.itemIndex].quantityGrams !== item.originalGrams).length;
   return {
     candidate,
     diagnostics: {
       iterations,
-      adjustedItemCount: items.filter((item) => candidate.meals[item.mealIndex].items[item.itemIndex].quantityGrams !== item.originalGrams).length,
+      adjustedItemCount,
+      jointAdjustmentUsed,
       before: toNumericDiagnostics(context, beforeState),
       after: toNumericDiagnostics(context, afterState),
-      feedback: calibrationFeedback(context, afterState, status, candidate),
+      feedback: calibrationFeedback(context, afterState, status, candidate, beforeState, iterations, adjustedItemCount),
     },
   };
 }

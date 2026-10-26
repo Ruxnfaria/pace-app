@@ -40,7 +40,9 @@ The script is server/offline only. It requires an explicit local source path and
 
 ## Null and trace policy
 
-The source legend defines `NA` as not applicable, `Tr` as trace, `*` as analyses under reevaluation and blank cells as analyses not requested. TACO uses trace for rounded values below its stated display thresholds or values below quantification limits. The parser therefore records all four cases as `null` plus a distinct marker in `source_metadata.valueMarkers`. It never turns them into zero. Numeric zero is retained only when the official cell is numeric zero.
+The source legend defines `NA` as not applicable, `Tr` as trace, `*` as analyses under reevaluation and blank cells as analyses not requested. TACO uses trace for rounded values below its stated display thresholds or values below quantification limits. The parser records all cases as `null` plus a distinct marker in `source_metadata.valueMarkers`. The raw catalog value and marker are immutable.
+
+The calculation layer has one narrow effective-value rule: `fiberG=null` with the explicit fibre marker `NOT_APPLICABLE` is interpreted as effective fibre `0` for eligibility, prompts, calibration and validation. The stored TACO value remains `null`. `TRACE`, `NOT_REQUESTED`, `NOT_REEVALUATED`/under reevaluation, blank, missing and unknown markers remain unknown and fail closed. No other missing nutrient is coerced to zero.
 
 Official TACO kcal remain the authoritative energy value. The parser also calculates `macroDerivedEnergyKcal` from protein/carbohydrate/fat and emits an `ENERGY_DISCREPANCY` warning above the versioned absolute/relative policy. It never overwrites official kcal.
 
@@ -59,6 +61,6 @@ Readiness has four levels:
 
 The category report uses source groups and conservative name classification for coverage measurement only. These classifications do not create dietary or allergen claims. TACO alone can reach base-nutrition readiness and cannot reach restriction-safe readiness without separate approved curation.
 
-Portions remain empty because the selected official worksheet does not provide safe household-measure conversions. Future meal plans must use grams until an authoritative portion source is approved. The only V1 aliases are a small curated list that preserves preparation state; broad ambiguous aliases are excluded.
+Portions remain empty because the selected official worksheet does not provide safe household-measure conversions. Meal plans use grams until an authoritative portion source is approved. Aliases remain useful for search but are not runtime meal-generation authority: the generator works exclusively with server-approved TACO `catalogEntryId` values and preserves preparation state.
 
 TBCA remains reserved for a future integration after its commercial-use and redistribution terms are explicitly authorized. This tranche performs no TBCA scraping or import.

@@ -1,7 +1,7 @@
 import { assessTrustedNutritionCatalog } from "../food-catalog/capabilities";
 import { resolveMealPlanGenerationEligibility } from "../food-catalog/eligibility";
 import { PRAXE_TACO_CATALOG_VERSION, TACO_SOURCE_VERSION } from "../food-catalog/taco/constants";
-import { buildMealPlanCandidateSet } from "./candidate-set";
+import { buildMealPlanCandidateSet, buildMealPlanMealSlots } from "./candidate-set";
 import {
   MEAL_PLAN_GENERATOR_VERSION,
   MEAL_PLAN_VALIDATOR_VERSION,
@@ -52,21 +52,44 @@ function repairCatalog(
   catalog: MealPlanCatalogPromptContext,
   candidate: AiMealPlanCandidate,
 ): MealPlanCatalogPromptContext {
-  const selectedIds = new Set(candidate.meals.flatMap((meal) => meal.items.map((item) => item.catalogEntryId)));
-  return { ...catalog, candidates: catalog.candidates.filter((candidateItem) => selectedIds.has(candidateItem.catalogEntryId)) };
+  const usedPools = new Set(candidate.meals.flatMap((meal) => meal.items.map((item) => item.slot)));
+  return {
+    ...catalog,
+    candidates: catalog.candidates.filter((candidateItem) => candidateItem.pools.some((pool) => usedPools.has(pool))),
+    mealSlots: catalog.mealSlots.map((meal) => ({
+      ...meal,
+      slots: meal.slots
+        .filter((slot) => usedPools.has(slot.pool))
+        .map((slot) => ({ ...slot, catalogEntryIds: slot.catalogEntryIds.filter((id) =>
+          catalog.candidates.some((candidateItem) => candidateItem.catalogEntryId === id
+            && candidateItem.pools.includes(slot.pool))) })),
+    })),
+  };
 }
 
-function hasSameCatalogIdentity(previous: AiMealPlanCandidate, repaired: AiMealPlanCandidate): boolean {
+function hasValidRepairStructure(
+  context: MealPlanGenerationContext,
+  previous: AiMealPlanCandidate,
+  repaired: AiMealPlanCandidate,
+  catalog: MealPlanCatalogPromptContext,
+): boolean {
+  const byId = new Map(catalog.candidates.map((candidate) => [candidate.catalogEntryId, candidate]));
   return repaired.meals.length === previous.meals.length
     && repaired.meals.every((meal, mealIndex) => {
       const previousMeal = previous.meals[mealIndex];
-      return meal.items.length === previousMeal.items.length
-        && meal.items.every((item, itemIndex) => item.catalogEntryId === previousMeal.items[itemIndex].catalogEntryId);
+      return meal.role === context.mealRoles[mealIndex]
+        && meal.items.length === previousMeal.items.length
+        && meal.items.every((item, itemIndex) => {
+          const previousItem = previousMeal.items[itemIndex];
+          return item.slot === previousItem.slot
+            && (byId.get(item.catalogEntryId)?.pools.includes(item.slot) ?? false);
+        });
     });
 }
 
 function catalogPromptContext(context: MealPlanGenerationContext, catalog: CatalogSnapshot): MealPlanCatalogPromptContext {
   const status = assessTrustedNutritionCatalog(catalog.entries);
+  const candidates = buildMealPlanCandidateSet(context, catalog);
   return {
     readiness: catalog.readiness,
     authority: { source: "TACO", sourceVersion: TACO_SOURCE_VERSION, catalogVersion: PRAXE_TACO_CATALOG_VERSION },
@@ -76,7 +99,8 @@ function catalogPromptContext(context: MealPlanGenerationContext, catalog: Catal
       restrictionMetadataComplete: status.restrictionMetadataComplete,
       dietaryPatternMetadataComplete: status.restrictionMetadataComplete,
     },
-    candidates: buildMealPlanCandidateSet(context, catalog),
+    candidates,
+    mealSlots: buildMealPlanMealSlots(context, candidates),
   };
 }
 
@@ -102,9 +126,12 @@ export async function generateValidatedMealPlan(args: {
   }
   const idempotencyKey = buildMealPlanGenerationIdempotencyKey(args.context);
   const generationContext = { ...args.context, catalogReadiness: catalog.readiness };
+  const constrainedCatalog = catalogPromptContext(generationContext, catalog);
+  if (constrainedCatalog.mealSlots.some((meal) => meal.slots.some((slot) => slot.required && slot.catalogEntryIds.length === 0))) {
+    return { status: "CATALOG_NOT_READY", repaired: false, report: rejected("CATALOG_NOT_READY", "Required meal-plan food pool is unavailable") };
+  }
   await args.jobRepository?.begin(args.context, idempotencyKey);
   try {
-    const constrainedCatalog = catalogPromptContext(generationContext, catalog);
     const candidate = await args.candidateGenerator.generate(generationContext, constrainedCatalog);
     const initialCalibration = calibrateMealPlanPortions(
       generationContext, candidate, catalog, constrainedCatalog.candidates,
@@ -121,7 +148,7 @@ export async function generateValidatedMealPlan(args: {
       const proposedRepair = await args.candidateGenerator.repair(
         generationContext, calibratedCandidate, report.issues, report.diagnostics, constrainedRepairCatalog,
       );
-      const repairedCandidate = hasSameCatalogIdentity(calibratedCandidate, proposedRepair)
+      const repairedCandidate = hasValidRepairStructure(generationContext, calibratedCandidate, proposedRepair, constrainedRepairCatalog)
         ? proposedRepair
         : calibratedCandidate;
       const repairedCalibration = calibrateMealPlanPortions(
@@ -134,7 +161,7 @@ export async function generateValidatedMealPlan(args: {
       }
     }
     if (!report.valid || !report.plan) {
-      await args.jobRepository?.finish(idempotencyKey, "requires_review", report.issues.find((value) => value.severity === "HARD_FAILURE")?.code ?? "VALIDATION_FAILED");
+      await args.jobRepository?.finish(idempotencyKey, "failed_retryable", report.issues.find((value) => value.severity === "HARD_FAILURE")?.code ?? "VALIDATION_FAILED");
       return { status: "REQUIRES_REVIEW", repaired, report };
     }
     if (!args.activationRepository) return { status: "ACTIVE", plan: report.plan, planId: "not-persisted", repaired, reused: false, report };

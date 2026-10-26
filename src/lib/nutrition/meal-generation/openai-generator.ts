@@ -10,6 +10,17 @@ import type {
 import type { MealPlanCandidateGenerator } from "./generator";
 
 export function buildMealPlanResponseSchema(catalog: MealPlanCatalogPromptContext) {
+  const slotSchemas = catalog.mealSlots[0]?.slots.map((slot) => ({
+    type: "object" as const,
+    additionalProperties: false,
+    required: ["catalogEntryId", "slot", "quantityGrams", "preparationNote"],
+    properties: {
+      catalogEntryId: { type: "string" as const, enum: slot.catalogEntryIds },
+      slot: { type: "string" as const, const: slot.pool },
+      quantityGrams: { type: "number" as const, exclusiveMinimum: 0 },
+      preparationNote: { type: ["string", "null"] as const },
+    },
+  })) ?? [];
   return {
   name: "praxe_meal_plan_candidate_v1",
   strict: true,
@@ -20,16 +31,8 @@ export function buildMealPlanResponseSchema(catalog: MealPlanCatalogPromptContex
         role: { type: "string", enum: ["BREAKFAST", "MAIN_MEAL", "PRE_WORKOUT", "POST_WORKOUT", "SNACK", "EVENING_MEAL"] },
         label: { type: "string" },
         items: {
-          type: "array", minItems: 1,
-          items: {
-            type: "object", additionalProperties: false,
-            required: ["catalogEntryId", "quantityGrams", "preparationNote"],
-            properties: {
-              catalogEntryId: { type: "string", enum: catalog.candidates.map((candidate) => candidate.catalogEntryId) },
-              quantityGrams: { type: "number", exclusiveMinimum: 0 },
-              preparationNote: { type: ["string", "null"] },
-            },
-          },
+          type: "array", minItems: 3, maxItems: 4,
+          items: { anyOf: slotSchemas },
         },
       } } },
     },
@@ -52,7 +55,7 @@ function safeContext(context: MealPlanGenerationContext) {
 }
 
 function systemInstruction(): string {
-  return "Você compõe refeições práticas escolhendo somente catalogEntryId da lista fornecida. Nunca crie IDs ou use nomes como identidade alimentar. Informe quantityGrams e uma nota de preparo opcional. Não calcule nem retorne nutrientes. Não altere meta, quantidade de refeições, ordem ou papéis. Retorne somente o JSON do schema.";
+  return "Você compõe refeições práticas preenchendo os slots server-side de cada refeição. Escolha somente catalogEntryId permitido para o pool do slot. Inclua PROTEIN_ANCHOR, CARB_ANCHOR e PRODUCE_FIBER; FAT_ANCHOR é opcional. Nunca crie IDs ou use nomes como identidade alimentar. Informe slot, quantityGrams e nota de preparo opcional. Não calcule nutrientes nem altere meta, quantidade de refeições, ordem, papéis ou slots. Retorne somente o JSON do schema.";
 }
 
 function parseCandidate(content: string): AiMealPlanCandidate {
