@@ -17,7 +17,7 @@ export default function MealPlanPreparation() {
     : pending ? "Estamos preparando seu plano alimentar."
     : "Nenhum plano alimentar ativo.";
   const detail = pending ? "Você pode continuar usando o app enquanto finalizamos essa etapa."
-    : review ? "Seus dados permanecem seguros e nenhum plano inválido será publicado."
+    : review ? "Precisamos revisar seus dados de saúde antes de calcular o plano. Nenhuma geração automática será iniciada."
     : failed ? "Tente novamente quando estiver pronto."
     : value === "ready" ? "A estratégia validada já está disponível para sua rotina."
     : "Conclua o onboarding mais recente para iniciar a preparação.";

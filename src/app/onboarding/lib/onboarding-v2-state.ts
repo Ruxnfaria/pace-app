@@ -23,6 +23,8 @@ export function createInitialOnboardingV2Form(): OnboardingV2FormState {
       primaryGoal: undefined,
       birthDate: undefined,
       biologicalSex: undefined,
+      pregnancyStatus: undefined,
+      lactationStatus: undefined,
       heightCm: undefined,
       weightKg: undefined,
       targetWeightKg: undefined,
@@ -117,6 +119,24 @@ function normalizeTraining(training: OnboardingV2TrainingForm): OnboardingV2Trai
   };
 }
 
+function normalizeHealth(health: OnboardingV2HealthForm): OnboardingV2HealthForm {
+  if (health.biologicalSex === 'female') {
+    return {
+      ...health,
+      pregnancyStatus:
+        health.pregnancyStatus === 'not_applicable' ? undefined : health.pregnancyStatus,
+      lactationStatus:
+        health.lactationStatus === 'not_applicable' ? undefined : health.lactationStatus,
+    };
+  }
+
+  if (health.biologicalSex === 'male' || health.biologicalSex === 'not_specified') {
+    return { ...health, pregnancyStatus: 'not_applicable', lactationStatus: 'not_applicable' };
+  }
+
+  return health;
+}
+
 function normalizeNutrition(nutrition: OnboardingV2NutritionForm): OnboardingV2NutritionForm {
   return {
     ...nutrition,
@@ -135,10 +155,10 @@ function normalizeState(state: OnboardingV2State): OnboardingV2State {
     currentStepId: primaryGoal ? state.currentStepId : 'goal',
     form: {
       ...state.form,
-      health: {
+      health: normalizeHealth({
         ...state.form.health,
         primaryGoal,
-      },
+      }),
       training: normalizeTraining(state.form.training),
       nutrition: normalizeNutrition(state.form.nutrition),
     },
@@ -164,7 +184,10 @@ export function onboardingV2Reducer(
     case 'update-health':
       return {
         ...state,
-        form: { ...state.form, health: { ...state.form.health, ...action.changes } },
+        form: {
+          ...state.form,
+          health: normalizeHealth({ ...state.form.health, ...action.changes }),
+        },
       };
     case 'update-training':
       return {

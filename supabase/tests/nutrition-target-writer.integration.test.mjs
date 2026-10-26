@@ -4,8 +4,10 @@ import { resolve } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { calculateNutritionTarget } from '../../src/lib/nutrition/target-calculator.ts';
+import targetCalculator from '../../src/lib/nutrition/target-calculator.ts';
 import { readMigration, startLocalPostgres } from './local-postgres.mjs';
+
+const { calculateNutritionTarget } = targetCalculator;
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const forbiddenEnvironment = [
@@ -86,6 +88,8 @@ function onboardingPayload({
     delete value.nutrition.preferred_meals_per_day;
   }
   if (schemaVersion === 5) {
+    value.health.pregnancy_status = biologicalSex === 'female' ? 'no' : 'not_applicable';
+    value.health.lactation_status = biologicalSex === 'female' ? 'no' : 'not_applicable';
     value.routine = {
       wake_time: '07:00', sleep_time: '23:00',
       routine_predictability: 'predictable', meal_break_availability: 'limited',
@@ -104,8 +108,12 @@ function targetFor(payload, effectiveDate = '2026-10-18') {
     biologicalSex: payload.health.biological_sex,
     activityLevel: payload.health.activity_level,
     goal: payload.health.primary_goal,
-    pregnant: undefined,
-    lactating: undefined,
+    pregnant: payload.health.pregnancy_status === 'yes'
+      ? true
+      : payload.health.pregnancy_status === 'no' ? false : undefined,
+    lactating: payload.health.lactation_status === 'yes'
+      ? true
+      : payload.health.lactation_status === 'no' ? false : undefined,
     requiresClinicalReview: false,
   });
 }
@@ -138,6 +146,7 @@ async function bootstrap(local) {
   );
   await local.db.query(await readMigration('20261018040000_nutrition_target_writer.sql'));
   await local.db.query(await readMigration('20261018050000_onboarding_vnext_routine_context.sql'));
+  await local.db.query(await readMigration('20261026015609_add_reproductive_context_to_onboarding_schema5.sql'));
   const after = await local.db.query(
     `select md5(pg_get_functiondef('public.complete_onboarding_v22(jsonb)'::regprocedure)) hash`,
   );
@@ -251,9 +260,11 @@ test('authoritative writer is atomic, idempotent, versioned, concurrent, and rev
     const routineContext = await db.query(`
       select n.wake_time::text, n.sleep_time::text, n.routine_predictability,
              n.meal_break_availability, n.preferred_meals_per_day,
+             h.pregnancy_status, h.lactation_status,
              t.preferred_training_period,
              r.payload_schema_version, r.canonicalization_version
       from public.nutrition_profiles n
+      join public.user_health_profiles h using (user_id)
       join public.training_profiles t using (user_id)
       join public.onboarding_completion_receipts r using (user_id)
       where n.user_id = $1
@@ -262,6 +273,7 @@ test('authoritative writer is atomic, idempotent, versioned, concurrent, and rev
       wake_time: '07:00:00', sleep_time: '23:00:00',
       routine_predictability: 'predictable', meal_break_availability: 'limited',
       preferred_meals_per_day: null, preferred_training_period: 'evening',
+      pregnancy_status: 'not_applicable', lactation_status: 'not_applicable',
       payload_schema_version: 5,
       canonicalization_version: 5,
     });

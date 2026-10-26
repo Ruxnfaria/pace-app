@@ -5,6 +5,7 @@ import {
   PREFERRED_MEALS_PER_DAY,
   PRIMARY_GOALS,
   PREFERRED_TRAINING_PERIODS,
+  REPRODUCTIVE_STATUSES,
   ROUTINE_PREDICTABILITIES,
   type CompleteOnboardingV2Payload,
   type CompleteOnboardingV2Result,
@@ -62,6 +63,21 @@ export function assertOnboardingV2SubmissionPreflight(
     reasons.push('o payload contém campos removidos');
   }
   if (payload.payload_schema_version === 5) {
+    const isApplicableReproductiveStatus = (value: unknown) =>
+      value !== 'not_applicable' && REPRODUCTIVE_STATUSES.some((status) => status === value);
+    if (payload.health.biological_sex === 'female') {
+      if (!isApplicableReproductiveStatus(payload.health.pregnancy_status)) {
+        reasons.push('pregnancy_status ausente ou inválido');
+      }
+      if (!isApplicableReproductiveStatus(payload.health.lactation_status)) {
+        reasons.push('lactation_status ausente ou inválido');
+      }
+    } else if (
+      payload.health.pregnancy_status !== 'not_applicable' ||
+      payload.health.lactation_status !== 'not_applicable'
+    ) {
+      reasons.push('contexto reprodutivo não aplicável precisa ser explícito');
+    }
     const routine = payload.routine;
     const localTimePattern = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
     if (!routine || !localTimePattern.test(routine.wake_time)) {

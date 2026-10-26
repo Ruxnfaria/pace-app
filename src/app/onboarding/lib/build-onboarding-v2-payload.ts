@@ -53,6 +53,12 @@ export function buildOnboardingV2Payload(
     training.trainingExperience,
     'training.trainingExperience',
   );
+  const pregnancyStatus = health.biologicalSex === 'female'
+    ? required(health.pregnancyStatus, 'health.pregnancyStatus')
+    : 'not_applicable';
+  const lactationStatus = health.biologicalSex === 'female'
+    ? required(health.lactationStatus, 'health.lactationStatus')
+    : 'not_applicable';
 
   return {
     idempotency_key: idempotencyKey,
@@ -60,6 +66,8 @@ export function buildOnboardingV2Payload(
     health: {
       birth_date: required(health.birthDate, 'health.birthDate'),
       biological_sex: required(health.biologicalSex, 'health.biologicalSex'),
+      pregnancy_status: pregnancyStatus,
+      lactation_status: lactationStatus,
       height_cm: required(health.heightCm, 'health.heightCm'),
       weight_kg: required(health.weightKg, 'health.weightKg'),
       target_weight_kg: health.targetWeightKg ?? null,

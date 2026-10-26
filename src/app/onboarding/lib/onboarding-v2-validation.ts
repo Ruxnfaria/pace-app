@@ -12,6 +12,7 @@ import {
   MEAL_SCHEDULE_FLEXIBILITIES,
   MEAL_BREAK_AVAILABILITIES,
   PREFERRED_TRAINING_PERIODS,
+  REPRODUCTIVE_STATUSES,
   RECENT_TRAINING_BREAKS,
   RESTRICTION_CODES,
   RESTRICTION_TYPES,
@@ -177,6 +178,20 @@ export function validateOnboardingV2Step(
     case 'biological-sex':
       if (!isOneOf(BIOLOGICAL_SEXES, health.biologicalSex)) {
         issues.push(issue(stepId, 'health.biologicalSex', 'Escolha uma opção válida.'));
+      }
+      if (health.biologicalSex === 'female') {
+        const isApplicableReproductiveStatus = (value: unknown) =>
+          value !== 'not_applicable' && isOneOf(REPRODUCTIVE_STATUSES, value);
+        if (!isApplicableReproductiveStatus(health.pregnancyStatus)) {
+          issues.push(
+            issue(stepId, 'health.pregnancyStatus', 'Informe seu contexto de gestação.'),
+          );
+        }
+        if (!isApplicableReproductiveStatus(health.lactationStatus)) {
+          issues.push(
+            issue(stepId, 'health.lactationStatus', 'Informe seu contexto de amamentação.'),
+          );
+        }
       }
       break;
     case 'measurements':

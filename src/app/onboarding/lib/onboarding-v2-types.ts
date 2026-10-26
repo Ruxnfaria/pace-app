@@ -14,6 +14,13 @@ export const ONBOARDING_SCHEMA_VERSION = 5 as const;
 export const PRIMARY_GOALS = ['fat_loss', 'hypertrophy', 'conditioning'] as const;
 
 export const BIOLOGICAL_SEXES = ['male', 'female', 'not_specified'] as const;
+export const REPRODUCTIVE_STATUSES = [
+  'yes',
+  'no',
+  'unknown',
+  'prefer_not_to_say',
+  'not_applicable',
+] as const;
 export const TRAINING_EXPERIENCES = [
   'none',
   'under_6_months',
@@ -139,6 +146,7 @@ export const SUPPLEMENT_CODES = [
 export type Goal = (typeof GOALS)[number];
 export type PrimaryGoal = (typeof PRIMARY_GOALS)[number];
 export type BiologicalSex = (typeof BIOLOGICAL_SEXES)[number];
+export type ReproductiveStatus = (typeof REPRODUCTIVE_STATUSES)[number];
 export type TrainingExperience = (typeof TRAINING_EXPERIENCES)[number];
 export type ExerciseConfidence = (typeof EXERCISE_CONFIDENCES)[number];
 export type RecentTrainingBreak = (typeof RECENT_TRAINING_BREAKS)[number];
@@ -192,6 +200,8 @@ export interface OnboardingV2HealthForm {
   primaryGoal: Goal | undefined;
   birthDate: string | undefined;
   biologicalSex: BiologicalSex | undefined;
+  pregnancyStatus: ReproductiveStatus | undefined;
+  lactationStatus: ReproductiveStatus | undefined;
   heightCm: number | undefined;
   weightKg: number | undefined;
   targetWeightKg: number | null | undefined;
@@ -301,6 +311,8 @@ export interface CompleteOnboardingV2Payload {
   health: {
     birth_date: string;
     biological_sex: BiologicalSex;
+    pregnancy_status?: ReproductiveStatus;
+    lactation_status?: ReproductiveStatus;
     height_cm: number;
     weight_kg: number;
     target_weight_kg: number | null;

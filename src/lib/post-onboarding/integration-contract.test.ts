@@ -46,3 +46,19 @@ test("meal failures expose only server-calculated numeric validation diagnostics
   assert.match(source, /numeric_validation:\s*result\.report\.diagnostics/);
   assert.doesNotMatch(source, /providerResponse|rawPrompt|completion\.choices/);
 });
+
+test("review-required nutrition target becomes a terminal meal review before AI setup", async () => {
+  const mealServer = await readFile(new URL("lib/nutrition/meal-generation/server.ts", root), "utf8");
+  const orchestratorServer = await readFile(new URL("lib/post-onboarding/server.ts", root), "utf8");
+  const dashboard = await readFile(new URL("components/post-onboarding/MealPlanPreparation.tsx", root), "utf8");
+  const progress = await readFile(new URL("components/post-onboarding/PostOnboardingProgress.tsx", root), "utf8");
+
+  const contextPolicy = await readFile(new URL("lib/nutrition/meal-generation/context-policy.ts", root), "utf8");
+  assert.match(contextPolicy, /status === ['"]requires_review['"][\s\S]*MealPlanGenerationBlockedError/);
+  assert.ok(mealServer.indexOf("loadMealPlanGenerationContext") < mealServer.indexOf("new OpenAI"));
+  assert.match(orchestratorServer, /MealPlanGenerationBlockedError[\s\S]*status: "requires_review"/);
+  assert.match(dashboard, /Nenhuma geração automática será iniciada/);
+  assert.match(dashboard, /review \? TriangleAlert/);
+  assert.match(progress, /Alguns planos precisam de revisão/);
+  assert.match(progress, /status === "requires_review" \|\| status === "failed_retryable"/);
+});

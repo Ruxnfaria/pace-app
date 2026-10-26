@@ -9,12 +9,16 @@ import {
 
 function payload(
   biologicalSex: CompleteOnboardingV2Payload['health']['biological_sex'] = 'male',
+  pregnancyStatus?: CompleteOnboardingV2Payload['health']['pregnancy_status'],
+  lactationStatus?: CompleteOnboardingV2Payload['health']['lactation_status'],
 ): CompleteOnboardingV2Payload {
   return {
     idempotency_key: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     payload_schema_version: 4,
     health: {
       birth_date: '1996-10-18', biological_sex: biologicalSex,
+      pregnancy_status: pregnancyStatus,
+      lactation_status: lactationStatus,
       height_cm: 180, weight_kg: 80, target_weight_kg: null,
       primary_goal: 'fat_loss', activity_level: 'moderate',
     },
@@ -58,8 +62,27 @@ test('routes an unspecified metabolic basis to an auditable review snapshot', ()
   assert.equal(target.calories, null);
 });
 
-test('routes a female basis to review until pregnancy and lactation are known', () => {
-  const target = buildOnboardingNutritionTarget(payload('female'), '2026-10-18');
+test('female with explicit no/no receives a calculated target', () => {
+  const target = buildOnboardingNutritionTarget(payload('female', 'no', 'no'), '2026-10-18');
+  assert.equal(target.status, 'active');
+  assert.equal(target.reasons.length, 0);
+  assert.ok((target.calories ?? 0) > 0);
+});
+
+test('routes pregnancy and lactation to review', () => {
+  const pregnancy = buildOnboardingNutritionTarget(payload('female', 'yes', 'no'), '2026-10-18');
+  const lactation = buildOnboardingNutritionTarget(payload('female', 'no', 'yes'), '2026-10-18');
+  assert.equal(pregnancy.status, 'requires_review');
+  assert.ok(pregnancy.reasons.includes('pregnancy'));
+  assert.equal(lactation.status, 'requires_review');
+  assert.ok(lactation.reasons.includes('lactation'));
+});
+
+test('routes unknown reproductive context to review', () => {
+  const target = buildOnboardingNutritionTarget(
+    payload('female', 'unknown', 'prefer_not_to_say'),
+    '2026-10-18',
+  );
   assert.equal(target.status, 'requires_review');
   assert.deepEqual(target.reasons, ['pregnancy_status_unknown', 'lactation_status_unknown']);
 });

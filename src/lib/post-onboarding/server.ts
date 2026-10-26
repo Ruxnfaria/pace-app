@@ -5,6 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { FitnessRouteServiceError } from "@/lib/fitness-context/route-pipeline";
 import { generateUserDailyMissions } from "@/lib/missions/server";
 import { generateMealPlanForUser } from "@/lib/nutrition/meal-generation/server";
+import { MealPlanGenerationBlockedError } from "@/lib/nutrition/meal-generation/context-policy";
 import { generateWorkoutPlanForUser } from "@/lib/workouts/server-generator";
 import type { WorkoutValidationAudit } from "@/lib/workouts/validation/domain";
 
@@ -78,7 +79,10 @@ export async function processPostOnboardingForUser(
             ...(result.report.diagnostics ? { numeric_validation: result.report.diagnostics } : {}),
           },
         };
-      } catch {
+      } catch (error) {
+        if (error instanceof MealPlanGenerationBlockedError) {
+          return { status: "requires_review", errorCode: "MEAL_PLAN_NOT_ELIGIBLE" };
+        }
         return { status: "failed_retryable", errorCode: "MEAL_GENERATION_FAILED" };
       }
     },

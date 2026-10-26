@@ -11,6 +11,12 @@ export interface AtomicNutritionOnboardingRpcArgs {
   p_effective_date: string;
 }
 
+function statusToBoolean(status: CompleteOnboardingV2Payload['health']['pregnancy_status']) {
+  if (status === 'yes') return true;
+  if (status === 'no') return false;
+  return undefined;
+}
+
 export function buildOnboardingNutritionTarget(
   payload: CompleteOnboardingV2Payload,
   effectiveDate: string,
@@ -23,10 +29,8 @@ export function buildOnboardingNutritionTarget(
     biologicalSex: payload.health.biological_sex,
     activityLevel: payload.health.activity_level,
     goal: payload.health.primary_goal,
-    // Schema 4/5 does not collect these clinical states. The calculator routes
-    // a female metabolic basis to review until both are explicitly known.
-    pregnant: undefined,
-    lactating: undefined,
+    pregnant: statusToBoolean(payload.health.pregnancy_status),
+    lactating: statusToBoolean(payload.health.lactation_status),
     requiresClinicalReview: false,
   });
 }

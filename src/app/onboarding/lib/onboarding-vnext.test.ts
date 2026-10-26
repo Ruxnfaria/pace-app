@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFile } from 'node:fs/promises';
 
 import { buildOnboardingV2Payload } from './build-onboarding-v2-payload.ts';
 import { parseOnboardingV2Draft } from './onboarding-v2-draft.ts';
@@ -26,6 +27,8 @@ function completeForm(): OnboardingV2FormState {
       primaryGoal: 'hypertrophy',
       birthDate: '2000-01-01',
       biologicalSex: 'not_specified',
+      pregnancyStatus: 'not_applicable',
+      lactationStatus: 'not_applicable',
       heightCm: 175,
       weightKg: 75,
       targetWeightKg: null,
@@ -102,6 +105,8 @@ test('normaliza preferred_meals_per_day ausente para null no schema 5', () => {
   assert.equal(payload.payload_schema_version, 5);
   assert.equal(payload.nutrition.preferred_meals_per_day, null);
   assert.equal(payload.health.activity_level, 'moderate');
+  assert.equal(payload.health.pregnancy_status, 'not_applicable');
+  assert.equal(payload.health.lactation_status, 'not_applicable');
   assert.deepEqual(payload.routine, {
     wake_time: '07:00',
     sleep_time: '23:00',
@@ -109,6 +114,62 @@ test('normaliza preferred_meals_per_day ausente para null no schema 5', () => {
     meal_break_availability: 'limited',
     preferred_training_period: 'evening',
   });
+});
+
+test('coleta contexto reprodutivo explícito para female e preserva no schema 5', () => {
+  const form = completeForm();
+  form.health.biologicalSex = 'female';
+  form.health.pregnancyStatus = 'no';
+  form.health.lactationStatus = 'no';
+
+  assert.equal(validateOnboardingV2Step('biological-sex', form).valid, true);
+  const payload = buildOnboardingV2Payload(
+    form,
+    '00000000-0000-4000-8000-000000000001',
+    { referenceDate: new Date('2026-10-18T12:00:00Z') },
+  );
+  assert.equal(payload.health.pregnancy_status, 'no');
+  assert.equal(payload.health.lactation_status, 'no');
+
+  const restored = parseOnboardingV2Draft(JSON.stringify({
+    version: 5,
+    state: { currentStepId: 'biological-sex', form },
+  }));
+  assert.equal(restored?.form.health.pregnancyStatus, 'no');
+  assert.equal(restored?.form.health.lactationStatus, 'no');
+});
+
+test('female exige respostas explícitas e mudança de sexo canonicaliza como não aplicável', () => {
+  let state = createInitialOnboardingV2State();
+  state = onboardingV2Reducer(state, {
+    type: 'update-health',
+    changes: { biologicalSex: 'female' },
+  });
+  assert.equal(validateOnboardingV2Step('biological-sex', state.form).valid, false);
+
+  state = onboardingV2Reducer(state, {
+    type: 'update-health',
+    changes: { pregnancyStatus: 'unknown', lactationStatus: 'prefer_not_to_say' },
+  });
+  assert.equal(validateOnboardingV2Step('biological-sex', state.form).valid, true);
+
+  state = onboardingV2Reducer(state, {
+    type: 'update-health',
+    changes: { biologicalSex: 'male' },
+  });
+  assert.equal(state.form.health.pregnancyStatus, 'not_applicable');
+  assert.equal(state.form.health.lactationStatus, 'not_applicable');
+});
+
+test('UI coleta gestação e amamentação na etapa de sexo biológico', async () => {
+  const source = await readFile(
+    new URL('../components/OnboardingV2Flow.tsx', import.meta.url),
+    'utf8',
+  );
+  assert.match(source, /Você está grávida\?/);
+  assert.match(source, /Você está amamentando\?/);
+  assert.match(source, /pregnancyStatus/);
+  assert.match(source, /lactationStatus/);
 });
 
 test('formata a data de nascimento somente para a revisão', () => {

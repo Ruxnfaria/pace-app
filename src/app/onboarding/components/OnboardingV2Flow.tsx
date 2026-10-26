@@ -66,6 +66,7 @@ import {
   type OnboardingV2StepId,
   type PrimaryGoal,
   type PreferredTrainingPeriod,
+  type ReproductiveStatus,
   type RestrictionCode,
   type RoutinePredictability,
   type SupplementCode,
@@ -200,6 +201,19 @@ const SUPPLEMENT_OPTIONS = [
   { value: 'protein_powder_other', title: 'Outra proteína em pó' },
   { value: 'multivitamin', title: 'Multivitamínico' },
 ] satisfies readonly ChoiceCardOption<SupplementCode>[];
+const REPRODUCTIVE_STATUS_OPTIONS = [
+  { value: 'yes', title: 'Sim' },
+  { value: 'no', title: 'Não' },
+  { value: 'unknown', title: 'Não sei' },
+  { value: 'prefer_not_to_say', title: 'Prefiro não responder' },
+] satisfies readonly ChoiceCardOption<ReproductiveStatus>[];
+const REPRODUCTIVE_STATUS_LABELS: Record<ReproductiveStatus, string> = {
+  yes: 'Sim',
+  no: 'Não',
+  unknown: 'Não sei',
+  prefer_not_to_say: 'Prefiro não responder',
+  not_applicable: 'Não se aplica',
+};
 const SUPPLEMENT_LABELS = Object.fromEntries(SUPPLEMENT_OPTIONS.map(({ value, title }) => [value, title])) as Record<SupplementCode, string>;
 
 const STEP_COPY: Record<OnboardingV2StepId, { eyebrow: string; title: string; subtitle?: string }> = {
@@ -295,7 +309,18 @@ function StepContent({ stepId, form, dispatch, issues }: {
       const options = [
         { value: 'male', title: 'Masculino' }, { value: 'female', title: 'Feminino' }, { value: 'not_specified', title: 'Prefiro não informar' },
       ] satisfies readonly ChoiceCardOption<(typeof BIOLOGICAL_SEXES)[number]>[];
-      return <><ChoiceCards columns={1} options={options} value={health.biologicalSex} onChange={(biologicalSex) => dispatch({ type: 'update-health', changes: { biologicalSex } })} ariaLabel="Sexo biológico" /><FieldError issues={issues} /></>;
+      return <div className="space-y-6">
+        <ChoiceCards columns={1} options={options} value={health.biologicalSex} onChange={(biologicalSex) => dispatch({ type: 'update-health', changes: { biologicalSex } })} ariaLabel="Sexo biológico" />
+        {health.biologicalSex === 'female' && <div className="space-y-5 rounded-3xl border border-amber-400/10 bg-amber-400/[0.03] p-4">
+          <div><p className="text-sm font-bold text-zinc-200">Você está grávida?</p><p className="mt-1 text-xs leading-5 text-zinc-500">Essa resposta é necessária para evitar recomendações nutricionais automáticas sem contexto suficiente.</p></div>
+          <ChoiceCards columns={2} options={REPRODUCTIVE_STATUS_OPTIONS} value={health.pregnancyStatus} onChange={(pregnancyStatus) => dispatch({ type: 'update-health', changes: { pregnancyStatus } })} ariaLabel="Status de gestação" />
+          <FieldError issues={issues} fieldPrefix="health.pregnancyStatus" />
+          <div><p className="text-sm font-bold text-zinc-200">Você está amamentando?</p><p className="mt-1 text-xs leading-5 text-zinc-500">Se você não souber ou preferir não responder, seu plano ficará aguardando revisão.</p></div>
+          <ChoiceCards columns={2} options={REPRODUCTIVE_STATUS_OPTIONS} value={health.lactationStatus} onChange={(lactationStatus) => dispatch({ type: 'update-health', changes: { lactationStatus } })} ariaLabel="Status de amamentação" />
+          <FieldError issues={issues} fieldPrefix="health.lactationStatus" />
+        </div>}
+        <FieldError issues={issues} fieldPrefix="health.biologicalSex" />
+      </div>;
     }
     case 'measurements':
       return <div className="grid gap-4 sm:grid-cols-2">{[
@@ -387,6 +412,10 @@ function ReviewContent({ form, onEdit, editingDisabled = false }: { form: Onboar
       <ReviewRow label="Objetivo" value={health.primaryGoal && PRIMARY_GOALS.includes(health.primaryGoal as PrimaryGoal) ? GOAL_LABELS[health.primaryGoal as PrimaryGoal] : 'Não informado'} />
       <ReviewRow label="Nascimento" value={health.birthDate ? formatBirthDateForReview(health.birthDate) : 'Não informado'} />
       <ReviewRow label="Sexo biológico" value={health.biologicalSex ? sexLabels[health.biologicalSex] : 'Não informado'} />
+      {health.biologicalSex === 'female' && <>
+        <ReviewRow label="Gestação" value={health.pregnancyStatus ? REPRODUCTIVE_STATUS_LABELS[health.pregnancyStatus] : 'Não informado'} />
+        <ReviewRow label="Amamentação" value={health.lactationStatus ? REPRODUCTIVE_STATUS_LABELS[health.lactationStatus] : 'Não informado'} />
+      </>}
       <ReviewRow label="Medidas" value={`${health.heightCm ?? '—'} cm · ${health.weightKg ?? '—'} kg${health.targetWeightKg ? ` · meta ${health.targetWeightKg} kg` : ''}`} />
       <ReviewRow label="Atividade diária" value={health.activityLevel ? ACTIVITY_LEVEL_LABELS[health.activityLevel] : 'Não informada'} />
     </ReviewCard>

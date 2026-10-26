@@ -92,6 +92,8 @@ test('aceita schema 5 com contexto de rotina local completo', () => {
     meal_break_availability: 'limited',
     preferred_training_period: 'evening',
   };
+  payload.health.pregnancy_status = 'not_applicable';
+  payload.health.lactation_status = 'not_applicable';
 
   assert.doesNotThrow(() => assertOnboardingV2SubmissionPreflight(payload));
 });
@@ -106,7 +108,28 @@ test('schema 5 rejeita horários iguais e enums de contexto inválidos', () => {
     meal_break_availability: 'limited',
     preferred_training_period: 'evening',
   };
+  payload.health.pregnancy_status = 'not_applicable';
+  payload.health.lactation_status = 'not_applicable';
 
+  assert.throws(() => assertOnboardingV2SubmissionPreflight(payload), /Nutrição V1/);
+});
+
+test('schema 5 exige contexto reprodutivo seguro e coerente', () => {
+  const payload = validPayload();
+  payload.payload_schema_version = 5;
+  payload.health.biological_sex = 'female';
+  payload.health.pregnancy_status = 'no';
+  payload.health.lactation_status = 'no';
+  payload.routine = {
+    wake_time: '07:00',
+    sleep_time: '23:00',
+    routine_predictability: 'predictable',
+    meal_break_availability: 'limited',
+    preferred_training_period: 'evening',
+  };
+  assert.doesNotThrow(() => assertOnboardingV2SubmissionPreflight(payload));
+
+  payload.health.pregnancy_status = 'not_applicable';
   assert.throws(() => assertOnboardingV2SubmissionPreflight(payload), /Nutrição V1/);
 });
 

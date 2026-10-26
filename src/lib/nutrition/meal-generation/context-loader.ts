@@ -5,6 +5,7 @@ import { resolveRecommendedMealStructure } from "../meal-plan/engine";
 import type { FoodPreparationStyle, MealBreakAvailability, RoutinePredictability, SupportedNutritionGoal, TrainingPeriod } from "../meal-plan/domain";
 import { getNutritionGoalStrategy } from "../meal-plan/strategies";
 import type { MealPlanGenerationContext } from "./domain";
+import { assertMealPlanTargetIsActive } from "./context-policy";
 
 const RESTRICTION_TO_ALLERGEN: Readonly<Record<string, AllergenTag>> = {
   milk: "contains_milk", gluten: "contains_gluten", egg: "contains_egg", fish: "contains_fish",
@@ -29,7 +30,7 @@ function hhmm(value: unknown, field: string): string {
 
 export async function loadMealPlanGenerationContext(client: SupabaseClient, userId: string): Promise<MealPlanGenerationContext> {
   const [targetResult, nutritionResult, trainingResult, restrictionsResult, dislikedResult, preferredResult, supplementsResult] = await Promise.all([
-    client.from("nutrition_target_snapshots").select("id,status,goal,calories,protein_g,carbs_g,fat_g,fiber_g").eq("user_id", userId).eq("status", "active").order("version", { ascending: false }).limit(1).maybeSingle(),
+    client.from("nutrition_target_snapshots").select("id,status,goal,calories,protein_g,carbs_g,fat_g,fiber_g").eq("user_id", userId).order("version", { ascending: false }).limit(1).maybeSingle(),
     client.from("nutrition_profiles").select("wake_time,sleep_time,routine_predictability,meal_break_availability,food_preparation_style,food_budget_style,food_preparation_availability,dietary_pattern,has_food_restrictions").eq("user_id", userId).maybeSingle(),
     client.from("training_profiles").select("preferred_training_period").eq("user_id", userId).maybeSingle(),
     client.from("nutrition_profile_restrictions").select("restriction_code,declared_label").eq("user_id", userId),
@@ -43,7 +44,8 @@ export async function loadMealPlanGenerationContext(client: SupabaseClient, user
   const targetRow = targetResult.data;
   const nutrition = nutritionResult.data;
   const training = trainingResult.data;
-  if (!targetRow || !nutrition || !training) throw new Error("MEAL_CONTEXT_INCOMPLETE");
+  assertMealPlanTargetIsActive(targetRow);
+  if (!nutrition || !training) throw new Error("MEAL_CONTEXT_INCOMPLETE");
   const goal = requiredString(targetRow.goal, "goal") as SupportedNutritionGoal;
   if (!(["fat_loss", "hypertrophy", "conditioning"] as string[]).includes(goal)) throw new Error("MEAL_CONTEXT_INVALID:goal");
   const target = { status: "active" as const, calories: requiredNumber(targetRow.calories, "calories"),
