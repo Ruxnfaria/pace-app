@@ -6,7 +6,9 @@ import { Clock3, Target } from 'lucide-react';
 
 import { createClient } from '@/lib/supabase/client';
 import MealPlanPreparation from '@/components/post-onboarding/MealPlanPreparation';
+import ActiveMealPlan from '@/components/nutrition/ActiveMealPlan';
 import { formatNutritionTarget, loadActiveNutritionTarget, type ActiveNutritionTarget } from '@/lib/nutrition/active-target';
+import { loadActiveMealPlan, type ActiveMealPlan as ActiveMealPlanModel } from '@/lib/nutrition/meal-plan/active-plan';
 
 function progressPercent(value: number, target: number) {
   if (!target || target < 0) return 0;
@@ -30,28 +32,49 @@ function MacroProgress({ label, target }: { label: string; target: number }) {
 export default function NutritionPage() {
   const supabase = useMemo(() => createClient(), []);
   const [target, setTarget] = useState<ActiveNutritionTarget | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [loadFailed, setLoadFailed] = useState(false);
+  const [mealPlan, setMealPlan] = useState<ActiveMealPlanModel | null>(null);
+  const [targetLoading, setTargetLoading] = useState(true);
+  const [mealPlanLoading, setMealPlanLoading] = useState(true);
+  const [targetLoadFailed, setTargetLoadFailed] = useState(false);
+  const [mealPlanLoadFailed, setMealPlanLoadFailed] = useState(false);
 
   const loadTarget = useCallback(async () => {
-    setLoading(true);
-    setLoadFailed(false);
+    setTargetLoading(true);
+    setTargetLoadFailed(false);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       setTarget(user ? await loadActiveNutritionTarget(supabase, user.id) : null);
     } catch (error) {
       console.error('[PRAXE] Erro ao carregar target nutricional:', error);
       setTarget(null);
-      setLoadFailed(true);
+      setTargetLoadFailed(true);
     } finally {
-      setLoading(false);
+      setTargetLoading(false);
+    }
+  }, [supabase]);
+
+  const loadMealPlan = useCallback(async () => {
+    setMealPlanLoading(true);
+    setMealPlanLoadFailed(false);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      setMealPlan(user ? await loadActiveMealPlan(supabase, user.id) : null);
+    } catch (error) {
+      console.error('[PRAXE] Erro ao carregar plano alimentar ativo:', error);
+      setMealPlan(null);
+      setMealPlanLoadFailed(true);
+    } finally {
+      setMealPlanLoading(false);
     }
   }, [supabase]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => void loadTarget(), 0);
+    const timer = window.setTimeout(() => {
+      void loadTarget();
+      void loadMealPlan();
+    }, 0);
     return () => window.clearTimeout(timer);
-  }, [loadTarget]);
+  }, [loadMealPlan, loadTarget]);
 
   const calorieTarget = target?.calories ?? 0;
   const calorieProgress = progressPercent(0, calorieTarget);
@@ -69,9 +92,9 @@ export default function NutritionPage() {
 
       <section className="relative mt-5 overflow-hidden rounded-[26px] border border-orange-400/[0.1] bg-gradient-to-br from-[#17130f] via-[#10100f] to-[#090909] p-4 shadow-[0_18px_50px_rgba(0,0,0,.28)] min-[375px]:p-5">
         <div aria-hidden="true" className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-orange-500/[0.07] blur-3xl" />
-        {loading ? (
+        {targetLoading ? (
           <div className="relative h-52 animate-pulse rounded-2xl bg-white/[0.025]" aria-label="Carregando metas nutricionais" />
-        ) : loadFailed ? (
+        ) : targetLoadFailed ? (
           <div className="relative py-8 text-center">
             <p className="text-sm font-medium text-zinc-300">Não foi possível carregar suas metas.</p>
             <button type="button" onClick={() => void loadTarget()} className="mt-3 text-[11px] font-semibold text-[#ff7a00]">Tentar novamente</button>
@@ -112,7 +135,12 @@ export default function NutritionPage() {
       <section className="mt-6">
         <p className="text-[9px] font-bold uppercase tracking-[.2em] text-[#d96818]">Plano alimentar</p>
         <h2 className="mt-1 text-[17px] font-semibold tracking-[-.02em] text-white">Sua estratégia nutricional</h2>
-        <MealPlanPreparation />
+        <MealPlanPreparation
+          readyContent={mealPlan ? <ActiveMealPlan plan={mealPlan} /> : null}
+          readyLoading={mealPlanLoading}
+          readyLoadFailed={mealPlanLoadFailed}
+          reloadReady={() => void loadMealPlan()}
+        />
       </section>
 
       <section className="mt-6">
