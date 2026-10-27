@@ -88,7 +88,7 @@ test("display names and nutrients always come from the authoritative catalog", (
   const context = generationContext();
   const candidate = balancedCandidate(context.mealRoles);
   const report = validate(context, candidate);
-  assert.equal(report.plan?.meals[0].items[0].displayName, "Frango, peito, sem pele, grelhado");
+  assert.equal(report.plan?.meals[0].items[0].displayName, "Ovo, de galinha, inteiro, cozido/10minutos");
   assert.equal(report.plan?.meals[0].items[0].resolution, "CATALOG_ENTRY_ID");
-  assert.equal(report.plan?.meals[0].items[0].nutrients.calories, 159.19);
+  assert.equal(report.plan?.meals[0].items[0].nutrients.calories, 145.7);
 });

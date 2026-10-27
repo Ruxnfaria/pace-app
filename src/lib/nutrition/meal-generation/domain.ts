@@ -1,6 +1,7 @@
 import type { AllergenTag, NutritionFoodCatalogEntry, NutritionFoodSource } from "../food-catalog/domain";
 import type { CatalogReadinessLevel } from "../food-catalog/capabilities";
 import type { FoodQuantityUnit } from "../food-catalog/quantity";
+import type { CulinaryRole, FoodForm, FoodQualityClass, MealCoherenceReport, MealFuelLevel } from "../meal-quality/domain";
 import type {
   AuthoritativeNutritionTarget,
   FoodPreparationStyle,
@@ -20,6 +21,7 @@ export const MEAL_PLAN_FOOD_POOLS = [
   "PROTEIN_ANCHOR",
   "CARB_ANCHOR",
   "FAT_ANCHOR",
+  "LEGUME_ANCHOR",
   "PRODUCE_FIBER",
 ] as const;
 export type MealPlanFoodPool = (typeof MEAL_PLAN_FOOD_POOLS)[number];
@@ -87,10 +89,14 @@ export interface MealPlanCatalogPromptContext {
 export interface MealPlanMealSlotPrescription {
   position: number;
   role: MealRole;
+  archetypeId: string;
+  fuelLevel: MealFuelLevel;
   slots: Array<{
     pool: MealPlanFoodPool;
     required: boolean;
     catalogEntryIds: string[];
+    minimumGrams: number;
+    maximumGrams: number;
   }>;
 }
 
@@ -107,9 +113,14 @@ export interface MealPlanCatalogCandidate {
   fatG: number;
   fiberG: number;
   pools: MealPlanFoodPool[];
+  form: FoodForm;
+  qualityClass: FoodQualityClass;
+  culinaryRoles: CulinaryRole[];
+  suitableMealRoles: MealRole[];
 }
 
 export interface ResolvedMealPlanItem {
+  slot: MealPlanFoodPool;
   food: NutritionFoodCatalogEntry;
   foodQuery: string;
   displayName: string;
@@ -150,6 +161,13 @@ export const MEAL_PLAN_VALIDATION_CODES = [
   "FAT_OUT_OF_RANGE", "FIBER_TOO_LOW", "EMPTY_MEAL", "IMPOSSIBLE_PORTION", "DUPLICATE_MEAL_STRUCTURE",
   "INVALID_TOTALS", "ENERGY_CONCENTRATION", "PROTEIN_DISTRIBUTION", "TRAINING_CARB_DISTRIBUTION",
   "FAT_DOMINATED_PLAN", "LOW_FOOD_VARIETY", "BUDGET_METADATA_UNAVAILABLE", "PREPARATION_METADATA_UNAVAILABLE",
+  "CULINARY_INGREDIENT_STANDALONE", "SWEET_AS_PRIMARY_CARB", "POWDER_AS_MEAL_COMPONENT",
+  "BREAKFAST_ROLE_MISMATCH", "MEAL_ARCHETYPE_INVALID", "MAIN_MEAL_MISSING_PRODUCE",
+  "PRE_WORKOUT_TOO_FAT_DENSE", "FOOD_PORTION_IMPLAUSIBLE", "FOOD_NOT_AUTOGENERATION_APPROVED",
+  "SUPPORTING_ITEM_DOMINATES_MEAL", "COMPOSITE_DISH_SLOT_CONFLICT", "MEAL_REQUIRED_SLOT_MISSING",
+  "FRUIT_PORTION_IMPLAUSIBLE", "PRODUCE_USED_AS_MACRO_COMPENSATOR", "PROTEIN_ANCHOR_TOO_SMALL",
+  "ADDED_FAT_PORTION_IMPLAUSIBLE", "MEAL_PROTEIN_DISTRIBUTION_IMBALANCED", "PORTION_PROFILE_MISSING",
+  "EXCESSIVE_REPETITION", "LOW_DAILY_VARIETY", "PROTEIN_SOURCE_REPETITION",
 ] as const;
 export type MealPlanValidationCode = (typeof MEAL_PLAN_VALIDATION_CODES)[number];
 export type MealPlanValidationSeverity = "HARD_FAILURE" | "WARNING" | "INFO";
@@ -236,6 +254,7 @@ export interface MealPlanValidationReport {
   plan: ResolvedMealPlan | null;
   preferenceScore: number;
   diagnostics: MealPlanNumericValidationDiagnostics | null;
+  coherence: MealCoherenceReport | null;
 }
 
 export interface CatalogSnapshot {

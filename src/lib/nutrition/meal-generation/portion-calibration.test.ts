@@ -11,6 +11,9 @@ import {
 } from "./portion-calibration";
 import { balancedCandidate, generationContext, officialTestCatalog } from "./test-helpers";
 import { validateMealPlanCandidate } from "./validator";
+import { validateDailyMealQuality } from "../meal-quality/daily-quality";
+import { validatePortionRealism } from "../meal-quality/portion-realism";
+import { foodPortionProfile } from "../meal-quality/portion-profile";
 
 function fixture() {
   const catalog = officialTestCatalog();
@@ -44,22 +47,15 @@ export function exactE2eFixture() {
   }));
   const allowed = buildMealPlanCandidateSet(context, snapshot);
   const ids = new Map(entries.map((entry) => [entry.canonicalName, entry.id]));
-  const names = [
-    "Frango, peito, sem pele, grelhado",
-    "Arroz, tipo 1, cozido",
-    "Feijão, carioca, cozido",
-    "Azeite, de oliva, extra virgem",
-  ];
-  const slots = ["PROTEIN_ANCHOR", "CARB_ANCHOR", "PRODUCE_FIBER", "FAT_ANCHOR"] as const;
-  const quantities = [100, 100, 100, 10];
-  const candidate: ReturnType<typeof balancedCandidate> = { meals: roles.map((role, mealIndex) => ({
-    role,
-    label: `Refeição ${mealIndex + 1}`,
-    items: names.map((name, itemIndex) => ({
-      catalogEntryId: ids.get(name)!, slot: slots[itemIndex], quantityGrams: quantities[itemIndex],
-    })),
-  })) };
-  return { context, snapshot, allowed, candidate, eggId: ids.get(names[3])! };
+  const candidate = balancedCandidate([...roles]);
+  const oilId = ids.get("Azeite, de oliva, extra virgem")!;
+  candidate.meals.forEach((meal) => {
+    if ((meal.role === "POST_WORKOUT" || meal.role === "EVENING_MEAL") && !meal.items.some((item) => item.slot === "FAT_ANCHOR")) meal.items.push({
+      catalogEntryId: oilId, slot: "FAT_ANCHOR", quantityGrams: 5, preparationNote: "usar no preparo",
+    });
+  });
+  return { context, snapshot, allowed, candidate,
+    eggId: oilId };
 }
 
 function validate(
@@ -86,9 +82,8 @@ for (const [name, scale] of [["15 percent below calories", 0.85], ["above calori
 test("low protein portions are corrected when the selected foods make the target feasible", () => {
   const { context, snapshot, allowed } = fixture();
   const candidate = balancedCandidate(context.mealRoles);
-  const bean = snapshot.entries.find((entry) => entry.canonicalName.startsWith("Feijão"))!.id;
   candidate.meals.forEach((meal) => {
-    meal.items.find((item) => item.catalogEntryId === bean)!.quantityGrams = 20;
+    meal.items.find((item) => item.slot === "PROTEIN_ANCHOR")!.quantityGrams = 20;
   });
   const before = validate(context, candidate, snapshot, allowed);
   const result = calibrateMealPlanPortions(context, candidate, snapshot, allowed);
@@ -119,11 +114,61 @@ test("exact E2E target converges across the former low-fat boundary without rela
   const after = validate(context, result.candidate, snapshot, allowed);
   assert.equal(before.valid, false);
   assert.equal(after.valid, true, JSON.stringify(after.issues));
+  assert.equal(after.coherence?.valid, true, JSON.stringify(after.coherence?.issues));
+  assert.equal(validateDailyMealQuality(after.plan!).valid, true);
+  assert.equal(validatePortionRealism(after.plan!).valid, true);
   assert.equal(result.diagnostics.feedback?.status, "CONVERGED");
   assert.ok((after.diagnostics?.actualFatG ?? 0) >= context.target.fatG * 0.9);
   assert.ok(!after.issues.some((issue) => issue.code === "PROTEIN_OUT_OF_RANGE" || issue.code === "CARBS_OUT_OF_RANGE"));
   assert.ok((result.diagnostics.adjustedItemCount ?? 0) >= 2);
   assert.deepEqual(result.diagnostics.feedback?.violatedConstraints, []);
+  const assertPlausible = (role: typeof context.mealRoles[number], slot: "PROTEIN_ANCHOR" | "PRODUCE_FIBER" | "FAT_ANCHOR") => {
+    const meal = after.plan!.meals.find((value) => value.role === role)!;
+    const item = meal.items.find((value) => value.slot === slot)!;
+    const profile = foodPortionProfile(item.food, item.slot, meal.role);
+    assert.ok(item.quantityGrams >= profile.minimumGrams);
+    assert.ok(item.quantityGrams <= profile.maximumAutogenerationGrams);
+  };
+  assertPlausible("BREAKFAST", "PRODUCE_FIBER");
+  assertPlausible("PRE_WORKOUT", "PRODUCE_FIBER");
+  assertPlausible("BREAKFAST", "PROTEIN_ANCHOR");
+  assertPlausible("PRE_WORKOUT", "PROTEIN_ANCHOR");
+  assertPlausible("EVENING_MEAL", "PROTEIN_ANCHOR");
+  assertPlausible("POST_WORKOUT", "FAT_ANCHOR");
+  assertPlausible("EVENING_MEAL", "FAT_ANCHOR");
+  assert.ok(!after.issues.some((issue) => ["PRODUCE_USED_AS_MACRO_COMPENSATOR",
+    "SUPPORTING_ITEM_DOMINATES_MEAL"].includes(issue.code)));
+});
+
+test("G. fat loss calibration keeps practical meal portions", () => {
+  const { context, snapshot, allowed } = fixture();
+  const candidate = balancedCandidate(context.mealRoles);
+  candidate.meals.forEach((meal) => meal.items.forEach((item) => { item.quantityGrams *= 0.85; }));
+  const result = calibrateMealPlanPortions(context, candidate, snapshot, allowed);
+  const report = validate(context, result.candidate, snapshot, allowed);
+  assert.equal(report.valid, true, JSON.stringify(report.issues));
+  assert.equal(validatePortionRealism(report.plan!).valid, true);
+});
+
+test("H. high fuel expands the primary carbohydrate anchor", () => {
+  const roles = ["PRE_WORKOUT", "POST_WORKOUT", "EVENING_MEAL"] as const;
+  const catalog = officialTestCatalog();
+  const snapshot = { ...catalog, portions: [], readiness: assessTrustedNutritionCatalog(catalog.entries).level };
+  const lowContext = generationContext("conditioning", [...roles]);
+  const highContext = generationContext("conditioning", [...roles]);
+  highContext.target = { ...highContext.target,
+    calories: highContext.target.calories + 320, carbsG: highContext.target.carbsG + 80 };
+  highContext.mealMacroTargets = highContext.mealMacroTargets.map((target, index) => index < 2
+    ? { ...target, calories: target.calories + 160, carbsG: target.carbsG + 40 }
+    : target);
+  const candidate = balancedCandidate([...roles]);
+  const low = calibrateMealPlanPortions(lowContext, candidate, snapshot, buildMealPlanCandidateSet(lowContext, snapshot));
+  const highAllowed = buildMealPlanCandidateSet(highContext, snapshot);
+  const high = calibrateMealPlanPortions(highContext, candidate, snapshot, highAllowed);
+  const carbGrams = (value: typeof candidate) => value.meals.flatMap((meal) => meal.items)
+    .filter((item) => item.slot === "CARB_ANCHOR").reduce((total, item) => total + item.quantityGrams, 0);
+  assert.equal(validate(highContext, high.candidate, snapshot, highAllowed).valid, true);
+  assert.ok(carbGrams(high.candidate) > carbGrams(low.candidate));
 });
 
 for (const [name, slot, scale, expectedCode] of [
@@ -137,8 +182,8 @@ for (const [name, slot, scale, expectedCode] of [
     const { context, snapshot, allowed, candidate } = exactE2eFixture();
     const feasibleSeed = calibrateMealPlanPortions(context, candidate, snapshot, allowed).candidate;
     feasibleSeed.meals.forEach((meal) => {
-      const item = meal.items.find((value) => value.slot === slot)!;
-      item.quantityGrams *= scale;
+      const item = meal.items.find((value) => value.slot === slot);
+      if (item) item.quantityGrams *= scale;
     });
     const before = validate(context, feasibleSeed, snapshot, allowed);
     assert.ok(before.issues.some((issue) => issue.code === expectedCode), JSON.stringify(before.issues));
@@ -169,8 +214,8 @@ for (const [name, eggScale] of [["low", 0.5], ["high", 2]] as const) {
     const { context, snapshot, allowed, candidate, eggId } = exactE2eFixture();
     const feasibleSeed = calibrateMealPlanPortions(context, candidate, snapshot, allowed).candidate;
     feasibleSeed.meals.forEach((meal) => {
-      const egg = meal.items.find((item) => item.catalogEntryId === eggId)!;
-      egg.quantityGrams *= eggScale;
+      const culinaryFat = meal.items.find((item) => item.catalogEntryId === eggId);
+      if (culinaryFat) culinaryFat.quantityGrams *= eggScale;
     });
     const before = validate(context, feasibleSeed, snapshot, allowed);
     const result = calibrateMealPlanPortions(context, feasibleSeed, snapshot, allowed);
@@ -235,6 +280,6 @@ test("2500 kcal in-memory E2E reproduction moves from invalid to valid without A
   const after = validate(context, result.candidate, snapshot, allowed);
   assert.equal(before.valid, false);
   assert.equal(after.valid, true, JSON.stringify(after.issues));
-  assert.equal(before.diagnostics?.actualKcal, 1356.81);
+  assert.equal(before.diagnostics?.actualKcal, 1408.21);
   assert.ok(Math.abs((after.diagnostics?.actualKcal ?? 0) - 2500) <= 125);
 });

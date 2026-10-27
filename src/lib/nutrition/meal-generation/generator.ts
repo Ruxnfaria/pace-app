@@ -45,7 +45,7 @@ export function buildMealPlanGenerationIdempotencyKey(context: MealPlanGeneratio
 
 function rejected(code: "CATALOG_NOT_READY" | "USER_NOT_ELIGIBLE", message: string): MealPlanValidationReport {
   return { valid: false, validatorVersion: MEAL_PLAN_VALIDATOR_VERSION, policyVersion: MEAL_VALIDATION_POLICY_VERSION,
-    plan: null, preferenceScore: 0, diagnostics: null, issues: [{ code, severity: "HARD_FAILURE", message }] };
+    plan: null, preferenceScore: 0, diagnostics: null, coherence: null, issues: [{ code, severity: "HARD_FAILURE", message }] };
 }
 
 function repairCatalog(
@@ -82,7 +82,9 @@ function hasValidRepairStructure(
         && meal.items.every((item, itemIndex) => {
           const previousItem = previousMeal.items[itemIndex];
           return item.slot === previousItem.slot
-            && (byId.get(item.catalogEntryId)?.pools.includes(item.slot) ?? false);
+            && (byId.get(item.catalogEntryId)?.pools.includes(item.slot) ?? false)
+            && (catalog.mealSlots[mealIndex]?.slots.find((slot) => slot.pool === item.slot)
+              ?.catalogEntryIds.includes(item.catalogEntryId) ?? false);
         });
     });
 }

@@ -4,6 +4,8 @@ import { normalizeFoodQuery } from "../food-catalog/normalization";
 import { calculateFoodNutrients, sumMealNutrients } from "../food-catalog/nutrients";
 import { canUseFoodForRestrictions } from "../food-catalog/restrictions";
 import { TACO_SOURCE_VERSION } from "../food-catalog/taco/constants";
+import { validateMealCoherence } from "../meal-quality/coherence-validator";
+import { classifyFoodSuitability } from "../meal-quality/food-suitability";
 import {
   MEAL_PLAN_GENERATOR_VERSION,
   MEAL_PLAN_VALIDATOR_VERSION,
@@ -199,14 +201,21 @@ export function validateMealPlanCandidate(
         continue;
       }
       resolvedItems.push({
-        food, foodQuery: food.canonicalName, displayName: food.canonicalName, quantityValue: grams,
+        slot: item.slot, food, foodQuery: food.canonicalName, displayName: food.canonicalName, quantityValue: grams,
         quantityUnit: "g", quantityGrams: grams, preparationNote: item.preparationNote?.trim() || null,
         resolution: "CATALOG_ENTRY_ID",
         nutrients: { calories: nutrients.calories, proteinG: nutrients.proteinG, carbsG: nutrients.carbsG, fatG: nutrients.fatG, fiberG: nutrients.fiberG } as ResolvedMeal["items"][number]["nutrients"],
       });
     }
-    for (const required of ["PROTEIN_ANCHOR", "CARB_ANCHOR", "PRODUCE_FIBER"] as const) {
+    const requiredSlots = ["PROTEIN_ANCHOR", "CARB_ANCHOR",
+      ...((meal.role === "MAIN_MEAL" || meal.role === "EVENING_MEAL") ? ["PRODUCE_FIBER" as const] : [])] as const;
+    for (const required of requiredSlots) {
       if (!seenSlots.has(required)) issues.push(issue("FOOD_SLOT_MISMATCH", "HARD_FAILURE", `Required ${required} slot is missing`, position));
+    }
+    if ((meal.role === "MAIN_MEAL" || meal.role === "EVENING_MEAL")
+      && !resolvedItems.some((item) => item.slot === "PRODUCE_FIBER"
+        && classifyFoodSuitability(item.food).culinaryRoles.includes("VEGETABLE"))) {
+      issues.push(issue("MEAL_REQUIRED_SLOT_MISSING", "HARD_FAILURE", "Main meal requires a real vegetable produce slot", position));
     }
     if (mealGrams > POLICY.portions.maximumMealGrams) issues.push(issue("IMPOSSIBLE_PORTION", "HARD_FAILURE", "Meal mass exceeds conservative policy", position));
     const totals = sumMealNutrients(resolvedItems.map((item) => ({ ...item.nutrients, grams: item.quantityGrams, macroDerivedEnergy: null, qualityWarnings: [] })));
@@ -221,8 +230,14 @@ export function validateMealPlanCandidate(
     strategyVersion: context.strategyVersion, mealDistributionVersion: context.mealDistributionVersion,
     meals: resolvedMeals, totals: knownTotals(resolvedMeals.map((meal) => meal.totals)),
   } : null;
-  if (plan) { validateDaily(plan, context, issues); validateDistribution(plan, context, issues); }
+  let coherence = null;
+  if (plan) {
+    validateDaily(plan, context, issues);
+    validateDistribution(plan, context, issues);
+    coherence = validateMealCoherence(plan, context.goal, context);
+    issues.push(...coherence.issues);
+  }
   const valid = !issues.some((value) => value.severity === "HARD_FAILURE");
   return { valid, validatorVersion: MEAL_PLAN_VALIDATOR_VERSION, policyVersion: MEAL_VALIDATION_POLICY_VERSION,
-    issues, plan: valid ? plan : null, preferenceScore, diagnostics: plan ? numericDiagnostics(plan, context) : null };
+    issues, plan: valid ? plan : null, preferenceScore, diagnostics: plan ? numericDiagnostics(plan, context) : null, coherence };
 }

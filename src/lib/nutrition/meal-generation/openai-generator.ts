@@ -10,31 +10,38 @@ import type {
 import type { MealPlanCandidateGenerator } from "./generator";
 
 export function buildMealPlanResponseSchema(catalog: MealPlanCatalogPromptContext) {
-  const slotSchemas = catalog.mealSlots[0]?.slots.map((slot) => ({
+  const mealSchemas = catalog.mealSlots.map((mealSlot) => ({
     type: "object" as const,
     additionalProperties: false,
-    required: ["catalogEntryId", "slot", "quantityGrams", "preparationNote"],
+    required: ["role", "label", "items"],
     properties: {
-      catalogEntryId: { type: "string" as const, enum: slot.catalogEntryIds },
-      slot: { type: "string" as const, const: slot.pool },
-      quantityGrams: { type: "number" as const, exclusiveMinimum: 0 },
-      preparationNote: { type: ["string", "null"] as const },
+      role: { type: "string" as const, const: mealSlot.role },
+      label: { type: "string" as const },
+      items: {
+        type: "array" as const,
+        minItems: mealSlot.slots.filter((slot) => slot.required).length,
+        maxItems: mealSlot.slots.filter((slot) => slot.catalogEntryIds.length > 0).length,
+        items: { anyOf: mealSlot.slots.filter((slot) => slot.catalogEntryIds.length > 0).map((slot) => ({
+          type: "object" as const,
+          additionalProperties: false,
+          required: ["catalogEntryId", "slot", "quantityGrams", "preparationNote"],
+          properties: {
+            catalogEntryId: { type: "string" as const, enum: slot.catalogEntryIds },
+            slot: { type: "string" as const, const: slot.pool },
+            quantityGrams: { type: "number" as const, minimum: slot.minimumGrams, maximum: slot.maximumGrams },
+            preparationNote: { type: ["string", "null"] as const },
+          },
+        })) },
+      },
     },
-  })) ?? [];
+  }));
   return {
   name: "praxe_meal_plan_candidate_v1",
   strict: true,
   schema: {
     type: "object", additionalProperties: false, required: ["meals"],
     properties: {
-      meals: { type: "array", items: { type: "object", additionalProperties: false, required: ["role", "label", "items"], properties: {
-        role: { type: "string", enum: ["BREAKFAST", "MAIN_MEAL", "PRE_WORKOUT", "POST_WORKOUT", "SNACK", "EVENING_MEAL"] },
-        label: { type: "string" },
-        items: {
-          type: "array", minItems: 3, maxItems: 4,
-          items: { anyOf: slotSchemas },
-        },
-      } } },
+      meals: { type: "array", minItems: mealSchemas.length, maxItems: mealSchemas.length, items: { anyOf: mealSchemas } },
     },
   },
   } as const;
@@ -55,7 +62,7 @@ function safeContext(context: MealPlanGenerationContext) {
 }
 
 function systemInstruction(): string {
-  return "Você compõe refeições práticas preenchendo os slots server-side de cada refeição. Escolha somente catalogEntryId permitido para o pool do slot. Inclua PROTEIN_ANCHOR, CARB_ANCHOR e PRODUCE_FIBER; FAT_ANCHOR é opcional. Nunca crie IDs ou use nomes como identidade alimentar. Informe slot, quantityGrams e nota de preparo opcional. Não calcule nutrientes nem altere meta, quantidade de refeições, ordem, papéis ou slots. Retorne somente o JSON do schema.";
+  return "Você compõe refeições brasileiras reconhecíveis preenchendo os slots server-side específicos de cada refeição e arquétipo. Escolha somente catalogEntryId permitido para o pool daquele slot e posição. Respeite fuelLevel sem trocar qualidade alimentar: ajuste porções de carboidratos aprovados. Nunca crie IDs, use nomes como identidade, ingredientes culinários isolados, açúcares, doces ou pós como componente principal. Informe slot, quantityGrams e nota de preparo opcional. Não calcule nutrientes nem altere meta, quantidade, ordem, papéis, arquétipos ou slots. Retorne somente o JSON do schema.";
 }
 
 function parseCandidate(content: string): AiMealPlanCandidate {

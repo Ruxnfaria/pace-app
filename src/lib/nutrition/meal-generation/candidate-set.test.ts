@@ -4,6 +4,7 @@ import test from "node:test";
 import { assessTrustedNutritionCatalog } from "../food-catalog/capabilities";
 import {
   buildMealPlanCandidateSet,
+  buildMealPlanMealSlots,
   classifyMealPlanFoodPools,
   MAX_MEAL_PLAN_CANDIDATES,
   MAX_MEAL_PLAN_CANDIDATES_PER_POOL,
@@ -71,4 +72,38 @@ test("healthy unrestricted users retain eligible base-catalog choices", () => {
   assert.ok(candidates.some((candidate) => candidate.canonicalName === "Arroz, tipo 1, cozido"));
   assert.ok(candidates.some((candidate) => candidate.canonicalName === "Feijão, carioca, cozido"));
   assert.ok(candidates.some((candidate) => candidate.canonicalName === "Banana, prata, crua"));
+});
+
+test("bounded pools retain stable-id Brazilian staples needed by meal archetypes", () => {
+  const catalog = snapshot();
+  const candidates = buildMealPlanCandidateSet(
+    generationContext("hypertrophy", ["BREAKFAST", "PRE_WORKOUT", "POST_WORKOUT", "EVENING_MEAL"]),
+    catalog,
+  );
+  for (const sourceFoodId of ["3", "100", "182", "410", "488", "561"]) {
+    const staple = catalog.entries.find((entry) => entry.sourceFoodId === sourceFoodId);
+    if (staple) assert.ok(candidates.some((candidate) => candidate.sourceFoodId === sourceFoodId), sourceFoodId);
+  }
+});
+
+test("meal-specific slots carry deterministic archetype and fuel portion bounds", () => {
+  const context = generationContext("conditioning", ["PRE_WORKOUT", "POST_WORKOUT"]);
+  context.mealMacroTargets[0].carbsG = 20;
+  context.mealMacroTargets[1].carbsG = 80;
+  const candidates = buildMealPlanCandidateSet(context, snapshot());
+  const slots = buildMealPlanMealSlots(context, candidates);
+  assert.equal(slots[0].archetypeId, "BRAZILIAN_PRE_WORKOUT_V1");
+  assert.equal(slots[0].fuelLevel, "MODERATE");
+  assert.equal(slots[1].fuelLevel, "HIGH");
+  const lowCarb = slots[0].slots.find((slot) => slot.pool === "CARB_ANCHOR")!;
+  const highCarb = slots[1].slots.find((slot) => slot.pool === "CARB_ANCHOR")!;
+  assert.ok(lowCarb.maximumGrams < highCarb.maximumGrams);
+});
+
+test("special-guard food is absent and legumes have a distinct structural slot", () => {
+  const catalog = snapshot();
+  const candidates = buildMealPlanCandidateSet(generationContext(), catalog);
+  assert.equal(candidates.some((candidate) => candidate.sourceFoodId === "589"), false);
+  const beans = catalog.entries.find((entry) => entry.sourceFoodId === "561")!;
+  assert.ok(classifyMealPlanFoodPools(beans).includes("LEGUME_ANCHOR"));
 });

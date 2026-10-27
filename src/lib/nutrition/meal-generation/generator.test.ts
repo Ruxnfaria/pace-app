@@ -121,8 +121,7 @@ for (const calibrationCase of ["calorie_mismatch", "protein_mismatch"] as const)
       invalid.meals.forEach((meal) => meal.items.forEach((item) => { item.quantityGrams *= 0.85; }));
     }
     if (calibrationCase === "protein_mismatch") {
-      const chickenId = officialTestCatalog().entries.find((entry) => entry.canonicalName.startsWith("Frango"))!.id;
-      invalid.meals.forEach((meal) => { meal.items.find((item) => item.catalogEntryId === chickenId)!.quantityGrams = 50; });
+      invalid.meals.forEach((meal) => { meal.items.find((item) => item.slot === "PROTEIN_ANCHOR")!.quantityGrams = 50; });
     }
     let repairs = 0;
     const generator: MealPlanCandidateGenerator = { generate: async () => invalid, repair: async () => { repairs += 1; return balancedCandidate(context.mealRoles); } };
@@ -191,14 +190,14 @@ test("controlled repair may swap a protein anchor only within its approved pool"
   const invalid = balancedCandidate(context.mealRoles);
   invalid.meals[1].role = invalid.meals[0].role;
   const repaired = balancedCandidate(context.mealRoles);
-  repaired.meals[0].items[0].catalogEntryId = catalog.entries.find((entry) => entry.canonicalName.includes("patinho"))!.id;
+  repaired.meals[1].items[0].catalogEntryId = catalog.entries.find((entry) => entry.canonicalName.includes("patinho"))!.id;
   const result = await generateValidatedMealPlan({
     context,
     catalogRepository: new InMemoryNutritionFoodCatalogRepository(catalog.entries),
     candidateGenerator: { generate: async () => invalid, repair: async () => repaired },
   });
   assert.equal(result.status, "ACTIVE", JSON.stringify(result.report.issues));
-  if (result.status === "ACTIVE") assert.equal(result.plan.meals[0].items[0].food.canonicalName.includes("patinho"), true);
+  if (result.status === "ACTIVE") assert.equal(result.plan.meals[1].items[0].food.canonicalName.includes("patinho"), true);
 });
 
 test("controlled repair rejects a catalog ID assigned to the wrong pool", async () => {

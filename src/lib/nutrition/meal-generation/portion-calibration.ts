@@ -1,6 +1,9 @@
 import { calculateFoodNutrients } from "../food-catalog/nutrients";
 import type { NutritionFoodCatalogEntry } from "../food-catalog/domain";
 import { resolveEffectiveNutrients } from "../food-catalog/effective-nutrients";
+import { classifyFoodSuitability } from "../meal-quality/food-suitability";
+import { foodPortionProfile, snapGramsToPortionProfile } from "../meal-quality/portion-profile";
+import type { FoodPortionProfile } from "../meal-quality/domain";
 import type {
   AiMealPlanCandidate,
   CatalogSnapshot,
@@ -39,6 +42,9 @@ interface AdjustableItem {
   itemIndex: number;
   originalGrams: number;
   maximumGrams: number;
+  minimumGrams: number;
+  incrementGrams: number;
+  portionProfile: FoodPortionProfile;
   food: NutritionFoodCatalogEntry;
   perGram: Totals;
   pool: MealPlanFoodPool;
@@ -67,14 +73,20 @@ function cloneCandidate(candidate: AiMealPlanCandidate): AiMealPlanCandidate {
   };
 }
 
-function clamp(value: number, minimum: number, maximum: number): number {
-  return Math.min(maximum, Math.max(minimum, value));
-}
-
-function itemMaximum(foodRole: string | null, foodGroup: string): number {
-  return foodRole === "fat" || foodGroup === "oils_fats"
-    ? POLICY.portions.maximumOilFatGrams
-    : MAX_PORTION_GRAMS;
+export function snapToPlausiblePortions(
+  context: MealPlanGenerationContext,
+  input: AiMealPlanCandidate,
+  catalog: CatalogSnapshot,
+): AiMealPlanCandidate {
+  const snapped = cloneCandidate(input);
+  const catalogById = new Map(catalog.entries.map((entry) => [entry.id, entry]));
+  snapped.meals.forEach((meal, mealIndex) => meal.items.forEach((item) => {
+    const food = catalogById.get(item.catalogEntryId);
+    if (!food) return;
+    const profile = foodPortionProfile(food, item.slot, context.mealRoles[mealIndex]);
+    item.quantityGrams = snapGramsToPortionProfile(item.quantityGrams, profile);
+  }));
+  return snapped;
 }
 
 function emptyTotals(): Totals {
@@ -100,7 +112,33 @@ function calculateState(candidate: AiMealPlanCandidate, items: AdjustableItem[])
     for (const key of NUTRIENT_KEYS) daily[key] += meal[key];
   }
   for (const key of NUTRIENT_KEYS) daily[key] = round(daily[key]);
-  return { daily, meals };
+  const supportingDominance = meals.map((_, mealIndex) => {
+    const mealItems = items.filter((item) => item.mealIndex === mealIndex);
+    const caloriesFor = (item: AdjustableItem) =>
+      item.perGram.calories * candidate.meals[item.mealIndex].items[item.itemIndex].quantityGrams;
+    const largestPrimary = Math.max(...mealItems.flatMap((item) => {
+      const profile = classifyFoodSuitability(item.food);
+      return profile.qualityClass === "CORE" && item.pool !== "FAT_ANCHOR" ? [caloriesFor(item)] : [];
+    }), 0);
+    if (largestPrimary <= 0) return 0;
+    return Math.max(...mealItems.flatMap((item) => (classifyFoodSuitability(item.food).qualityClass === "SUPPORTING"
+      || item.pool === "FAT_ANCHOR")
+      ? [Math.max(0, (caloriesFor(item) - largestPrimary + 0.01) / largestPrimary)] : []), 0);
+  });
+  const fruitMacroPatch = meals.map((_, mealIndex) => {
+    const mealItems = items.filter((item) => item.mealIndex === mealIndex);
+    const caloriesFor = (item: AdjustableItem) =>
+      item.perGram.calories * candidate.meals[item.mealIndex].items[item.itemIndex].quantityGrams;
+    const carbAnchorCalories = mealItems
+      .filter((item) => item.pool === "CARB_ANCHOR")
+      .reduce((total, item) => total + caloriesFor(item), 0);
+    const fruitCalories = mealItems
+      .filter((item) => classifyFoodSuitability(item.food).culinaryRoles.includes("FRUIT"))
+      .reduce((total, item) => total + caloriesFor(item), 0);
+    if (fruitCalories <= carbAnchorCalories || fruitCalories <= 0) return 0;
+    return (fruitCalories - carbAnchorCalories) / Math.max(carbAnchorCalories, 1);
+  });
+  return { daily, meals, supportingDominance, fruitMacroPatch };
 }
 
 function toNumericDiagnostics(
@@ -159,7 +197,7 @@ function objective(context: MealPlanGenerationContext, state: ReturnType<typeof 
   const normalized = (actual: number, expected: number) => expected > 0 ? (actual - expected) / expected : 0;
   const violations = NUTRIENT_KEYS.map((key) => rangeViolation(state.daily[key], ranges[key], target[key]));
   let targetDistance = 4 * normalized(state.daily.calories, target.calories) ** 2
-    + 3 * normalized(state.daily.proteinG, target.proteinG) ** 2
+    + 6 * normalized(state.daily.proteinG, target.proteinG) ** 2
     + 2 * normalized(state.daily.carbsG, target.carbsG) ** 2
     + 2 * normalized(state.daily.fatG, target.fatG) ** 2;
   if (state.daily.fiberG < target.fiberG) targetDistance += normalized(state.daily.fiberG, target.fiberG) ** 2;
@@ -179,6 +217,12 @@ function objective(context: MealPlanGenerationContext, state: ReturnType<typeof 
       violations.push((meal.grams - POLICY.portions.maximumMealGrams) / POLICY.portions.maximumMealGrams);
       targetDistance += 100 + ((meal.grams - POLICY.portions.maximumMealGrams) / POLICY.portions.maximumMealGrams) ** 2;
     }
+    const dominance = state.supportingDominance[index];
+    violations.push(dominance);
+    if (dominance > 0) targetDistance += 20 * dominance ** 2;
+    const fruitMacroPatch = state.fruitMacroPatch[index];
+    violations.push(fruitMacroPatch);
+    if (fruitMacroPatch > 0) targetDistance += 30 * fruitMacroPatch ** 2;
   }
   return {
     violationCount: violations.filter((value) => value > 1e-9).length,
@@ -253,7 +297,8 @@ function possibleQuantities(
   state: ReturnType<typeof calculateState>,
   iteration: number,
 ): number[] {
-  const values = new Set<number>([current, MIN_PORTION_GRAMS, item.maximumGrams]);
+  if (item.portionProfile.refinementPriority === "LOCKED") return [current];
+  const values = new Set<number>([current, item.minimumGrams, item.maximumGrams]);
   const stepRatio = [0.5, 0.25, 0.125, 0.0625][Math.min(3, Math.floor(iteration / 3))];
   values.add(current * (1 - stepRatio));
   values.add(current * (1 + stepRatio));
@@ -280,10 +325,10 @@ function possibleQuantities(
     values.add(current + (mealTarget.proteinG - state.meals[item.mealIndex].proteinG) / item.perGram.proteinG);
   }
   const roundedValues = [...values]
-    .map((value) => round(clamp(value, MIN_PORTION_GRAMS, item.maximumGrams), 1));
+    .map((value) => snapGramsToPortionProfile(value, item.portionProfile));
   return roundedValues
-    .flatMap((value) => [value - 1, value - 0.1, value, value + 0.1, value + 1])
-    .map((value) => round(clamp(value, MIN_PORTION_GRAMS, item.maximumGrams), 1))
+    .flatMap((value) => [value - item.incrementGrams, value, value + item.incrementGrams])
+    .map((value) => snapGramsToPortionProfile(value, item.portionProfile))
     .filter((value, index, all) => all.indexOf(value) === index)
     .sort((left, right) => left - right);
 }
@@ -292,11 +337,12 @@ function findFeasibleBoundaryAdjustment(
   context: MealPlanGenerationContext,
   candidate: AiMealPlanCandidate,
   items: AdjustableItem[],
+  eligible: (item: AdjustableItem) => boolean = () => true,
 ): AiMealPlanCandidate | null {
   const baselineState = calculateState(candidate, items);
   let bestObjective = objective(context, baselineState);
   let bestCandidate: AiMealPlanCandidate | null = null;
-  for (const item of items) {
+  for (const item of items.filter((value) => value.portionProfile.refinementPriority !== "LOCKED" && eligible(value))) {
     const targetItem = candidate.meals[item.mealIndex].items[item.itemIndex];
     const current = targetItem.quantityGrams;
     for (const quantity of possibleQuantities(item, current, context, baselineState, MAX_CALIBRATION_ITERATIONS - 1)) {
@@ -326,7 +372,8 @@ function buildRoleScaledCandidate(
     ["PRODUCE_FIBER", "fiberG"],
   ];
   for (const [pool, nutrient] of poolTargets) {
-    const poolItems = items.filter((item) => item.pool === pool);
+    const poolItems = items.filter((item) => item.pool === pool
+      && item.portionProfile.refinementPriority !== "LOCKED");
     const poolContribution = poolItems.reduce((total, item) => {
       const grams = candidate.meals[item.mealIndex].items[item.itemIndex].quantityGrams;
       return total + item.perGram[nutrient] * grams;
@@ -337,7 +384,7 @@ function buildRoleScaledCandidate(
     const scale = desiredPoolContribution / poolContribution;
     for (const item of poolItems) {
       const value = scaled.meals[item.mealIndex].items[item.itemIndex];
-      value.quantityGrams = round(clamp(value.quantityGrams * scale, MIN_PORTION_GRAMS, item.maximumGrams), 1);
+      value.quantityGrams = snapGramsToPortionProfile(value.quantityGrams * scale, item.portionProfile);
     }
   }
   return scaled;
@@ -347,6 +394,7 @@ function findFeasibleJointAdjustment(
   context: MealPlanGenerationContext,
   candidate: AiMealPlanCandidate,
   items: AdjustableItem[],
+  eligible: (item: AdjustableItem) => boolean = () => true,
 ): AiMealPlanCandidate | null {
   const baselineState = calculateState(candidate, items);
   const ranges = acceptedRanges(context);
@@ -355,7 +403,8 @@ function findFeasibleJointAdjustment(
   const preferredPool: Partial<Record<NutrientKey, MealPlanFoodPool>> = {
     proteinG: "PROTEIN_ANCHOR", carbsG: "CARB_ANCHOR", fatG: "FAT_ANCHOR", fiberG: "PRODUCE_FIBER",
   };
-  const primaryItems = [...items]
+  const adjustableItems = items.filter((item) => item.portionProfile.refinementPriority !== "LOCKED" && eligible(item));
+  const primaryItems = [...adjustableItems]
     .sort((left, right) => {
       const relevance = (item: AdjustableItem) => violatedKeys.reduce((score, key) => {
         const roleBoost = preferredPool[key] === item.pool ? 10 : 0;
@@ -365,7 +414,7 @@ function findFeasibleJointAdjustment(
         || left.mealIndex - right.mealIndex
         || left.itemIndex - right.itemIndex;
     })
-    .slice(0, 8);
+    .slice(0, 6);
   let bestObjective = objective(context, baselineState);
   let bestCandidate: AiMealPlanCandidate | null = null;
   for (const primary of primaryItems) {
@@ -373,17 +422,17 @@ function findFeasibleJointAdjustment(
     const primaryOriginal = primaryCandidate.quantityGrams;
     const primaryQuantities = possibleQuantities(
       primary, primaryOriginal, context, baselineState, MAX_CALIBRATION_ITERATIONS - 1,
-    ).filter((quantity) => quantity !== primaryOriginal).slice(0, 20);
+    ).filter((quantity) => quantity !== primaryOriginal).slice(0, 12);
     for (const primaryQuantity of primaryQuantities) {
       primaryCandidate.quantityGrams = primaryQuantity;
       const intermediateState = calculateState(candidate, items);
-      for (const secondary of items) {
+      for (const secondary of adjustableItems) {
         if (secondary === primary) continue;
         const secondaryCandidate = candidate.meals[secondary.mealIndex].items[secondary.itemIndex];
         const secondaryOriginal = secondaryCandidate.quantityGrams;
         for (const secondaryQuantity of possibleQuantities(
           secondary, secondaryOriginal, context, intermediateState, MAX_CALIBRATION_ITERATIONS - 1,
-        ).slice(0, 20)) {
+        ).slice(0, 12)) {
           if (secondaryQuantity === secondaryOriginal) continue;
           secondaryCandidate.quantityGrams = secondaryQuantity;
           const trialObjective = objective(context, calculateState(candidate, items));
@@ -419,16 +468,21 @@ export function calibrateMealPlanPortions(
         return { candidate: input, diagnostics: { iterations: 0, adjustedItemCount: 0, jointAdjustmentUsed: false, before: null, after: null, feedback: null } };
       }
       const per100g = calculateFoodNutrients(food, 100);
+      const portionProfile = foodPortionProfile(food, candidateItem.slot, candidate.meals[mealIndex].role);
       items.push({
         mealIndex, itemIndex, originalGrams: candidateItem.quantityGrams,
-        maximumGrams: itemMaximum(food.foodRole, food.foodGroup), food,
+        maximumGrams: portionProfile.maximumAutogenerationGrams,
+        minimumGrams: portionProfile.minimumGrams,
+        incrementGrams: portionProfile.incrementGrams,
+        portionProfile,
+        food,
         perGram: {
           calories: per100g.calories! / 100, proteinG: per100g.proteinG! / 100,
           carbsG: per100g.carbsG! / 100, fatG: per100g.fatG! / 100, fiberG: per100g.fiberG! / 100,
         },
         pool: candidateItem.slot,
       });
-      candidateItem.quantityGrams = round(clamp(candidateItem.quantityGrams, MIN_PORTION_GRAMS, items.at(-1)!.maximumGrams), 1);
+      candidateItem.quantityGrams = snapGramsToPortionProfile(candidateItem.quantityGrams, portionProfile);
     }
   }
   if (items.length === 0 || candidate.meals.length !== context.mealCount) {
@@ -439,8 +493,9 @@ export function calibrateMealPlanPortions(
   const energyScale = context.target.calories / beforeState.daily.calories;
   const scaled = cloneCandidate(candidate);
   for (const item of items) {
+    if (item.portionProfile.refinementPriority === "LOCKED") continue;
     const value = scaled.meals[item.mealIndex].items[item.itemIndex];
-    value.quantityGrams = round(clamp(value.quantityGrams * energyScale, MIN_PORTION_GRAMS, item.maximumGrams), 1);
+    value.quantityGrams = snapGramsToPortionProfile(value.quantityGrams * energyScale, item.portionProfile);
   }
   const roleScaled = buildRoleScaledCandidate(context, candidate, items);
   for (const seed of [scaled, roleScaled]) {
@@ -455,7 +510,8 @@ export function calibrateMealPlanPortions(
   for (; iterations < MAX_CALIBRATION_ITERATIONS; iterations += 1) {
     if (bestObjective.violationCount === 0) break;
     let improved = false;
-    const sweeps = [items, [...items].reverse()];
+    const adjustableItems = items.filter((item) => item.portionProfile.refinementPriority !== "LOCKED");
+    const sweeps = [adjustableItems, [...adjustableItems].reverse()];
     for (const sweepItems of sweeps) {
       for (const item of sweepItems) {
         const targetItem = candidate.meals[item.mealIndex].items[item.itemIndex];
@@ -494,6 +550,21 @@ export function calibrateMealPlanPortions(
     const feasibleJointCandidate = findFeasibleJointAdjustment(context, candidate, items);
     if (feasibleJointCandidate) {
       candidate.meals = feasibleJointCandidate.meals;
+      jointAdjustmentUsed = true;
+    }
+  }
+  candidate.meals = snapToPlausiblePortions(context, candidate, catalog).meals;
+  const postSnapEligible = (item: AdjustableItem) => item.pool === "CARB_ANCHOR"
+    || item.pool === "PROTEIN_ANCHOR"
+    || item.pool === "LEGUME_ANCHOR";
+  if (objective(context, calculateState(candidate, items)).violationCount > 0) {
+    const boundaryRefinement = findFeasibleBoundaryAdjustment(context, candidate, items, postSnapEligible);
+    if (boundaryRefinement) candidate.meals = boundaryRefinement.meals;
+  }
+  if (objective(context, calculateState(candidate, items)).violationCount > 0) {
+    const jointRefinement = findFeasibleJointAdjustment(context, candidate, items, postSnapEligible);
+    if (jointRefinement) {
+      candidate.meals = jointRefinement.meals;
       jointAdjustmentUsed = true;
     }
   }
