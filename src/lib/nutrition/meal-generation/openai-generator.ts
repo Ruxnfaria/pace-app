@@ -10,33 +10,37 @@ import type {
 import type { MealPlanCandidateGenerator } from "./generator";
 
 export function buildMealPlanResponseSchema(catalog: MealPlanCatalogPromptContext) {
-  const mealSchemas = catalog.mealSlots.map((mealSlot) => ({
-    type: "object" as const,
-    additionalProperties: false,
-    required: ["role", "label", "items"],
-    properties: {
-      role: { type: "string" as const, const: mealSlot.role },
-      label: { type: "string" as const },
-      items: {
-        type: "array" as const,
-        minItems: mealSlot.slots.filter((slot) => slot.required).length,
-        maxItems: mealSlot.slots.filter((slot) => slot.catalogEntryIds.length > 0).length,
-        items: { anyOf: mealSlot.slots.filter((slot) => slot.catalogEntryIds.length > 0).map((slot) => ({
-          type: "object" as const,
-          additionalProperties: false,
-          required: ["catalogEntryId", "slot", "quantityGrams", "preparationNote"],
-          properties: {
-            catalogEntryId: { type: "string" as const, enum: slot.catalogEntryIds },
-            slot: { type: "string" as const, const: slot.pool },
-            quantityGrams: { type: "number" as const, minimum: slot.minimumGrams, maximum: slot.maximumGrams },
-            preparationNote: { type: ["string", "null"] as const },
-          },
-        })) },
+  const mealSchemas = catalog.templateSlots.map((mealSlot) => ({
+    anyOf: mealSlot.options.map((option) => ({
+      type: "object" as const,
+      additionalProperties: false,
+      required: ["role", "templateId", "variantId", "label", "components"],
+      properties: {
+        role: { type: "string" as const, const: mealSlot.role },
+        templateId: { type: "string" as const, const: option.templateId },
+        variantId: { type: "string" as const, const: option.variantId },
+        label: { type: "string" as const, const: option.displayName },
+        components: {
+          type: "array" as const,
+          minItems: option.components.filter((component) => component.required).length,
+          maxItems: option.components.length,
+          items: { anyOf: option.components.map((component) => ({
+            type: "object" as const,
+            additionalProperties: false,
+            required: ["componentId", "catalogEntryId", "quantityGrams", "preparationNote"],
+            properties: {
+              componentId: { type: "string" as const, const: component.componentId },
+              catalogEntryId: { type: "string" as const, enum: component.catalogEntryIds },
+              quantityGrams: { type: "number" as const, minimum: component.minimumGrams, maximum: component.maximumGrams },
+              preparationNote: { type: ["string", "null"] as const },
+            },
+          })) },
+        },
       },
-    },
+    })),
   }));
   return {
-  name: "praxe_meal_plan_candidate_v1",
+  name: "praxe_real_meal_plan_candidate_v1",
   strict: true,
   schema: {
     type: "object", additionalProperties: false, required: ["meals"],
@@ -62,13 +66,29 @@ function safeContext(context: MealPlanGenerationContext) {
 }
 
 function systemInstruction(): string {
-  return "Você compõe refeições brasileiras reconhecíveis preenchendo os slots server-side específicos de cada refeição e arquétipo. Escolha somente catalogEntryId permitido para o pool daquele slot e posição. Respeite fuelLevel sem trocar qualidade alimentar: ajuste porções de carboidratos aprovados. Nunca crie IDs, use nomes como identidade, ingredientes culinários isolados, açúcares, doces ou pós como componente principal. Informe slot, quantityGrams e nota de preparo opcional. Não calcule nutrientes nem altere meta, quantidade, ordem, papéis, arquétipos ou slots. Retorne somente o JSON do schema.";
+  return "Você escolhe somente templateId e variantId de refeições reais oferecidos pelo servidor para o MealIntent já definido no Daily Blueprint. Preencha cada componentId com um catalogEntryId permitido naquele componente. Não altere MealIntent, exigência de refeição principal ou blueprint; não componha refeições do zero, não use pools globais, não crie IDs, não substitua componentes por equivalência de macronutrientes e não use um alimento em dois componentes. Ajuste somente quantityGrams dentro dos limites. Não calcule nutrientes nem altere ordem ou papéis. Retorne somente o JSON do schema.";
 }
 
-function parseCandidate(content: string): AiMealPlanCandidate {
+function parseCandidate(content: string, catalog: MealPlanCatalogPromptContext): AiMealPlanCandidate {
   const value: unknown = JSON.parse(content);
   if (!value || typeof value !== "object" || !Array.isArray((value as { meals?: unknown }).meals)) throw new Error("INVALID_AI_MEAL_PLAN_OUTPUT");
-  return value as AiMealPlanCandidate;
+  const meals = (value as { meals: Array<{ role: AiMealPlanCandidate["meals"][number]["role"]; templateId: string;
+    variantId: string; label: string; components: Array<{ componentId: string; catalogEntryId: string;
+      quantityGrams: number; preparationNote?: string | null }> }> }).meals;
+  return { meals: meals.map((meal, index) => {
+    const option = catalog.templateSlots[index]?.options.find((candidate) =>
+      candidate.templateId === meal.templateId && candidate.variantId === meal.variantId);
+    if (!option) throw new Error("INVALID_AI_MEAL_TEMPLATE_SELECTION");
+    return {
+      role: meal.role, templateId: meal.templateId, variantId: meal.variantId, label: meal.label,
+      items: meal.components.map((item) => {
+        const component = option.components.find((candidate) => candidate.componentId === item.componentId);
+        if (!component) throw new Error("INVALID_AI_MEAL_COMPONENT");
+        return { componentId: item.componentId, catalogEntryId: item.catalogEntryId, slot: component.slot,
+          quantityGrams: item.quantityGrams, ...(item.preparationNote ? { preparationNote: item.preparationNote } : {}) };
+      }),
+    };
+  }) };
 }
 
 export class OpenAiMealPlanCandidateGenerator implements MealPlanCandidateGenerator {
@@ -83,7 +103,7 @@ export class OpenAiMealPlanCandidateGenerator implements MealPlanCandidateGenera
     });
     const content = completion.choices[0]?.message?.content;
     if (!content) throw new Error("EMPTY_AI_MEAL_PLAN_OUTPUT");
-    return parseCandidate(content);
+    return parseCandidate(content, catalog);
   }
 
   generate(context: MealPlanGenerationContext, catalog: MealPlanCatalogPromptContext): Promise<AiMealPlanCandidate> {

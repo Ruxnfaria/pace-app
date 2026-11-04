@@ -1,6 +1,7 @@
 import type { ResolvedMealPlan } from "../meal-generation/domain";
 import type { MealCoherenceIssue } from "./domain";
 import { classifyFoodSuitability } from "./food-suitability";
+import { isModeledMainMeal, modeledRealMealTemplate } from "../meal-generation/real-meal-templates/modeling";
 
 export interface DailyMealQualityReport {
   valid: boolean;
@@ -11,8 +12,9 @@ export interface DailyMealQualityReport {
 
 export function validateDailyMealQuality(plan: ResolvedMealPlan): DailyMealQualityReport {
   const issues: MealCoherenceIssue[] = [];
-  const mainMeals = plan.meals.filter((meal) => meal.role === "MAIN_MEAL" || meal.role === "EVENING_MEAL"
-    || (meal.role === "POST_WORKOUT" && meal.target.calories >= plan.totals.calories / Math.max(plan.meals.length, 1) * 0.75));
+  const mainMeals = plan.meals.filter((meal) => modeledRealMealTemplate(meal) ? isModeledMainMeal(meal)
+    : meal.role === "MAIN_MEAL" || meal.role === "EVENING_MEAL"
+      || (meal.role === "POST_WORKOUT" && meal.target.calories >= plan.totals.calories / Math.max(plan.meals.length, 1) * 0.75));
   const mainMealsWithProduce = mainMeals.filter((meal) => meal.items.some((item) =>
     classifyFoodSuitability(item.food).culinaryRoles.includes("VEGETABLE"))).length;
   if (mainMeals.length >= 2 && mainMealsWithProduce !== mainMeals.length) {

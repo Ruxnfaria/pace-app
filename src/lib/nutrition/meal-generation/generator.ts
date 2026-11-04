@@ -1,7 +1,6 @@
 import { assessTrustedNutritionCatalog } from "../food-catalog/capabilities";
 import { resolveMealPlanGenerationEligibility } from "../food-catalog/eligibility";
 import { PRAXE_TACO_CATALOG_VERSION, TACO_SOURCE_VERSION } from "../food-catalog/taco/constants";
-import { buildMealPlanCandidateSet, buildMealPlanMealSlots } from "./candidate-set";
 import {
   MEAL_PLAN_GENERATOR_VERSION,
   MEAL_PLAN_VALIDATOR_VERSION,
@@ -18,6 +17,9 @@ import {
 import { calibrateMealPlanPortions } from "./portion-calibration";
 import type { NutritionFoodCatalogRepository } from "./repository";
 import { validateMealPlanCandidate } from "./validator";
+import { buildRealMealTemplateSlots, buildTemplateConstrainedCandidates } from "./real-meal-templates/catalog";
+import { validateRealMealTemplates } from "./real-meal-templates/validator";
+import { resolveDailyMealBlueprint } from "./daily-blueprint/resolver";
 
 export interface MealPlanCandidateGenerator {
   generate(context: MealPlanGenerationContext, catalog: MealPlanCatalogPromptContext): Promise<AiMealPlanCandidate>;
@@ -48,23 +50,8 @@ function rejected(code: "CATALOG_NOT_READY" | "USER_NOT_ELIGIBLE", message: stri
     plan: null, preferenceScore: 0, diagnostics: null, coherence: null, issues: [{ code, severity: "HARD_FAILURE", message }] };
 }
 
-function repairCatalog(
-  catalog: MealPlanCatalogPromptContext,
-  candidate: AiMealPlanCandidate,
-): MealPlanCatalogPromptContext {
-  const usedPools = new Set(candidate.meals.flatMap((meal) => meal.items.map((item) => item.slot)));
-  return {
-    ...catalog,
-    candidates: catalog.candidates.filter((candidateItem) => candidateItem.pools.some((pool) => usedPools.has(pool))),
-    mealSlots: catalog.mealSlots.map((meal) => ({
-      ...meal,
-      slots: meal.slots
-        .filter((slot) => usedPools.has(slot.pool))
-        .map((slot) => ({ ...slot, catalogEntryIds: slot.catalogEntryIds.filter((id) =>
-          catalog.candidates.some((candidateItem) => candidateItem.catalogEntryId === id
-            && candidateItem.pools.includes(slot.pool))) })),
-    })),
-  };
+function repairCatalog(catalog: MealPlanCatalogPromptContext): MealPlanCatalogPromptContext {
+  return catalog;
 }
 
 function hasValidRepairStructure(
@@ -75,24 +62,18 @@ function hasValidRepairStructure(
 ): boolean {
   const byId = new Map(catalog.candidates.map((candidate) => [candidate.catalogEntryId, candidate]));
   return repaired.meals.length === previous.meals.length
-    && repaired.meals.every((meal, mealIndex) => {
-      const previousMeal = previous.meals[mealIndex];
-      return meal.role === context.mealRoles[mealIndex]
-        && meal.items.length === previousMeal.items.length
-        && meal.items.every((item, itemIndex) => {
-          const previousItem = previousMeal.items[itemIndex];
-          return item.slot === previousItem.slot
-            && (byId.get(item.catalogEntryId)?.pools.includes(item.slot) ?? false)
-            && (catalog.mealSlots[mealIndex]?.slots.find((slot) => slot.pool === item.slot)
-              ?.catalogEntryIds.includes(item.catalogEntryId) ?? false);
-        });
-    });
+    && validateRealMealTemplates(context, repaired, catalog.templateSlots).valid
+    && repaired.meals.every((meal, mealIndex) => meal.role === context.mealRoles[mealIndex]
+      && meal.items.every((item) => byId.get(item.catalogEntryId)?.pools.includes(item.slot) ?? false));
 }
 
-function catalogPromptContext(context: MealPlanGenerationContext, catalog: CatalogSnapshot): MealPlanCatalogPromptContext {
+export function buildMealPlanPromptContext(context: MealPlanGenerationContext, catalog: CatalogSnapshot): MealPlanCatalogPromptContext {
   const status = assessTrustedNutritionCatalog(catalog.entries);
-  const candidates = buildMealPlanCandidateSet(context, catalog);
+  const templateSlots = buildRealMealTemplateSlots(context, catalog);
+  const candidates = buildTemplateConstrainedCandidates(context, catalog, templateSlots);
+  const candidateById = new Map(candidates.map((candidate) => [candidate.catalogEntryId, candidate]));
   return {
+    dailyBlueprint: resolveDailyMealBlueprint(context),
     readiness: catalog.readiness,
     authority: { source: "TACO", sourceVersion: TACO_SOURCE_VERSION, catalogVersion: PRAXE_TACO_CATALOG_VERSION },
     capabilities: {
@@ -102,7 +83,21 @@ function catalogPromptContext(context: MealPlanGenerationContext, catalog: Catal
       dietaryPatternMetadataComplete: status.restrictionMetadataComplete,
     },
     candidates,
-    mealSlots: buildMealPlanMealSlots(context, candidates),
+    templateSlots,
+    mealSlots: templateSlots.map((slot) => ({
+      position: slot.position, role: slot.role,
+      archetypeId: slot.options.map((option) => option.templateId).join("|"),
+      fuelLevel: "MODERATE",
+      slots: [...new Map(slot.options.flatMap((option) => option.components).map((component) => [component.slot, component])).values()]
+        .map((component) => ({
+          pool: component.slot,
+          required: slot.options.every((option) => option.components.some((value) => value.slot === component.slot && value.required)),
+          catalogEntryIds: [...new Set(slot.options.flatMap((option) => option.components
+            .filter((value) => value.slot === component.slot).flatMap((value) => value.catalogEntryIds)))]
+            .filter((id) => candidateById.has(id)),
+          minimumGrams: component.minimumGrams, maximumGrams: component.maximumGrams,
+        })),
+    })),
   };
 }
 
@@ -128,9 +123,9 @@ export async function generateValidatedMealPlan(args: {
   }
   const idempotencyKey = buildMealPlanGenerationIdempotencyKey(args.context);
   const generationContext = { ...args.context, catalogReadiness: catalog.readiness };
-  const constrainedCatalog = catalogPromptContext(generationContext, catalog);
-  if (constrainedCatalog.mealSlots.some((meal) => meal.slots.some((slot) => slot.required && slot.catalogEntryIds.length === 0))) {
-    return { status: "CATALOG_NOT_READY", repaired: false, report: rejected("CATALOG_NOT_READY", "Required meal-plan food pool is unavailable") };
+  const constrainedCatalog = buildMealPlanPromptContext(generationContext, catalog);
+  if (constrainedCatalog.templateSlots.some((meal) => meal.options.length === 0)) {
+    return { status: "CATALOG_NOT_READY", repaired: false, report: rejected("CATALOG_NOT_READY", "No complete real-meal template is available for a prescribed meal role") };
   }
   await args.jobRepository?.begin(args.context, idempotencyKey);
   try {
@@ -139,14 +134,15 @@ export async function generateValidatedMealPlan(args: {
       generationContext, candidate, catalog, constrainedCatalog.candidates,
     );
     let calibratedCandidate = initialCalibration.candidate;
-    let report = validateMealPlanCandidate(generationContext, calibratedCandidate, catalog, constrainedCatalog.candidates);
+    let report = validateMealPlanCandidate(generationContext, calibratedCandidate, catalog, constrainedCatalog.candidates,
+      constrainedCatalog.templateSlots);
     if (report.diagnostics && initialCalibration.diagnostics.feedback) {
       report = { ...report, diagnostics: { ...report.diagnostics, portionCalibration: initialCalibration.diagnostics.feedback } };
     }
     let repaired = false;
     if (!report.valid) {
       repaired = true;
-      const constrainedRepairCatalog = repairCatalog(constrainedCatalog, calibratedCandidate);
+      const constrainedRepairCatalog = repairCatalog(constrainedCatalog);
       const proposedRepair = await args.candidateGenerator.repair(
         generationContext, calibratedCandidate, report.issues, report.diagnostics, constrainedRepairCatalog,
       );
@@ -157,7 +153,8 @@ export async function generateValidatedMealPlan(args: {
         generationContext, repairedCandidate, catalog, constrainedRepairCatalog.candidates,
       );
       calibratedCandidate = repairedCalibration.candidate;
-      report = validateMealPlanCandidate(generationContext, calibratedCandidate, catalog, constrainedRepairCatalog.candidates);
+      report = validateMealPlanCandidate(generationContext, calibratedCandidate, catalog, constrainedRepairCatalog.candidates,
+        constrainedRepairCatalog.templateSlots);
       if (report.diagnostics && repairedCalibration.diagnostics.feedback) {
         report = { ...report, diagnostics: { ...report.diagnostics, portionCalibration: repairedCalibration.diagnostics.feedback } };
       }

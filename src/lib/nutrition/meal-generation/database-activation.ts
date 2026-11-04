@@ -2,11 +2,14 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MealPlanActivationRepository } from "./generator";
 import type { MealPlanGenerationContext, ResolvedMealPlan } from "./domain";
+import { resolveDailyMealBlueprint } from "./daily-blueprint/resolver";
+import { realMealTemplateById } from "./real-meal-templates/registry";
 
 export class DatabaseMealPlanActivationRepository implements MealPlanActivationRepository {
   constructor(private readonly client: SupabaseClient) {}
 
   async activate(plan: ResolvedMealPlan, context: MealPlanGenerationContext, idempotencyKey: string): Promise<{ planId: string; reused: boolean }> {
+    const blueprint = resolveDailyMealBlueprint(context);
     const meals = plan.meals.map((meal) => ({
       position: meal.position, role: meal.role, label: meal.label,
       window_start: meal.window.start, window_end: meal.window.end,
@@ -19,7 +22,13 @@ export class DatabaseMealPlanActivationRepository implements MealPlanActivationR
         catalog_source_version: item.food.sourceVersion, calories: item.nutrients.calories,
         protein_g: item.nutrients.proteinG, carbs_g: item.nutrients.carbsG,
         fat_g: item.nutrients.fatG, fiber_g: item.nutrients.fiberG,
-        metadata: { preparationNote: item.preparationNote, resolution: item.resolution, originalQuantityUnit: item.quantityUnit },
+        metadata: { preparationNote: item.preparationNote, resolution: item.resolution,
+          originalQuantityUnit: item.quantityUnit, templateId: meal.templateId, variantId: meal.variantId,
+          componentId: item.componentId, dailyBlueprintId: blueprint.id,
+          mealIntent: blueprint.mealIntents[meal.position - 1]?.intent,
+          templateFamily: realMealTemplateById(meal.templateId)?.familyId,
+          stapleFamily: realMealTemplateById(meal.templateId)?.stapleFamily,
+          proteinFamily: realMealTemplateById(meal.templateId)?.proteinFamily },
       })),
     }));
     const { data, error } = await this.client.rpc("activate_nutrition_meal_plan_v1", {

@@ -5,6 +5,7 @@ import { validateDailyMealQuality } from "./daily-quality";
 import { classifyFoodSuitability } from "./food-suitability";
 import { archetypeAcceptsRoles, mealArchetypeFor } from "./meal-archetypes";
 import { validatePortionRealism } from "./portion-realism";
+import { isModeledMainMeal, modeledRealMealTemplate } from "../meal-generation/real-meal-templates/modeling";
 
 function issue(code: MealCoherenceIssue["code"], severity: MealCoherenceIssue["severity"], message: string,
   mealPosition?: number, itemPosition?: number): MealCoherenceIssue {
@@ -17,6 +18,7 @@ export function plausiblePortionRange(profile: ReturnType<typeof classifyFoodSui
   if (profile.form === "CULINARY_INGREDIENT" || profile.form === "CONDIMENT") return { minimum: 1, maximum: 25 };
   if (profile.form === "POWDER_OR_MIX") return { minimum: 2, maximum: 40 };
   if (profile.form === "PREPARED_COMPOSITE") return { minimum: 10, maximum: 500 };
+  if (profile.culinaryRoles.includes("FRUIT") && profile.culinaryRoles.includes("FAT")) return { minimum: 10, maximum: 100 };
   if (profile.culinaryRoles.includes("FAT")) return { minimum: 5, maximum: 60 };
   if (profile.culinaryRoles.includes("FRUIT")) return { minimum: 10, maximum: 300 };
   return { minimum: 5, maximum: 1000 };
@@ -44,28 +46,31 @@ export function validateMealCoherence(
     const profiles = meal.items.map((item) => classifyFoodSuitability(item.food));
     const allRoles = [...new Set(profiles.flatMap((profile) => profile.culinaryRoles))];
     const archetype = mealArchetypeFor(meal.role, goal);
+    const modeledTemplate = modeledRealMealTemplate(meal);
     const incompatibleMealItem = profiles.some((profile, index) => !profile.suitableMealRoles.includes(meal.role)
-      && !(profile.culinaryRoles.includes("CULINARY_FAT") && meal.items[index].slot === "FAT_ANCHOR"));
-    if (incompatibleMealItem || !archetypeAcceptsRoles(archetype, allRoles) || meal.items.length > archetype.maximumItems) {
+      && !(profile.culinaryRoles.includes("CULINARY_FAT") && meal.items[index].slot === "FAT_ANCHOR")
+      && !modeledTemplate);
+    if (!modeledTemplate && (incompatibleMealItem || !archetypeAcceptsRoles(archetype, allRoles)
+      || meal.items.length > archetype.maximumItems)) {
       issues.push(issue(meal.role === "BREAKFAST" ? "BREAKFAST_ROLE_MISMATCH" : "MEAL_ARCHETYPE_INVALID",
         "HARD_FAILURE", `Meal does not satisfy ${archetype.id}`, meal.position));
     }
 
     const substantialTrainingMeal = isSubstantialTrainingMeal(plan, mealIndex);
-    const mainStyle = meal.role === "MAIN_MEAL" || meal.role === "EVENING_MEAL"
+    const mainStyle = modeledTemplate ? isModeledMainMeal(meal) : meal.role === "MAIN_MEAL" || meal.role === "EVENING_MEAL"
       || (meal.role === "POST_WORKOUT" && substantialTrainingMeal);
     const required: Array<[boolean, string]> = [];
-    if (meal.role === "BREAKFAST") {
+    if (!modeledTemplate && meal.role === "BREAKFAST") {
       required.push([hasRole(allRoles, "PROTEIN", "DAIRY"), "breakfast protein"]);
       required.push([hasRole(allRoles, "STARCH", "WHOLE_GRAIN"), "breakfast starch or grain"]);
       required.push([hasRole(allRoles, "FRUIT"), "fruit"]);
     }
-    if (mainStyle) {
+    if (!modeledTemplate && mainStyle) {
       required.push([hasRole(allRoles, "LEAN_PROTEIN", "PROTEIN"), "protein"]);
       required.push([hasRole(allRoles, "STARCH"), "starch"]);
       required.push([hasRole(allRoles, "VEGETABLE"), "vegetable produce"]);
     }
-    if (meal.role === "PRE_WORKOUT" && substantialTrainingMeal) {
+    if (!modeledTemplate && meal.role === "PRE_WORKOUT" && substantialTrainingMeal) {
       required.push([hasRole(allRoles, "LEAN_PROTEIN", "PROTEIN", "DAIRY"), "lean protein"]);
       required.push([hasRole(allRoles, "STARCH", "WHOLE_GRAIN"), "starch or grain"]);
     }
@@ -92,9 +97,9 @@ export function validateMealCoherence(
       if (hasRole(profile.culinaryRoles, "LEAN_PROTEIN", "PROTEIN")) proteinNames.push(item.food.normalizedName);
       const modeledCulinarySupport = profile.qualityClass === "INGREDIENT_ONLY"
         && profile.culinaryRoles.includes("CULINARY_FAT") && item.slot === "FAT_ANCHOR";
-      if (!profile.autoGenerationApproved && !modeledCulinarySupport) issues.push(issue("FOOD_NOT_AUTOGENERATION_APPROVED", "HARD_FAILURE",
+      if (!profile.autoGenerationApproved && !modeledCulinarySupport && !modeledTemplate) issues.push(issue("FOOD_NOT_AUTOGENERATION_APPROVED", "HARD_FAILURE",
         "Food is outside the curated automatic-generation set", meal.position, index + 1));
-      if (profile.standaloneSuitability === "NOT_STANDALONE" && !modeledCulinarySupport) issues.push(issue("CULINARY_INGREDIENT_STANDALONE", "HARD_FAILURE",
+      if (profile.standaloneSuitability === "NOT_STANDALONE" && !modeledCulinarySupport && !modeledTemplate) issues.push(issue("CULINARY_INGREDIENT_STANDALONE", "HARD_FAILURE",
         "Culinary ingredient cannot be a standalone meal item", meal.position, index + 1));
       if (profile.form === "POWDER_OR_MIX") issues.push(issue("POWDER_AS_MEAL_COMPONENT", "HARD_FAILURE",
         "Powder or mix cannot be an authoritative meal component", meal.position, index + 1));

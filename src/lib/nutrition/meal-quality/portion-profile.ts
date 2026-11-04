@@ -21,6 +21,11 @@ export function foodPortionProfile(
       incrementGrams: 1, quantityMode: "CONTINUOUS", householdUnitCapability: "GRAMS_ONLY",
       refinementPriority: "LOCKED", rationale: "SPECIAL_PORTION_GUARD" };
   }
+  if (slot === "FAT_ANCHOR" && suitability.culinaryRoles.includes("FRUIT")) {
+    return { minimumGrams: 50, typicalMinimumGrams: 50, typicalMaximumGrams: 100, maximumAutogenerationGrams: 100,
+      incrementGrams: 10, quantityMode: "CONTINUOUS", householdUnitCapability: "GRAMS_ONLY",
+      refinementPriority: "SECONDARY", rationale: "WHOLE_FOOD_FAT_SIDE" };
+  }
   if (slot === "FAT_ANCHOR" || suitability.culinaryRoles.includes("CULINARY_FAT")) {
     return { minimumGrams: 5, typicalMinimumGrams: 5, typicalMaximumGrams: 15, maximumAutogenerationGrams: 20,
       incrementGrams: 1, quantityMode: "CONTINUOUS", householdUnitCapability: "GRAMS_ONLY",

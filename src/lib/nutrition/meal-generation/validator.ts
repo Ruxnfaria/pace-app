@@ -21,6 +21,11 @@ import {
   type ResolvedMealPlan,
 } from "./domain";
 import { MEAL_VALIDATION_POLICY as POLICY } from "./policy";
+import { buildRealMealTemplateSlots } from "./real-meal-templates/catalog";
+import type { RealMealTemplateSlot } from "./real-meal-templates/domain";
+import { validateRealMealTemplates } from "./real-meal-templates/validator";
+import { realMealTemplateById } from "./real-meal-templates/registry";
+import { validateDailyMealBlueprint } from "./daily-blueprint/validator";
 
 function issue(code: MealPlanValidationIssue["code"], severity: MealPlanValidationIssue["severity"], message: string,
   mealPosition?: number, itemPosition?: number): MealPlanValidationIssue {
@@ -70,6 +75,7 @@ function numericDiagnostics(
     fatDelta: rounded(plan.totals.fatG - target.fatG),
     targetFiberG: rounded(target.fiberG), actualFiberG: rounded(plan.totals.fiberG),
     fiberDelta: rounded(plan.totals.fiberG - target.fiberG),
+    fiberDeltaPercent: rounded(((plan.totals.fiberG - target.fiberG) / target.fiberG) * 100),
     mealProteinDistributionIssues,
   };
 }
@@ -113,8 +119,16 @@ export function validateMealPlanCandidate(
   candidate: AiMealPlanCandidate,
   catalog: CatalogSnapshot,
   allowedCandidates: MealPlanCatalogCandidate[],
+  providedTemplateSlots?: RealMealTemplateSlot[],
 ): MealPlanValidationReport {
   const issues: MealPlanValidationIssue[] = [];
+  const templateSlots = providedTemplateSlots ?? buildRealMealTemplateSlots(context, catalog);
+  const templateReport = validateRealMealTemplates(context, candidate, templateSlots);
+  issues.push(...templateReport.issues.map((value) => issue(value.code, "HARD_FAILURE", value.message,
+    value.mealPosition, value.itemPosition)));
+  const dailyBlueprintReport = validateDailyMealBlueprint(context, candidate);
+  issues.push(...dailyBlueprintReport.issues.map((value) => issue(value.code, value.severity, value.message,
+    value.mealPosition)));
   let preferenceScore = 0;
   const catalogStatus = assessTrustedNutritionCatalog(catalog.entries);
   if (catalog.readiness !== "CATALOG_BASE_NUTRITION_READY" && catalog.readiness !== "CATALOG_RESTRICTION_SAFE") {
@@ -136,7 +150,7 @@ export function validateMealPlanCandidate(
     issues.push(issue("MEAL_WINDOW_CONFLICT", "HARD_FAILURE", "Prescribed meal windows are inconsistent"));
   }
   if (candidate.meals.some((meal, index) => meal.role !== context.mealRoles[index])) issues.push(issue("MEAL_ROLE_MISMATCH", "HARD_FAILURE", "Candidate changed prescribed meal roles"));
-  const structureKeys = candidate.meals.map((meal) => `${meal.role}:${normalizeFoodQuery(meal.label)}`);
+  const structureKeys = candidate.meals.map((meal) => `${meal.role}:${meal.templateId}:${meal.variantId}`);
   if (new Set(structureKeys).size !== structureKeys.length) issues.push(issue("DUPLICATE_MEAL_STRUCTURE", "HARD_FAILURE", "Candidate duplicated a meal structure"));
 
   const resolvedMeals: ResolvedMeal[] = [];
@@ -162,7 +176,7 @@ export function validateMealPlanCandidate(
         continue;
       }
       const allowedCandidate = allowedById.get(item.catalogEntryId);
-      if (!allowedCandidate?.pools.includes(item.slot) || seenSlots.has(item.slot)) {
+      if (!allowedCandidate?.pools.includes(item.slot)) {
         issues.push(issue("FOOD_SLOT_MISMATCH", "HARD_FAILURE", "Food ID is not approved for the declared server slot", position, itemIndex + 1));
         continue;
       }
@@ -201,18 +215,20 @@ export function validateMealPlanCandidate(
         continue;
       }
       resolvedItems.push({
-        slot: item.slot, food, foodQuery: food.canonicalName, displayName: food.canonicalName, quantityValue: grams,
+        componentId: item.componentId, slot: item.slot, food, foodQuery: food.canonicalName, displayName: food.canonicalName, quantityValue: grams,
         quantityUnit: "g", quantityGrams: grams, preparationNote: item.preparationNote?.trim() || null,
         resolution: "CATALOG_ENTRY_ID",
         nutrients: { calories: nutrients.calories, proteinG: nutrients.proteinG, carbsG: nutrients.carbsG, fatG: nutrients.fatG, fiberG: nutrients.fiberG } as ResolvedMeal["items"][number]["nutrients"],
       });
     }
-    const requiredSlots = ["PROTEIN_ANCHOR", "CARB_ANCHOR",
+    const modeledTemplate = templateReport.issues.every((value) => value.mealPosition !== position)
+      ? realMealTemplateById(meal.templateId) : undefined;
+    const requiredSlots = modeledTemplate ? [] : ["PROTEIN_ANCHOR", "CARB_ANCHOR",
       ...((meal.role === "MAIN_MEAL" || meal.role === "EVENING_MEAL") ? ["PRODUCE_FIBER" as const] : [])] as const;
     for (const required of requiredSlots) {
       if (!seenSlots.has(required)) issues.push(issue("FOOD_SLOT_MISMATCH", "HARD_FAILURE", `Required ${required} slot is missing`, position));
     }
-    if ((meal.role === "MAIN_MEAL" || meal.role === "EVENING_MEAL")
+    if (!modeledTemplate && (meal.role === "MAIN_MEAL" || meal.role === "EVENING_MEAL")
       && !resolvedItems.some((item) => item.slot === "PRODUCE_FIBER"
         && classifyFoodSuitability(item.food).culinaryRoles.includes("VEGETABLE"))) {
       issues.push(issue("MEAL_REQUIRED_SLOT_MISSING", "HARD_FAILURE", "Main meal requires a real vegetable produce slot", position));
@@ -220,7 +236,8 @@ export function validateMealPlanCandidate(
     if (mealGrams > POLICY.portions.maximumMealGrams) issues.push(issue("IMPOSSIBLE_PORTION", "HARD_FAILURE", "Meal mass exceeds conservative policy", position));
     const totals = sumMealNutrients(resolvedItems.map((item) => ({ ...item.nutrients, grams: item.quantityGrams, macroDerivedEnergy: null, qualityWarnings: [] })));
     if ([totals.calories, totals.proteinG, totals.carbsG, totals.fatG, totals.fiberG].some((value) => value === null)) continue;
-    resolvedMeals.push({ position, role: meal.role, label: meal.label.trim(), window: context.mealWindows[mealIndex],
+    resolvedMeals.push({ position, role: meal.role, templateId: meal.templateId, variantId: meal.variantId,
+      label: meal.label.trim(), window: context.mealWindows[mealIndex],
       target: context.mealMacroTargets[mealIndex], items: resolvedItems,
       totals: { calories: totals.calories, proteinG: totals.proteinG, carbsG: totals.carbsG, fatG: totals.fatG, fiberG: totals.fiberG } as ResolvedMeal["totals"] });
   }

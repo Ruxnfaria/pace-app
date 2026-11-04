@@ -15,6 +15,7 @@ import type {
   PortionCalibrationStatus,
 } from "./domain";
 import { MEAL_VALIDATION_POLICY as POLICY } from "./policy";
+import { realMealTemplateById } from "./real-meal-templates/registry";
 
 export const MAX_CALIBRATION_ITERATIONS = 12;
 export const MIN_PORTION_GRAMS = 10;
@@ -27,6 +28,7 @@ export interface MealPortionCalibrationDiagnostics {
   iterations: number;
   adjustedItemCount: number;
   jointAdjustmentUsed: boolean;
+  fiberProximityOptimized: boolean;
   before: MealPlanNumericValidationDiagnostics | null;
   after: MealPlanNumericValidationDiagnostics | null;
   feedback: MealPlanCalibrationFeedback | null;
@@ -73,6 +75,13 @@ function cloneCandidate(candidate: AiMealPlanCandidate): AiMealPlanCandidate {
   };
 }
 
+function templateComponentRange(candidate: AiMealPlanCandidate, mealIndex: number, itemIndex: number) {
+  const meal = candidate.meals[mealIndex];
+  const item = meal.items[itemIndex];
+  const component = realMealTemplateById(meal.templateId)?.components.find((value) => value.id === item.componentId);
+  return component ? { minimum: component.minimumGrams, maximum: component.maximumGrams } : null;
+}
+
 export function snapToPlausiblePortions(
   context: MealPlanGenerationContext,
   input: AiMealPlanCandidate,
@@ -80,11 +89,13 @@ export function snapToPlausiblePortions(
 ): AiMealPlanCandidate {
   const snapped = cloneCandidate(input);
   const catalogById = new Map(catalog.entries.map((entry) => [entry.id, entry]));
-  snapped.meals.forEach((meal, mealIndex) => meal.items.forEach((item) => {
+  snapped.meals.forEach((meal, mealIndex) => meal.items.forEach((item, itemIndex) => {
     const food = catalogById.get(item.catalogEntryId);
     if (!food) return;
     const profile = foodPortionProfile(food, item.slot, context.mealRoles[mealIndex]);
-    item.quantityGrams = snapGramsToPortionProfile(item.quantityGrams, profile);
+    const range = templateComponentRange(snapped, mealIndex, itemIndex);
+    const snappedGrams = snapGramsToPortionProfile(item.quantityGrams, profile);
+    item.quantityGrams = range ? Math.max(range.minimum, Math.min(range.maximum, snappedGrams)) : snappedGrams;
   }));
   return snapped;
 }
@@ -169,6 +180,7 @@ function toNumericDiagnostics(
     fatDelta: round(state.daily.fatG - target.fatG),
     targetFiberG: round(target.fiberG), actualFiberG: state.daily.fiberG,
     fiberDelta: round(state.daily.fiberG - target.fiberG),
+    fiberDeltaPercent: round(((state.daily.fiberG - target.fiberG) / target.fiberG) * 100),
     mealProteinDistributionIssues,
   };
 }
@@ -200,7 +212,9 @@ function objective(context: MealPlanGenerationContext, state: ReturnType<typeof 
     + 6 * normalized(state.daily.proteinG, target.proteinG) ** 2
     + 2 * normalized(state.daily.carbsG, target.carbsG) ** 2
     + 2 * normalized(state.daily.fatG, target.fatG) ** 2;
-  if (state.daily.fiberG < target.fiberG) targetDistance += normalized(state.daily.fiberG, target.fiberG) ** 2;
+  // Fiber keeps its existing safety floor, while proximity is a lower-priority
+  // product-quality objective. This is deliberately not a clinical upper limit.
+  targetDistance += 0.75 * normalized(state.daily.fiberG, target.fiberG) ** 2;
   for (let index = 0; index < state.meals.length; index += 1) {
     const meal = state.meals[index];
     const mealTarget = context.mealMacroTargets[index];
@@ -223,6 +237,11 @@ function objective(context: MealPlanGenerationContext, state: ReturnType<typeof 
     const fruitMacroPatch = state.fruitMacroPatch[index];
     violations.push(fruitMacroPatch);
     if (fruitMacroPatch > 0) targetDistance += 30 * fruitMacroPatch ** 2;
+    const preWorkoutFatDensity = context.mealRoles[index] === "PRE_WORKOUT" && meal.calories > 0
+      ? Math.max(0, (meal.fatG * 9 / meal.calories - 0.35) / 0.35)
+      : 0;
+    violations.push(preWorkoutFatDensity);
+    if (preWorkoutFatDensity > 0) targetDistance += 30 * preWorkoutFatDensity ** 2;
   }
   return {
     violationCount: violations.filter((value) => value > 1e-9).length,
@@ -329,6 +348,7 @@ function possibleQuantities(
   return roundedValues
     .flatMap((value) => [value - item.incrementGrams, value, value + item.incrementGrams])
     .map((value) => snapGramsToPortionProfile(value, item.portionProfile))
+    .filter((value) => value >= item.minimumGrams && value <= item.maximumGrams)
     .filter((value, index, all) => all.indexOf(value) === index)
     .sort((left, right) => left - right);
 }
@@ -465,14 +485,19 @@ export function calibrateMealPlanPortions(
       const food = catalogById.get(candidateItem.catalogEntryId);
       if (!food || !allowedIds.has(candidateItem.catalogEntryId) || !Number.isFinite(candidateItem.quantityGrams)
         || candidateItem.quantityGrams <= 0 || Object.values(resolveEffectiveNutrients(food)).some((value) => value === null)) {
-        return { candidate: input, diagnostics: { iterations: 0, adjustedItemCount: 0, jointAdjustmentUsed: false, before: null, after: null, feedback: null } };
+        return { candidate: input, diagnostics: { iterations: 0, adjustedItemCount: 0, jointAdjustmentUsed: false,
+          fiberProximityOptimized: false, before: null, after: null, feedback: null } };
       }
       const per100g = calculateFoodNutrients(food, 100);
       const portionProfile = foodPortionProfile(food, candidateItem.slot, candidate.meals[mealIndex].role);
+      const templateRange = templateComponentRange(candidate, mealIndex, itemIndex);
+      const minimumGrams = Math.max(portionProfile.minimumGrams, templateRange?.minimum ?? Number.NEGATIVE_INFINITY);
+      const maximumGrams = Math.min(portionProfile.maximumAutogenerationGrams,
+        templateRange?.maximum ?? Number.POSITIVE_INFINITY);
       items.push({
         mealIndex, itemIndex, originalGrams: candidateItem.quantityGrams,
-        maximumGrams: portionProfile.maximumAutogenerationGrams,
-        minimumGrams: portionProfile.minimumGrams,
+        maximumGrams,
+        minimumGrams,
         incrementGrams: portionProfile.incrementGrams,
         portionProfile,
         food,
@@ -482,11 +507,13 @@ export function calibrateMealPlanPortions(
         },
         pool: candidateItem.slot,
       });
-      candidateItem.quantityGrams = snapGramsToPortionProfile(candidateItem.quantityGrams, portionProfile);
+      candidateItem.quantityGrams = Math.max(minimumGrams,
+        Math.min(maximumGrams, snapGramsToPortionProfile(candidateItem.quantityGrams, portionProfile)));
     }
   }
   if (items.length === 0 || candidate.meals.length !== context.mealCount) {
-    return { candidate: input, diagnostics: { iterations: 0, adjustedItemCount: 0, jointAdjustmentUsed: false, before: null, after: null, feedback: null } };
+    return { candidate: input, diagnostics: { iterations: 0, adjustedItemCount: 0, jointAdjustmentUsed: false,
+      fiberProximityOptimized: false, before: null, after: null, feedback: null } };
   }
 
   const beforeState = calculateState(candidate, items);
@@ -542,8 +569,11 @@ export function calibrateMealPlanPortions(
     if (!improved) { iterations += 1; break; }
   }
   candidate.meals = bestCandidate.meals;
-  const feasibleBoundaryCandidate = findFeasibleBoundaryAdjustment(context, candidate, items);
-  if (feasibleBoundaryCandidate) candidate.meals = feasibleBoundaryCandidate.meals;
+  for (let refinement = 0; refinement < MAX_CALIBRATION_ITERATIONS; refinement += 1) {
+    const feasibleBoundaryCandidate = findFeasibleBoundaryAdjustment(context, candidate, items);
+    if (!feasibleBoundaryCandidate) break;
+    candidate.meals = feasibleBoundaryCandidate.meals;
+  }
   const finalPreJointObjective = objective(context, calculateState(candidate, items));
   let jointAdjustmentUsed = false;
   if (finalPreJointObjective.violationCount > 0) {
@@ -573,12 +603,15 @@ export function calibrateMealPlanPortions(
     ? "CONVERGED"
     : "PORTION_CALIBRATION_NO_FEASIBLE_SOLUTION";
   const adjustedItemCount = items.filter((item) => candidate.meals[item.mealIndex].items[item.itemIndex].quantityGrams !== item.originalGrams).length;
+  const beforeFiberDistance = Math.abs(beforeState.daily.fiberG - context.target.fiberG);
+  const afterFiberDistance = Math.abs(afterState.daily.fiberG - context.target.fiberG);
   return {
     candidate,
     diagnostics: {
       iterations,
       adjustedItemCount,
       jointAdjustmentUsed,
+      fiberProximityOptimized: afterFiberDistance < beforeFiberDistance - 0.01,
       before: toNumericDiagnostics(context, beforeState),
       after: toNumericDiagnostics(context, afterState),
       feedback: calibrationFeedback(context, afterState, status, candidate, beforeState, iterations, adjustedItemCount),

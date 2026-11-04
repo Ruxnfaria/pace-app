@@ -76,7 +76,7 @@ test("a catalog ID outside the server-provided set hard-fails and persists its l
     },
   });
   assert.equal(result.status, "REQUIRES_REVIEW");
-  assert.equal(persistedCode, "UNKNOWN_CATALOG_ENTRY_ID");
+  assert.equal(persistedCode, "FOOD_ALLOWED_FOR_COMPONENT");
 });
 
 test("one controlled repair keeps the identical catalog constraint and can activate", async () => {
@@ -94,14 +94,14 @@ test("one controlled repair keeps the identical catalog constraint and can activ
     },
     repair: async (_context, previous, issues, diagnostics, constrainedCatalog) => {
       repairs += 1;
-      assert.ok(issues.some((issue) => issue.code === "DUPLICATE_MEAL_STRUCTURE"));
+      assert.ok(issues.some((issue) => issue.code === "MEAL_ROLE_MISMATCH" || issue.code === "TEMPLATE_ROLE_MATCH"));
       assert.ok(diagnostics);
       assert.ok(diagnostics.portionCalibration);
       assert.equal(typeof diagnostics.portionCalibration.normalizedDeviations.fatG, "number");
       assert.ok(["below", "within", "above"].includes(diagnostics.portionCalibration.directions.fatG));
       const selectedIds = new Set(previous.meals.flatMap((meal) => meal.items.map((item) => item.catalogEntryId)));
       assert.deepEqual(new Set(diagnostics.portionCalibration.existingCatalogEntryIds), selectedIds);
-      assert.ok(constrainedCatalog.candidates.length > selectedIds.size);
+      assert.ok(constrainedCatalog.candidates.length >= selectedIds.size);
       assert.ok(constrainedCatalog.candidates.every((candidate) => generationIds.includes(candidate.catalogEntryId)));
       return balancedCandidate(context.mealRoles);
     },
@@ -142,7 +142,7 @@ test("valid plan activates once with immutable TACO item snapshots", async () =>
     activationRepository: { activate: async (plan, receivedContext, key) => {
       activations += 1;
       assert.equal(receivedContext.targetSnapshotId, context.targetSnapshotId);
-      assert.match(key, /praxe-meal-plan-generator-v1/);
+      assert.match(key, /praxe-meal-plan-generator-v2/);
       assert.ok(plan.meals.every((meal) => meal.items.every((item) => item.food.source === "TACO" && item.food.sourceVersion === "4_edicao_2011")));
       return { planId: "plan-1", reused: false };
     } },
@@ -184,13 +184,16 @@ test("controlled repair cannot replace or invent catalog identities", async () =
   assert.ok(result.report.issues.some((issue) => issue.code === "MEAL_ROLE_MISMATCH"));
 });
 
-test("controlled repair may swap a protein anchor only within its approved pool", async () => {
+test("controlled repair may switch to another approved real-meal template variant", async () => {
   const catalog = officialTestCatalog();
   const context = generationContext();
   const invalid = balancedCandidate(context.mealRoles);
   invalid.meals[1].role = invalid.meals[0].role;
   const repaired = balancedCandidate(context.mealRoles);
   repaired.meals[1].items[0].catalogEntryId = catalog.entries.find((entry) => entry.canonicalName.includes("patinho"))!.id;
+  repaired.meals[1].templateId = "MAIN_RICE_BEANS_BEEF_VEGETABLES";
+  repaired.meals[1].variantId = "WHITE_CARIOCA_BEEF_BROCCOLI";
+  repaired.meals[1].label = "Arroz, feijão carioca, patinho e brócolis";
   const result = await generateValidatedMealPlan({
     context,
     catalogRepository: new InMemoryNutritionFoodCatalogRepository(catalog.entries),
@@ -220,7 +223,7 @@ test("idempotency includes user, target, strategy and generator version", () => 
   const context = generationContext();
   const first = buildMealPlanGenerationIdempotencyKey(context);
   assert.equal(first, buildMealPlanGenerationIdempotencyKey(context));
-  assert.match(first, /praxe-meal-plan-generator-v1/);
+  assert.match(first, /praxe-meal-plan-generator-v2/);
   assert.notEqual(first, buildMealPlanGenerationIdempotencyKey({ ...context, targetSnapshotId: "other" }));
 });
 

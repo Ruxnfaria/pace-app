@@ -90,7 +90,7 @@ test("sanitized validation diagnostics reach runtime logs without provider paylo
             targetProteinG: 110, actualProteinG: 90, proteinDelta: -20,
             targetCarbsG: 359.75, actualCarbsG: 310, carbsDelta: -49.75,
             targetFatG: 69, actualFatG: 60, fatDelta: -9,
-            targetFiberG: 35, actualFiberG: 30, fiberDelta: -5,
+            targetFiberG: 35, actualFiberG: 30, fiberDelta: -5, fiberDeltaPercent: -14.29,
             mealProteinDistributionIssues: [],
           },
         },
@@ -112,7 +112,7 @@ test("sanitized validation diagnostics reach runtime logs without provider paylo
       targetProteinG: 110, actualProteinG: 90, proteinDelta: -20,
       targetCarbsG: 359.75, actualCarbsG: 310, carbsDelta: -49.75,
       targetFatG: 69, actualFatG: 60, fatDelta: -9,
-      targetFiberG: 35, actualFiberG: 30, fiberDelta: -5,
+      targetFiberG: 35, actualFiberG: 30, fiberDelta: -5, fiberDeltaPercent: -14.29,
       mealProteinDistributionIssues: [],
     },
   });

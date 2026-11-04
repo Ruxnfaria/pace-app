@@ -14,7 +14,7 @@ import type {
   TrainingPeriod,
 } from "../meal-plan/domain";
 
-export const MEAL_PLAN_GENERATOR_VERSION = "praxe-meal-plan-generator-v1" as const;
+export const MEAL_PLAN_GENERATOR_VERSION = "praxe-meal-plan-generator-v2" as const;
 export const MEAL_PLAN_VALIDATOR_VERSION = "praxe-meal-plan-validator-v1" as const;
 export const MEAL_VALIDATION_POLICY_VERSION = "praxe-meal-validation-policy-v1" as const;
 export const MEAL_PLAN_FOOD_POOLS = [
@@ -54,6 +54,7 @@ export interface MealPlanGenerationContext {
 
 export interface AiMealPlanItemCandidate {
   catalogEntryId: string;
+  componentId: string;
   slot: MealPlanFoodPool;
   quantityGrams: number;
   preparationNote?: string;
@@ -61,6 +62,8 @@ export interface AiMealPlanItemCandidate {
 
 export interface AiMealCandidate {
   role: MealRole;
+  templateId: string;
+  variantId: string;
   label: string;
   items: AiMealPlanItemCandidate[];
 }
@@ -83,6 +86,8 @@ export interface MealPlanCatalogPromptContext {
     dietaryPatternMetadataComplete: boolean;
   };
   candidates: MealPlanCatalogCandidate[];
+  dailyBlueprint: import("./daily-blueprint/domain").DailyMealBlueprint;
+  templateSlots: import("./real-meal-templates/domain").RealMealTemplateSlot[];
   mealSlots: MealPlanMealSlotPrescription[];
 }
 
@@ -120,6 +125,7 @@ export interface MealPlanCatalogCandidate {
 }
 
 export interface ResolvedMealPlanItem {
+  componentId: string;
   slot: MealPlanFoodPool;
   food: NutritionFoodCatalogEntry;
   foodQuery: string;
@@ -135,6 +141,8 @@ export interface ResolvedMealPlanItem {
 export interface ResolvedMeal {
   position: number;
   role: MealRole;
+  templateId: string;
+  variantId: string;
   label: string;
   window: MealWindow;
   target: MealMacroTarget;
@@ -168,6 +176,13 @@ export const MEAL_PLAN_VALIDATION_CODES = [
   "FRUIT_PORTION_IMPLAUSIBLE", "PRODUCE_USED_AS_MACRO_COMPENSATOR", "PROTEIN_ANCHOR_TOO_SMALL",
   "ADDED_FAT_PORTION_IMPLAUSIBLE", "MEAL_PROTEIN_DISTRIBUTION_IMBALANCED", "PORTION_PROFILE_MISSING",
   "EXCESSIVE_REPETITION", "LOW_DAILY_VARIETY", "PROTEIN_SOURCE_REPETITION",
+  "VALID_TEMPLATE_ID", "REQUIRED_COMPONENTS_COMPLETE", "NO_DUPLICATE_COMPONENT_ASSIGNMENT",
+  "FOOD_ALLOWED_FOR_COMPONENT", "PAIRING_VALID", "OPTIONAL_COMPONENT_ALLOWED", "MAX_OPTIONAL_COMPONENTS",
+  "TEMPLATE_ROLE_MATCH", "TEMPLATE_GOAL_COMPATIBLE", "TEMPLATE_TIMING_COMPATIBLE",
+  "COMPONENT_PORTION_RANGE",
+  "DAILY_MAIN_MEAL_MISSING", "TOO_MANY_SNACK_STYLE_MEALS", "MEAL_INTENT_TEMPLATE_MISMATCH",
+  "EXCESSIVE_TEMPLATE_FAMILY_REPETITION", "LOW_STAPLE_DIVERSITY", "POST_WORKOUT_MAIN_EXPECTED",
+  "EVENING_SNACK_EXPECTED", "MAIN_MEAL_DISTRIBUTION_INVALID",
 ] as const;
 export type MealPlanValidationCode = (typeof MEAL_PLAN_VALIDATION_CODES)[number];
 export type MealPlanValidationSeverity = "HARD_FAILURE" | "WARNING" | "INFO";
@@ -242,6 +257,7 @@ export interface MealPlanNumericValidationDiagnostics {
   targetFiberG: number;
   actualFiberG: number;
   fiberDelta: number;
+  fiberDeltaPercent: number;
   mealProteinDistributionIssues: MealProteinDistributionIssue[];
   portionCalibration?: MealPlanCalibrationFeedback;
 }
