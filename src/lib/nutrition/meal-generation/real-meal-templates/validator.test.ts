@@ -59,6 +59,31 @@ test("optional spread is accepted only in its bounded declared component", () =>
   assert.equal(validateRealMealTemplates(context, candidate, slots).valid, false);
 });
 
+test("server validator rejects one optional component beyond the template maximum", () => {
+  const { context, slots } = fixture();
+  const candidate = balancedCandidate(context.mealRoles);
+  const option = slots[0].options.find((value) =>
+    value.components.filter((component) => !component.required).length > value.maximumOptionalComponents)!;
+  const required = option.components.filter((component) => component.required);
+  const optional = option.components.filter((component) => !component.required);
+  candidate.meals[0] = {
+    role: slots[0].role,
+    templateId: option.templateId,
+    variantId: option.variantId,
+    label: option.displayName,
+    items: [...required, ...optional.slice(0, option.maximumOptionalComponents + 1)].map((component) => ({
+      componentId: component.componentId,
+      catalogEntryId: component.catalogEntryIds[0],
+      slot: component.slot,
+      quantityGrams: component.minimumGrams,
+    })),
+  };
+
+  const report = validateRealMealTemplates(context, candidate, slots);
+  assert.equal(report.valid, false);
+  assert.ok(report.issues.some((issue) => issue.code === "MAX_OPTIONAL_COMPONENTS"));
+});
+
 test("template component portion bounds cannot be bypassed", () => {
   const { context, slots } = fixture();
   const candidate = balancedCandidate(context.mealRoles);

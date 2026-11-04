@@ -11,7 +11,12 @@ import type { MealPlanCandidateGenerator } from "./generator";
 
 export function buildMealPlanResponseSchema(catalog: MealPlanCatalogPromptContext) {
   const mealSchemas = catalog.templateSlots.map((mealSlot) => ({
-    anyOf: mealSlot.options.map((option) => ({
+    anyOf: mealSlot.options.map((option) => {
+      const requiredComponentCount = option.components.filter((component) => component.required).length;
+      const optionalComponentCount = option.components.length - requiredComponentCount;
+      const allowedOptionalComponentCount = Math.min(option.maximumOptionalComponents, optionalComponentCount);
+      const maximumComponentCount = requiredComponentCount + allowedOptionalComponentCount;
+      return {
       type: "object" as const,
       additionalProperties: false,
       required: ["role", "templateId", "variantId", "label", "components"],
@@ -22,8 +27,8 @@ export function buildMealPlanResponseSchema(catalog: MealPlanCatalogPromptContex
         label: { type: "string" as const, const: option.displayName },
         components: {
           type: "array" as const,
-          minItems: option.components.filter((component) => component.required).length,
-          maxItems: option.components.length,
+          minItems: requiredComponentCount,
+          maxItems: maximumComponentCount,
           items: { anyOf: option.components.map((component) => ({
             type: "object" as const,
             additionalProperties: false,
@@ -37,7 +42,8 @@ export function buildMealPlanResponseSchema(catalog: MealPlanCatalogPromptContex
           })) },
         },
       },
-    })),
+      };
+    }),
   }));
   return {
   name: "praxe_real_meal_plan_candidate_v1",
@@ -66,7 +72,7 @@ function safeContext(context: MealPlanGenerationContext) {
 }
 
 function systemInstruction(): string {
-  return "Você escolhe somente templateId e variantId de refeições reais oferecidos pelo servidor para o MealIntent já definido no Daily Blueprint. Preencha cada componentId com um catalogEntryId permitido naquele componente. Não altere MealIntent, exigência de refeição principal ou blueprint; não componha refeições do zero, não use pools globais, não crie IDs, não substitua componentes por equivalência de macronutrientes e não use um alimento em dois componentes. Ajuste somente quantityGrams dentro dos limites. Não calcule nutrientes nem altere ordem ou papéis. Retorne somente o JSON do schema.";
+  return "Você escolhe somente templateId e variantId de refeições reais oferecidos pelo servidor para o MealIntent já definido no Daily Blueprint. Inclua todos os componentes required. Componentes opcionais são realmente opcionais: respeite maximumOptionalComponents do template e não inclua um opcional apenas para preencher macronutrientes. Preencha cada componentId com um catalogEntryId permitido naquele componente. Não altere MealIntent, exigência de refeição principal ou blueprint; não componha refeições do zero, não use pools globais, não crie IDs, não substitua componentes por equivalência de macronutrientes e não use um alimento em dois componentes. Ajuste somente quantityGrams dentro dos limites. A quantidade máxima de opcionais é uma regra server-side. Não calcule nutrientes nem altere ordem ou papéis. Retorne somente o JSON do schema.";
 }
 
 function parseCandidate(content: string, catalog: MealPlanCatalogPromptContext): AiMealPlanCandidate {
