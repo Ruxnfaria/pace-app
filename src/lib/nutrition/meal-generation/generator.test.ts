@@ -1,9 +1,55 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { assessTrustedNutritionCatalog } from "../food-catalog/capabilities";
+import { validateDailyMealQuality } from "../meal-quality/daily-quality";
+import { validatePortionRealism } from "../meal-quality/portion-realism";
 import { InMemoryNutritionFoodCatalogRepository } from "./repository";
-import { buildMealPlanGenerationIdempotencyKey, generateValidatedMealPlan, type MealPlanCandidateGenerator } from "./generator";
-import type { MealPlanCatalogPromptContext } from "./domain";
+import { buildMealPlanGenerationIdempotencyKey, buildMealPlanPromptContext, generateValidatedMealPlan, type MealPlanCandidateGenerator } from "./generator";
+import type { AiMealPlanCandidate, MealPlanCatalogPromptContext } from "./domain";
+import { validateDailyMealBlueprint } from "./daily-blueprint/validator";
+import { calibrateMealPlanPortions } from "./portion-calibration";
+import { validateRealMealTemplates } from "./real-meal-templates/validator";
 import { balancedCandidate, generationContext, officialTestCatalog } from "./test-helpers";
+import { validateMealPlanCandidate } from "./validator";
+
+function cloneCandidate<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function exact2500RuntimeFixture(entries = officialTestCatalog().entries) {
+  const base = { entries, aliases: [] };
+  const catalog = { ...base, portions: [], readiness: assessTrustedNutritionCatalog(entries).level };
+  const roles = ["BREAKFAST", "PRE_WORKOUT", "POST_WORKOUT", "EVENING_MEAL"] as const;
+  const context = generationContext("hypertrophy", [...roles]);
+  context.trainingPeriod = "evening";
+  context.target = { status: "active", calories: 2500, proteinG: 110, carbsG: 359.75, fatG: 69, fiberG: 35 };
+  context.mealMacroTargets = roles.map((role, index) => ({ position: index + 1, role,
+    calories: 625, proteinG: 27.5, carbsG: 89.9375, fatG: 17.25, fiberG: 8.75 }));
+  const prompt = buildMealPlanPromptContext(context, catalog);
+  const variantIds = ["BREAD_EGGS_FRENCH_BANANA", "PRE_BREAD_CHEESE_FRENCH_BANANA",
+    "WHITE_CARIOCA_BEEF_BROCCOLI", "POST_SKIM_YOGURT_PAPAYA_OATS"];
+  const initialQuantities: Array<Record<string, number>> = [
+    { BREAD: 140, EGGS: 100, FRUIT: 130 },
+    { BREAD: 140, CHEESE: 70, FRUIT: 130 },
+    { RICE: 300, BEANS: 100, PROTEIN: 70, VEGETABLES: 150 },
+    { YOGURT: 200, OATS: 70, FRUIT: 130 },
+  ];
+  const candidate = { meals: variantIds.map((variantId, index) => {
+    const option = prompt.templateSlots[index].options.find((value) => value.variantId === variantId)!;
+    return {
+      role: roles[index], templateId: option.templateId, variantId: option.variantId, label: option.displayName,
+      items: option.components.filter((component) => component.required).map((component) => ({
+        componentId: component.componentId,
+        slot: component.slot,
+        catalogEntryId: component.catalogEntryIds[0],
+        quantityGrams: initialQuantities[index][component.componentId]
+          ?? Math.round((component.minimumGrams + component.maximumGrams) / 2 / 5) * 5,
+        ...(component.preparationNote ? { preparationNote: component.preparationNote } : {}),
+      })),
+    };
+  }) };
+  return { base, catalog, context, prompt, candidate };
+}
 
 test("catalog-not-ready stops before any AI call", async () => {
   let calls = 0;
@@ -110,6 +156,175 @@ test("one controlled repair keeps the identical catalog constraint and can activ
   assert.equal(result.status, "ACTIVE");
   assert.equal(result.repaired, true);
   assert.equal(repairs, 1);
+});
+
+test("E2E_2500_FAT_OUT_OF_RANGE_RUNTIME_CLASS adds one template-approved fat anchor deterministically", async (t) => {
+  const { base, catalog, context, prompt, candidate } = exact2500RuntimeFixture();
+  const beforeCalibration = calibrateMealPlanPortions(context, candidate, catalog, prompt.candidates);
+  const before = validateMealPlanCandidate(
+    context, beforeCalibration.candidate, catalog, prompt.candidates, prompt.templateSlots,
+  );
+  assert.equal(before.valid, false);
+  assert.deepEqual(before.issues.filter((issue) => issue.severity === "HARD_FAILURE").map((issue) => issue.code),
+    ["FAT_OUT_OF_RANGE"]);
+  assert.equal(before.diagnostics?.actualFatG, 54.11);
+
+  let aiRepairCalls = 0;
+  const result = await generateValidatedMealPlan({
+    context,
+    catalogRepository: new InMemoryNutritionFoodCatalogRepository(base.entries),
+    candidateGenerator: {
+      generate: async () => candidate,
+      repair: async () => { aiRepairCalls += 1; return candidate; },
+    },
+  });
+  assert.equal(result.status, "ACTIVE", JSON.stringify(result.report.issues));
+  assert.equal(aiRepairCalls, 0);
+  assert.equal(result.repaired, true);
+  if (result.status === "ACTIVE") {
+    assert.ok(result.plan.totals.fatG >= 62.1 && result.plan.totals.fatG <= 75.9);
+    assert.ok(result.plan.meals.some((meal) => meal.items.some((item) => item.slot === "FAT_ANCHOR")));
+    assert.equal(result.report.coherence?.valid, true);
+    assert.equal(validateDailyMealQuality(result.plan).valid, true);
+    assert.equal(validatePortionRealism(result.plan).valid, true);
+    const finalCandidate = { meals: result.plan.meals.map((meal) => ({
+      role: meal.role,
+      templateId: meal.templateId,
+      variantId: meal.variantId,
+      label: meal.label,
+      items: meal.items.map((item) => ({
+        componentId: item.componentId,
+        slot: item.slot,
+        catalogEntryId: item.food.id,
+        quantityGrams: item.quantityGrams,
+        ...(item.preparationNote ? { preparationNote: item.preparationNote } : {}),
+      })),
+    })) };
+    assert.equal(validateRealMealTemplates(context, finalCandidate, prompt.templateSlots).valid, true);
+    assert.equal(validateDailyMealBlueprint(context, finalCandidate).valid, true);
+    const addedItems = result.plan.meals.flatMap((meal, mealIndex) => meal.items.filter((item) =>
+      !candidate.meals[mealIndex].items.some((original) => original.componentId === item.componentId))
+      .map((item) => ({ meal, mealIndex, item })));
+    assert.equal(addedItems.length, 1);
+    const added = addedItems[0];
+    const originalMeal = candidate.meals[added.mealIndex];
+    const option = prompt.templateSlots[added.mealIndex].options.find((value) =>
+      value.templateId === originalMeal.templateId && value.variantId === originalMeal.variantId)!;
+    const component = option.components.find((value) => value.componentId === added.item.componentId)!;
+    assert.equal(component.required, false);
+    assert.equal(component.slot, "FAT_ANCHOR");
+    assert.ok(component.catalogEntryIds.includes(added.item.food.id));
+    assert.ok(prompt.candidates.some((value) => value.catalogEntryId === added.item.food.id));
+    assert.equal(added.meal.templateId, originalMeal.templateId);
+    assert.equal(added.meal.variantId, originalMeal.variantId);
+    assert.equal(added.meal.role, originalMeal.role);
+    assert.ok(!result.report.issues.some((issue) => issue.code === "SUPPORTING_ITEM_DOMINATES_MEAL"
+      || issue.code === "ADDED_FAT_PORTION_IMPLAUSIBLE"));
+    const stableStructure = result.plan.meals.map((meal) => ({ templateId: meal.templateId, variantId: meal.variantId,
+      role: meal.role, items: meal.items.map((item) => ({ componentId: item.componentId,
+        catalogEntryId: item.food.id, quantityGrams: item.quantityGrams })) }));
+    for (let run = 0; run < 2; run += 1) {
+      const repeated = await generateValidatedMealPlan({
+        context,
+        catalogRepository: new InMemoryNutritionFoodCatalogRepository(base.entries),
+        candidateGenerator: { generate: async () => cloneCandidate(candidate),
+          repair: async () => { throw new Error("unexpected repair"); } },
+      });
+      assert.equal(repeated.status, "ACTIVE");
+      if (repeated.status === "ACTIVE") {
+        assert.deepEqual(repeated.plan.meals.map((meal) => ({ templateId: meal.templateId,
+          variantId: meal.variantId, role: meal.role, items: meal.items.map((item) => ({
+            componentId: item.componentId, catalogEntryId: item.food.id, quantityGrams: item.quantityGrams,
+          })) })), stableStructure);
+        assert.equal(repeated.plan.totals.fatG, 62.11);
+      }
+    }
+    t.diagnostic(`BEFORE_FIX_TOTALS=${JSON.stringify(before.diagnostics)}`);
+    t.diagnostic(`AFTER_FIX_TOTALS=${JSON.stringify(result.plan.totals)}`);
+    t.diagnostic(`ADDED_COMPONENT=${added.item.componentId}`);
+    t.diagnostic(`ADDED_FOOD=${added.item.food.canonicalName}`);
+    t.diagnostic(`ADDED_GRAMS=${added.item.quantityGrams}`);
+  }
+});
+
+test("catalog-constrained fat completion respects an exhausted optional-component cap", async () => {
+  const { base, catalog, context, candidate } = exact2500RuntimeFixture();
+  context.dislikedFoods = base.entries.filter((entry) => ["163", "260"].includes(entry.sourceFoodId))
+    .map((entry) => entry.canonicalName);
+  const prompt = buildMealPlanPromptContext(context, catalog);
+  const breakfastOption = prompt.templateSlots[0].options.find((value) =>
+    value.templateId === candidate.meals[0].templateId && value.variantId === candidate.meals[0].variantId)!;
+  const coffee = breakfastOption.components.find((component) => component.componentId === "COFFEE")!;
+  candidate.meals[0].items.push({ componentId: coffee.componentId, slot: coffee.slot,
+    catalogEntryId: coffee.catalogEntryIds[0], quantityGrams: 100,
+    ...(coffee.preparationNote ? { preparationNote: coffee.preparationNote } : {}) });
+  let repairCalls = 0;
+  let repairInput: AiMealPlanCandidate = cloneCandidate(candidate);
+  const result = await generateValidatedMealPlan({
+    context,
+    catalogRepository: new InMemoryNutritionFoodCatalogRepository(base.entries),
+    candidateGenerator: { generate: async () => candidate, repair: async (_context, previous) => {
+      repairCalls += 1; repairInput = cloneCandidate(previous); return previous;
+    } },
+  });
+  assert.equal(result.status, "REQUIRES_REVIEW");
+  assert.equal(repairCalls, 1);
+  const selectedOptional = repairInput.meals[0].items.filter((item) =>
+    breakfastOption.components.some((component) => !component.required && component.componentId === item.componentId));
+  assert.deepEqual(selectedOptional.map((item) => item.componentId), ["COFFEE"]);
+  assert.ok(selectedOptional.length <= breakfastOption.maximumOptionalComponents);
+  assert.ok(!repairInput.meals[0].items.some((item) => item.componentId === "SPREAD"));
+});
+
+test("catalog-constrained fat completion is a no-op when selected templates offer no fat anchor", async () => {
+  const { base, catalog, context, candidate } = exact2500RuntimeFixture();
+  context.dislikedFoods = base.entries.filter((entry) => ["163", "260", "468"].includes(entry.sourceFoodId))
+    .map((entry) => entry.canonicalName);
+  const prompt = buildMealPlanPromptContext(context, catalog);
+  assert.ok(prompt.templateSlots.every((slot, index) => {
+    const selected = slot.options.find((option) => option.templateId === candidate.meals[index].templateId
+      && option.variantId === candidate.meals[index].variantId)!;
+    return !selected.components.some((component) => !component.required && component.slot === "FAT_ANCHOR");
+  }));
+  const originalStructure = candidate.meals.map((meal) => ({ templateId: meal.templateId,
+    variantId: meal.variantId, role: meal.role, componentIds: meal.items.map((item) => item.componentId) }));
+  let repairCalls = 0;
+  let repairStructure: Array<{ templateId: string; variantId: string; role: string; componentIds: string[] }> = [];
+  const result = await generateValidatedMealPlan({
+    context,
+    catalogRepository: new InMemoryNutritionFoodCatalogRepository(base.entries),
+    candidateGenerator: { generate: async () => candidate, repair: async (_context, previous) => {
+      repairCalls += 1;
+      repairStructure = previous.meals.map((meal) => ({ templateId: meal.templateId,
+        variantId: meal.variantId, role: meal.role, componentIds: meal.items.map((item) => item.componentId) }));
+      return previous;
+    } },
+  });
+  assert.equal(result.status, "REQUIRES_REVIEW");
+  assert.equal(repairCalls, 1);
+  assert.deepEqual(repairStructure, originalStructure);
+});
+
+test("catalog-constrained low-fat completion does not run for fat above tolerance", async () => {
+  const { base, context, candidate } = exact2500RuntimeFixture();
+  context.target = { ...context.target, fatG: 10 };
+  context.mealMacroTargets = context.mealMacroTargets.map((target) => ({ ...target, fatG: 2.5 }));
+  let repairCalls = 0;
+  let repairInputHasFatAnchor = false;
+  const result = await generateValidatedMealPlan({
+    context,
+    catalogRepository: new InMemoryNutritionFoodCatalogRepository(base.entries),
+    candidateGenerator: { generate: async () => candidate, repair: async (_context, previous, issues, diagnostics) => {
+      repairCalls += 1;
+      assert.ok(issues.some((issue) => issue.code === "FAT_OUT_OF_RANGE"));
+      assert.equal(diagnostics?.portionCalibration?.directions.fatG, "above");
+      repairInputHasFatAnchor = previous.meals.some((meal) => meal.items.some((item) => item.slot === "FAT_ANCHOR"));
+      return previous;
+    } },
+  });
+  assert.equal(result.status, "REQUIRES_REVIEW");
+  assert.equal(repairCalls, 1);
+  assert.equal(repairInputHasFatAnchor, false);
 });
 
 for (const calibrationCase of ["calorie_mismatch", "protein_mismatch"] as const) {

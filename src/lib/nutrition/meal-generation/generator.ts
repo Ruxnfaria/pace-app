@@ -15,6 +15,7 @@ import {
   type ResolvedMealPlan,
 } from "./domain";
 import { calibrateMealPlanPortions } from "./portion-calibration";
+import { MEAL_VALIDATION_POLICY } from "./policy";
 import type { NutritionFoodCatalogRepository } from "./repository";
 import { validateMealPlanCandidate } from "./validator";
 import { buildRealMealTemplateSlots, buildTemplateConstrainedCandidates } from "./real-meal-templates/catalog";
@@ -52,6 +53,66 @@ function rejected(code: "CATALOG_NOT_READY" | "USER_NOT_ELIGIBLE", message: stri
 
 function repairCatalog(catalog: MealPlanCatalogPromptContext): MealPlanCatalogPromptContext {
   return catalog;
+}
+
+function cloneCandidate(candidate: AiMealPlanCandidate): AiMealPlanCandidate {
+  return {
+    meals: candidate.meals.map((meal) => ({
+      ...meal,
+      items: meal.items.map((item) => ({ ...item })),
+    })),
+  };
+}
+
+function tryCatalogConstrainedFatAnchorRepair(
+  context: MealPlanGenerationContext,
+  candidate: AiMealPlanCandidate,
+  report: MealPlanValidationReport,
+  catalog: CatalogSnapshot,
+  prompt: MealPlanCatalogPromptContext,
+): { candidate: AiMealPlanCandidate; report: MealPlanValidationReport } | null {
+  const hardFailures = report.issues.filter((issue) => issue.severity === "HARD_FAILURE");
+  const fatMinimum = context.target.fatG * (1 - MEAL_VALIDATION_POLICY.daily.fat.toleranceRatio);
+  if (hardFailures.length !== 1 || hardFailures[0].code !== "FAT_OUT_OF_RANGE"
+    || !report.diagnostics || report.diagnostics.actualFatG >= fatMinimum) return null;
+
+  const offeredIds = new Set(prompt.candidates.map((value) => value.catalogEntryId));
+  for (let mealIndex = 0; mealIndex < candidate.meals.length; mealIndex += 1) {
+    const meal = candidate.meals[mealIndex];
+    const option = prompt.templateSlots[mealIndex]?.options.find((value) =>
+      value.templateId === meal.templateId && value.variantId === meal.variantId);
+    if (!option) continue;
+    const optionalIds = new Set(option.components.filter((value) => !value.required).map((value) => value.componentId));
+    const selectedOptionalCount = meal.items.filter((item) => optionalIds.has(item.componentId)).length;
+    if (selectedOptionalCount >= option.maximumOptionalComponents) continue;
+    const missingFatComponents = option.components.filter((component) => !component.required
+      && component.slot === "FAT_ANCHOR"
+      && !meal.items.some((item) => item.componentId === component.componentId));
+    for (const component of missingFatComponents) {
+      for (const catalogEntryId of component.catalogEntryIds.filter((id) => offeredIds.has(id))) {
+        const repaired = cloneCandidate(candidate);
+        repaired.meals[mealIndex].items.push({
+          componentId: component.componentId,
+          slot: component.slot,
+          catalogEntryId,
+          quantityGrams: Math.round((component.minimumGrams + component.maximumGrams) / 2),
+          ...(component.preparationNote ? { preparationNote: component.preparationNote } : {}),
+        });
+        const calibration = calibrateMealPlanPortions(context, repaired, catalog, prompt.candidates);
+        let repairedReport = validateMealPlanCandidate(
+          context, calibration.candidate, catalog, prompt.candidates, prompt.templateSlots,
+        );
+        if (repairedReport.diagnostics && calibration.diagnostics.feedback) {
+          repairedReport = { ...repairedReport, diagnostics: {
+            ...repairedReport.diagnostics,
+            portionCalibration: calibration.diagnostics.feedback,
+          } };
+        }
+        if (repairedReport.valid) return { candidate: calibration.candidate, report: repairedReport };
+      }
+    }
+  }
+  return null;
 }
 
 function hasValidRepairStructure(
@@ -140,6 +201,16 @@ export async function generateValidatedMealPlan(args: {
       report = { ...report, diagnostics: { ...report.diagnostics, portionCalibration: initialCalibration.diagnostics.feedback } };
     }
     let repaired = false;
+    if (!report.valid) {
+      const constrainedFatRepair = tryCatalogConstrainedFatAnchorRepair(
+        generationContext, calibratedCandidate, report, catalog, constrainedCatalog,
+      );
+      if (constrainedFatRepair) {
+        repaired = true;
+        calibratedCandidate = constrainedFatRepair.candidate;
+        report = constrainedFatRepair.report;
+      }
+    }
     if (!report.valid) {
       repaired = true;
       const constrainedRepairCatalog = repairCatalog(constrainedCatalog);
