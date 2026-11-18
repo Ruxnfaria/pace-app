@@ -14,7 +14,18 @@ export type RecipePreparationState = (typeof RECIPE_PREPARATION_STATES)[number];
 
 export type NutritionAuthorityType = "TACO" | "SUPPLEMENT_LABEL";
 export type RecipeStatus = "ACTIVE" | "BLOCKED_MISSING_SUPPLEMENT_AUTHORITY";
-export type RecipeDisplayUnit = "g" | "ml";
+export type RecipeDisplayUnit = "g" | "ml" | "count" | "slice";
+
+export interface CountableMeasurementAuthority {
+  catalogEntryId: string;
+  gramsPerCount: number;
+  singularName: string;
+  pluralName: string;
+  source: string;
+  sourceVersion: string;
+  authorityType: "CURATED_PORTION" | "SOURCE_PORTION";
+  displayUnit?: "count" | "slice";
+}
 
 export interface SupplementLabelAuthority {
   authorityType: "SUPPLEMENT_LABEL";
@@ -39,6 +50,7 @@ export interface LiquidMeasurementAuthority {
   catalogEntryId: string;
   displayUnit: "ml";
   gramsPerMl: number;
+  displayIncrementMl: number;
   source: string;
   sourceVersion: string;
   authorityType: "CATALOG_DENSITY" | "LAB_MEASUREMENT" | "MANUFACTURER_LABEL";
@@ -129,7 +141,14 @@ export interface RecipePresentation {
   variantId: string;
   recipeDisplayName: string;
   ingredients: RecipePresentationIngredient[];
+  lines: RecipePresentationLine[];
   preparationDescription: string | null;
+}
+
+export interface RecipePresentationLine {
+  text: string;
+  componentIds: string[];
+  nutritionQuantityGrams: number;
 }
 
 export type RecipeFeasibilityStatus = "FEASIBLE" | "BLOCKED_MISSING_AUTHORITY"

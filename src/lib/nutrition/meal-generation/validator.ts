@@ -26,6 +26,10 @@ import type { RealMealTemplateSlot } from "./real-meal-templates/domain";
 import { validateRealMealTemplates } from "./real-meal-templates/validator";
 import { realMealTemplateById } from "./real-meal-templates/registry";
 import { validateDailyMealBlueprint } from "./daily-blueprint/validator";
+import { buildCulinaryLibrary } from "./culinary-library/registry";
+import { validateRecipeSelection } from "./culinary-library/validator";
+import { findCulinaryRecipeOption, type CulinaryRecipeSlot } from "./culinary-library/integration";
+import { assessHumanPortionBalance } from "./culinary-library/human-portion-balance";
 
 function issue(code: MealPlanValidationIssue["code"], severity: MealPlanValidationIssue["severity"], message: string,
   mealPosition?: number, itemPosition?: number): MealPlanValidationIssue {
@@ -120,6 +124,7 @@ export function validateMealPlanCandidate(
   catalog: CatalogSnapshot,
   allowedCandidates: MealPlanCatalogCandidate[],
   providedTemplateSlots?: RealMealTemplateSlot[],
+  providedRecipeSlots?: CulinaryRecipeSlot[],
 ): MealPlanValidationReport {
   const issues: MealPlanValidationIssue[] = [];
   const templateSlots = providedTemplateSlots ?? buildRealMealTemplateSlots(context, catalog);
@@ -152,6 +157,9 @@ export function validateMealPlanCandidate(
   if (candidate.meals.some((meal, index) => meal.role !== context.mealRoles[index])) issues.push(issue("MEAL_ROLE_MISMATCH", "HARD_FAILURE", "Candidate changed prescribed meal roles"));
   const structureKeys = candidate.meals.map((meal) => `${meal.role}:${meal.templateId}:${meal.variantId}`);
   if (new Set(structureKeys).size !== structureKeys.length) issues.push(issue("DUPLICATE_MEAL_STRUCTURE", "HARD_FAILURE", "Candidate duplicated a meal structure"));
+  const humanBalance = assessHumanPortionBalance(candidate);
+  issues.push(...humanBalance.issues.map((value) => issue("HUMAN_PORTION_BALANCE", value.severity,
+    `${value.code}: ${value.message}`, value.mealPosition)));
 
   const resolvedMeals: ResolvedMeal[] = [];
   const allowedIds = new Set(allowedCandidates.map((value) => value.catalogEntryId));
@@ -159,9 +167,41 @@ export function validateMealPlanCandidate(
   const catalogById = new Map(catalog.entries.map((entry) => [entry.id, entry]));
   const disliked = new Set(context.dislikedFoods.map(normalizeFoodQuery));
   const preferred = new Set(context.preferredFoods.map(normalizeFoodQuery));
+  const culinaryLibrary = providedRecipeSlots ? buildCulinaryLibrary(catalog.entries) : null;
   for (let mealIndex = 0; mealIndex < candidate.meals.length; mealIndex += 1) {
     const meal = candidate.meals[mealIndex];
     const position = mealIndex + 1;
+    const recipeOption = providedRecipeSlots ? findCulinaryRecipeOption(providedRecipeSlots, mealIndex, meal) : undefined;
+    if (providedRecipeSlots && !recipeOption) {
+      issues.push(issue("VALID_RECIPE_ID", "HARD_FAILURE",
+        "Recipe identity was not offered by the server for this meal context", position));
+    } else if (recipeOption && culinaryLibrary) {
+      const recipeReport = validateRecipeSelection(culinaryLibrary, {
+        recipeId: recipeOption.recipeId,
+        variantId: recipeOption.recipeVariantId,
+        ingredients: meal.items.map((item) => ({ componentId: item.componentId,
+          catalogEntryId: item.catalogEntryId, nutritionQuantityGrams: item.quantityGrams })),
+      });
+      for (const recipeIssue of recipeReport.issues) {
+        const code = recipeIssue.code === "PREPARATION_STATE_MISMATCH" ? "RECIPE_PREPARATION_STATE"
+          : recipeIssue.code.includes("QUANTITY") ? "RECIPE_PORTION_RANGE"
+            : recipeIssue.code === "UNKNOWN_RECIPE" || recipeIssue.code === "UNKNOWN_VARIANT" || recipeIssue.code === "RECIPE_BLOCKED"
+              ? "VALID_RECIPE_ID" : "RECIPE_INGREDIENT_AUTHORIZED";
+        issues.push(issue(code, "HARD_FAILURE", recipeIssue.message, position));
+      }
+      for (const item of meal.items) {
+        const component = recipeOption.components.find((value) => value.componentId === item.componentId
+          && value.catalogEntryIds.includes(item.catalogEntryId));
+        if (!component) continue;
+        const onIncrement = Math.abs((item.quantityGrams - component.minimumGrams) / component.incrementGrams
+          - Math.round((item.quantityGrams - component.minimumGrams) / component.incrementGrams)) <= 0.001;
+        if (item.quantityGrams < component.minimumGrams - 0.001
+          || item.quantityGrams > component.maximumGrams + 0.001 || !onIncrement) {
+          issues.push(issue("RECIPE_PORTION_RANGE", "HARD_FAILURE",
+            "Quantity is outside the server-authorized recipe/template range", position));
+        }
+      }
+    }
     if (meal.items.length === 0) {
       issues.push(issue("EMPTY_MEAL", "HARD_FAILURE", "Meal has no food items", position));
       continue;
@@ -217,6 +257,11 @@ export function validateMealPlanCandidate(
       resolvedItems.push({
         componentId: item.componentId, slot: item.slot, food, foodQuery: food.canonicalName, displayName: food.canonicalName, quantityValue: grams,
         quantityUnit: "g", quantityGrams: grams, preparationNote: item.preparationNote?.trim() || null,
+        ...(recipeOption?.components.find((value) => value.componentId === item.componentId) ? {
+          preparationState: recipeOption.components.find((value) => value.componentId === item.componentId)!.preparationState,
+          presentationDisplayName: recipeOption.components.find((value) => value.componentId === item.componentId)!.displayName,
+          presentationDisplayUnit: recipeOption.components.find((value) => value.componentId === item.componentId)!.displayUnit,
+        } : {}),
         resolution: "CATALOG_ENTRY_ID",
         nutrients: { calories: nutrients.calories, proteinG: nutrients.proteinG, carbsG: nutrients.carbsG, fatG: nutrients.fatG, fiberG: nutrients.fiberG } as ResolvedMeal["items"][number]["nutrients"],
       });
@@ -237,7 +282,10 @@ export function validateMealPlanCandidate(
     const totals = sumMealNutrients(resolvedItems.map((item) => ({ ...item.nutrients, grams: item.quantityGrams, macroDerivedEnergy: null, qualityWarnings: [] })));
     if ([totals.calories, totals.proteinG, totals.carbsG, totals.fatG, totals.fiberG].some((value) => value === null)) continue;
     resolvedMeals.push({ position, role: meal.role, templateId: meal.templateId, variantId: meal.variantId,
-      label: meal.label.trim(), window: context.mealWindows[mealIndex],
+      ...(recipeOption ? { recipeId: recipeOption.recipeId, recipeVersion: recipeOption.recipeVersion,
+        recipeFamilyId: recipeOption.recipeFamilyId, recipeVariantId: recipeOption.recipeVariantId,
+        recipeDisplayName: recipeOption.recipeDisplayName } : {}),
+      label: recipeOption?.recipeDisplayName ?? meal.label.trim(), window: context.mealWindows[mealIndex],
       target: context.mealMacroTargets[mealIndex], items: resolvedItems,
       totals: { calories: totals.calories, proteinG: totals.proteinG, carbsG: totals.carbsG, fatG: totals.fatG, fiberG: totals.fiberG } as ResolvedMeal["totals"] });
   }

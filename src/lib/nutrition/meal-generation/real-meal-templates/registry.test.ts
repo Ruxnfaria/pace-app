@@ -7,7 +7,7 @@ test("V1 registry is small, deterministic and structurally diverse", () => {
   const templates = allRealMealTemplates();
   const variants = templates.flatMap((template) => template.variants);
   assert.ok(templates.length >= 18 && templates.length <= 30);
-  assert.ok(variants.length >= 30 && variants.length <= 60);
+  assert.ok(variants.length >= 30 && variants.length <= 75);
   assert.equal(new Set(templates.map((template) => template.id)).size, templates.length);
   assert.equal(new Set(variants.map((variant) => variant.id)).size, variants.length);
   assert.ok(templates.every((template) => template.version === REAL_MEAL_TEMPLATE_VERSION

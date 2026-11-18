@@ -274,7 +274,39 @@ test("portion bounds, meal structure, catalog identities and TACO nutrients stay
   if (report.plan) assert.ok(report.plan.meals.every((meal) => meal.items.every((item) => item.food.source === "TACO")));
 });
 
-test("2500 kcal in-memory E2E reproduction moves from invalid to valid without AI", () => {
+test("verified discrete portion authorities constrain solver grams instead of rounding only the display", () => {
+  const { context, snapshot, allowed } = fixture();
+  const candidate = balancedCandidate(context.mealRoles);
+  const breakfast = candidate.meals[0];
+  const bread = breakfast.items.find((item) => item.componentId === "BREAD")!;
+  const eggs = breakfast.items.find((item) => item.componentId === "EGGS")!;
+  const fruit = breakfast.items.find((item) => item.componentId === "FRUIT")!;
+  bread.quantityGrams = 73;
+  eggs.quantityGrams = 83;
+  fruit.quantityGrams = 137;
+  const authorities = [
+    { catalogEntryId: bread.catalogEntryId, gramsPerCount: 50, singularName: "pão francês",
+      pluralName: "pães franceses", source: "TEST_ONLY", sourceVersion: "test-v1",
+      authorityType: "CURATED_PORTION" as const },
+    { catalogEntryId: eggs.catalogEntryId, gramsPerCount: 50, singularName: "ovo cozido",
+      pluralName: "ovos cozidos", source: "TEST_ONLY", sourceVersion: "test-v1",
+      authorityType: "CURATED_PORTION" as const },
+    { catalogEntryId: fruit.catalogEntryId, gramsPerCount: 100, singularName: "banana",
+      pluralName: "bananas", source: "TEST_ONLY", sourceVersion: "test-v1",
+      authorityType: "CURATED_PORTION" as const },
+  ];
+  const result = calibrateMealPlanPortions(context, candidate, snapshot, allowed, undefined, authorities);
+  const calibratedBreakfast = result.candidate.meals[0];
+  for (const authority of authorities) {
+    const item = calibratedBreakfast.items.find((value) => value.catalogEntryId === authority.catalogEntryId)!;
+    assert.equal(item.quantityGrams % authority.gramsPerCount, 0);
+  }
+  assert.notEqual(calibratedBreakfast.items.find((item) => item.componentId === "BREAD")!.quantityGrams, 73);
+  assert.notEqual(calibratedBreakfast.items.find((item) => item.componentId === "EGGS")!.quantityGrams, 83);
+  assert.notEqual(calibratedBreakfast.items.find((item) => item.componentId === "FRUIT")!.quantityGrams, 137);
+});
+
+test("2500 kcal fixed recipe composition fails closed when human balance needs recipe fallback", () => {
   const { context, snapshot } = fixture();
   const scale = 2500 / context.target.calories;
   context.target = {
@@ -299,7 +331,10 @@ test("2500 kcal in-memory E2E reproduction moves from invalid to valid without A
   const result = calibrateMealPlanPortions(context, candidate, snapshot, allowed);
   const after = validate(context, result.candidate, snapshot, allowed);
   assert.equal(before.valid, false);
-  assert.equal(after.valid, true, JSON.stringify(after.issues));
+  assert.equal(after.valid, false);
+  assert.ok(after.issues.some((issue) => issue.code === "FAT_OUT_OF_RANGE"), JSON.stringify(after.issues));
+  assert.equal(result.diagnostics.feedback?.status, "PORTION_CALIBRATION_NO_FEASIBLE_SOLUTION");
   assert.equal(before.diagnostics?.actualKcal, 1348.4);
-  assert.ok(Math.abs((after.diagnostics?.actualKcal ?? 0) - 2500) <= 125);
+  assert.deepEqual(result.candidate.meals.map((meal) => meal.items.map((item) => item.catalogEntryId)),
+    candidate.meals.map((meal) => meal.items.map((item) => item.catalogEntryId)));
 });

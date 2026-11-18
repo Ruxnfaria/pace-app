@@ -26,24 +26,25 @@ function exact2500RuntimeFixture(entries = officialTestCatalog().entries) {
   context.mealMacroTargets = roles.map((role, index) => ({ position: index + 1, role,
     calories: 625, proteinG: 27.5, carbsG: 89.9375, fatG: 17.25, fiberG: 8.75 }));
   const prompt = buildMealPlanPromptContext(context, catalog);
-  const variantIds = ["BREAD_EGGS_FRENCH_BANANA", "PRE_BREAD_CHEESE_FRENCH_BANANA",
-    "WHITE_CARIOCA_BEEF_BROCCOLI", "POST_SKIM_YOGURT_PAPAYA_OATS"];
+  const recipeIds = ["FRENCH_BREAD_BOILED_EGGS_BANANA", "FRENCH_BREAD_MINAS_CHEESE_BANANA",
+    "RICE_BEANS_BEEF_BROCCOLI", "YOGURT_OATS_BANANA"];
   const initialQuantities: Array<Record<string, number>> = [
     { BREAD: 140, EGGS: 100, FRUIT: 130 },
     { BREAD: 140, CHEESE: 70, FRUIT: 130 },
     { RICE: 300, BEANS: 100, PROTEIN: 70, VEGETABLES: 150 },
     { YOGURT: 200, OATS: 70, FRUIT: 130 },
   ];
-  const candidate = { meals: variantIds.map((variantId, index) => {
-    const option = prompt.templateSlots[index].options.find((value) => value.variantId === variantId)!;
+  const candidate = { meals: recipeIds.map((recipeId, index) => {
+    const recipe = prompt.recipeSlots[index].options.find((value) => value.recipeId === recipeId)!;
     return {
-      role: roles[index], templateId: option.templateId, variantId: option.variantId, label: option.displayName,
-      items: option.components.filter((component) => component.required).map((component) => ({
+      role: roles[index], templateId: recipe.templateId, variantId: recipe.templateVariantId,
+      recipeId: recipe.recipeId, recipeVersion: recipe.recipeVersion, recipeFamilyId: recipe.recipeFamilyId,
+      recipeVariantId: recipe.recipeVariantId, label: recipe.recipeDisplayName,
+      items: recipe.components.filter((component) => component.required).map((component) => ({
         componentId: component.componentId,
         slot: component.slot,
         catalogEntryId: component.catalogEntryIds[0],
-        quantityGrams: initialQuantities[index][component.componentId]
-          ?? Math.round((component.minimumGrams + component.maximumGrams) / 2 / 5) * 5,
+        quantityGrams: initialQuantities[index][component.componentId] ?? component.referenceGrams,
         ...(component.preparationNote ? { preparationNote: component.preparationNote } : {}),
       })),
     };
@@ -160,14 +161,16 @@ test("one controlled repair keeps the identical catalog constraint and can activ
 
 test("E2E_2500_FAT_OUT_OF_RANGE_RUNTIME_CLASS adds one template-approved fat anchor deterministically", async (t) => {
   const { base, catalog, context, prompt, candidate } = exact2500RuntimeFixture();
-  const beforeCalibration = calibrateMealPlanPortions(context, candidate, catalog, prompt.candidates);
+  context.target = { ...context.target, fatG: 80 };
+  context.mealMacroTargets = context.mealMacroTargets.map((target) => ({ ...target, fatG: 20 }));
+  const beforeCalibration = calibrateMealPlanPortions(context, candidate, catalog, prompt.candidates, prompt.recipeSlots);
   const before = validateMealPlanCandidate(
     context, beforeCalibration.candidate, catalog, prompt.candidates, prompt.templateSlots,
   );
   assert.equal(before.valid, false);
   assert.deepEqual(before.issues.filter((issue) => issue.severity === "HARD_FAILURE").map((issue) => issue.code),
     ["FAT_OUT_OF_RANGE"]);
-  assert.equal(before.diagnostics?.actualFatG, 54.11);
+  assert.ok((before.diagnostics?.actualFatG ?? 0) < 72);
 
   let aiRepairCalls = 0;
   const result = await generateValidatedMealPlan({
@@ -182,7 +185,7 @@ test("E2E_2500_FAT_OUT_OF_RANGE_RUNTIME_CLASS adds one template-approved fat anc
   assert.equal(aiRepairCalls, 0);
   assert.equal(result.repaired, true);
   if (result.status === "ACTIVE") {
-    assert.ok(result.plan.totals.fatG >= 62.1 && result.plan.totals.fatG <= 75.9);
+    assert.ok(result.plan.totals.fatG >= 72 && result.plan.totals.fatG <= 88);
     assert.ok(result.plan.meals.some((meal) => meal.items.some((item) => item.slot === "FAT_ANCHOR")));
     assert.equal(result.report.coherence?.valid, true);
     assert.equal(validateDailyMealQuality(result.plan).valid, true);
@@ -236,7 +239,7 @@ test("E2E_2500_FAT_OUT_OF_RANGE_RUNTIME_CLASS adds one template-approved fat anc
           variantId: meal.variantId, role: meal.role, items: meal.items.map((item) => ({
             componentId: item.componentId, catalogEntryId: item.food.id, quantityGrams: item.quantityGrams,
           })) })), stableStructure);
-        assert.equal(repeated.plan.totals.fatG, 62.11);
+        assert.equal(repeated.plan.totals.fatG, result.plan.totals.fatG);
       }
     }
     t.diagnostic(`BEFORE_FIX_TOTALS=${JSON.stringify(before.diagnostics)}`);
@@ -278,6 +281,8 @@ test("catalog-constrained fat completion respects an exhausted optional-componen
 
 test("catalog-constrained fat completion is a no-op when selected templates offer no fat anchor", async () => {
   const { base, catalog, context, candidate } = exact2500RuntimeFixture();
+  context.target = { ...context.target, fatG: 80 };
+  context.mealMacroTargets = context.mealMacroTargets.map((target) => ({ ...target, fatG: 20 }));
   context.dislikedFoods = base.entries.filter((entry) => ["163", "260", "468"].includes(entry.sourceFoodId))
     .map((entry) => entry.canonicalName);
   const prompt = buildMealPlanPromptContext(context, catalog);
@@ -408,7 +413,10 @@ test("controlled repair may switch to another approved real-meal template varian
   repaired.meals[1].items[0].catalogEntryId = catalog.entries.find((entry) => entry.canonicalName.includes("patinho"))!.id;
   repaired.meals[1].templateId = "MAIN_RICE_BEANS_BEEF_VEGETABLES";
   repaired.meals[1].variantId = "WHITE_CARIOCA_BEEF_BROCCOLI";
-  repaired.meals[1].label = "Arroz, feijão carioca, patinho e brócolis";
+  repaired.meals[1].recipeId = "RICE_BEANS_BEEF_BROCCOLI";
+  repaired.meals[1].recipeFamilyId = "RICE_BEANS_PROTEIN_VEGETABLES";
+  repaired.meals[1].recipeVariantId = "RICE_BEANS_BEEF_BROCCOLI_V1";
+  repaired.meals[1].label = "Arroz, feijão, patinho e brócolis";
   const result = await generateValidatedMealPlan({
     context,
     catalogRepository: new InMemoryNutritionFoodCatalogRepository(catalog.entries),

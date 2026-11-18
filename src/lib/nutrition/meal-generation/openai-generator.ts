@@ -10,7 +10,10 @@ import type {
 import type { MealPlanCandidateGenerator } from "./generator";
 
 export function buildMealPlanResponseSchema(catalog: MealPlanCatalogPromptContext) {
-  const mealSchemas = catalog.templateSlots.map((mealSlot) => ({
+  if (!catalog.recipeSlots || catalog.recipeSlots.some((slot) => slot.options.length === 0)) {
+    throw new Error("CULINARY_RECIPE_SLOTS_REQUIRED");
+  }
+  const mealSchemas = catalog.recipeSlots.map((mealSlot) => ({
     anyOf: mealSlot.options.map((option) => {
       const requiredComponentCount = option.components.filter((component) => component.required).length;
       const optionalComponentCount = option.components.length - requiredComponentCount;
@@ -19,12 +22,17 @@ export function buildMealPlanResponseSchema(catalog: MealPlanCatalogPromptContex
       return {
       type: "object" as const,
       additionalProperties: false,
-      required: ["role", "templateId", "variantId", "label", "components"],
+      required: ["role", "templateId", "variantId", "recipeId", "recipeVersion", "recipeFamilyId",
+        "recipeVariantId", "label", "components"],
       properties: {
         role: { type: "string" as const, const: mealSlot.role },
         templateId: { type: "string" as const, const: option.templateId },
-        variantId: { type: "string" as const, const: option.variantId },
-        label: { type: "string" as const, const: option.displayName },
+        variantId: { type: "string" as const, const: option.templateVariantId },
+        recipeId: { type: "string" as const, const: option.recipeId },
+        recipeVersion: { type: "string" as const, const: option.recipeVersion },
+        recipeFamilyId: { type: "string" as const, const: option.recipeFamilyId },
+        recipeVariantId: { type: "string" as const, const: option.recipeVariantId },
+        label: { type: "string" as const, const: option.recipeDisplayName },
         components: {
           type: "array" as const,
           minItems: requiredComponentCount,
@@ -72,21 +80,26 @@ function safeContext(context: MealPlanGenerationContext) {
 }
 
 function systemInstruction(): string {
-  return "Você escolhe somente templateId e variantId de refeições reais oferecidos pelo servidor para o MealIntent já definido no Daily Blueprint. Inclua todos os componentes required. Componentes opcionais são realmente opcionais: respeite maximumOptionalComponents do template e não inclua um opcional apenas para preencher macronutrientes. Preencha cada componentId com um catalogEntryId permitido naquele componente. Não altere MealIntent, exigência de refeição principal ou blueprint; não componha refeições do zero, não use pools globais, não crie IDs, não substitua componentes por equivalência de macronutrientes e não use um alimento em dois componentes. Ajuste somente quantityGrams dentro dos limites. A quantidade máxima de opcionais é uma regra server-side. Não calcule nutrientes nem altere ordem ou papéis. Retorne somente o JSON do schema.";
+  return "Você escolhe somente uma recipeId/recipeVersion/recipeFamilyId/recipeVariantId explicitamente oferecida pelo servidor para o RealMealTemplate e MealIntent já definidos. Inclua todos os ingredientes required da receita. Ingredientes opcionais são realmente opcionais: respeite maximumOptionalComponents e não inclua um opcional apenas para preencher macronutrientes. Use somente componentId e catalogEntryId presentes na receita escolhida. Não altere blueprint, MealIntent, papel ou template; não componha refeições do zero, não use pools globais, não crie receita, ingrediente ou ID, não substitua componentes por equivalência de macronutrientes e não use um alimento em dois componentes. Ajuste somente quantityGrams dentro dos limites oferecidos. Prefira uma receita que alcance as metas sem proporções desumanizadas entre ingredientes nem gordura culinária usada como compensador. Entre opções igualmente seguras e numericamente viáveis, prefira famílias culinárias, proteínas, frutas e fontes de carboidratos diferentes ao longo do dia; repetição continua permitida quando as opções autorizadas forem limitadas. Não calcule nutrientes. Um repair pode escolher outra receita, mas somente dentre as opções server-defined recebidas. Retorne somente o JSON do schema.";
 }
 
 function parseCandidate(content: string, catalog: MealPlanCatalogPromptContext): AiMealPlanCandidate {
   const value: unknown = JSON.parse(content);
   if (!value || typeof value !== "object" || !Array.isArray((value as { meals?: unknown }).meals)) throw new Error("INVALID_AI_MEAL_PLAN_OUTPUT");
   const meals = (value as { meals: Array<{ role: AiMealPlanCandidate["meals"][number]["role"]; templateId: string;
-    variantId: string; label: string; components: Array<{ componentId: string; catalogEntryId: string;
+    variantId: string; recipeId: string; recipeVersion: string; recipeFamilyId: string; recipeVariantId: string;
+    label: string; components: Array<{ componentId: string; catalogEntryId: string;
       quantityGrams: number; preparationNote?: string | null }> }> }).meals;
   return { meals: meals.map((meal, index) => {
-    const option = catalog.templateSlots[index]?.options.find((candidate) =>
-      candidate.templateId === meal.templateId && candidate.variantId === meal.variantId);
-    if (!option) throw new Error("INVALID_AI_MEAL_TEMPLATE_SELECTION");
+    const option = catalog.recipeSlots[index]?.options.find((candidate) =>
+      candidate.templateId === meal.templateId && candidate.templateVariantId === meal.variantId
+      && candidate.recipeId === meal.recipeId && candidate.recipeVersion === meal.recipeVersion
+      && candidate.recipeFamilyId === meal.recipeFamilyId && candidate.recipeVariantId === meal.recipeVariantId);
+    if (!option) throw new Error("INVALID_AI_RECIPE_SELECTION");
     return {
-      role: meal.role, templateId: meal.templateId, variantId: meal.variantId, label: meal.label,
+      role: meal.role, templateId: meal.templateId, variantId: meal.variantId,
+      recipeId: meal.recipeId, recipeVersion: meal.recipeVersion, recipeFamilyId: meal.recipeFamilyId,
+      recipeVariantId: meal.recipeVariantId, label: meal.label,
       items: meal.components.map((item) => {
         const component = option.components.find((candidate) => candidate.componentId === item.componentId);
         if (!component) throw new Error("INVALID_AI_MEAL_COMPONENT");

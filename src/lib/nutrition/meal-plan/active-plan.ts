@@ -16,6 +16,18 @@ export type ActiveMealPlanItem = MealPlanTotals & {
   quantityGrams: number;
   catalogSource: string;
   catalogSourceVersion: string;
+  recipeId: string | null;
+  recipeVersion: string | null;
+  recipeFamilyId: string | null;
+  recipeVariantId: string | null;
+  recipeDisplayName: string | null;
+  componentId: string | null;
+  mealDisplayType: string | null;
+  trainingRelation: string | null;
+  preparationState: string | null;
+  presentationDisplayName: string | null;
+  presentationDisplayUnit: "g" | "ml" | "count" | null;
+  presentationDisplayQuantity: number | null;
 };
 
 export type ActiveMealPlanMeal = {
@@ -93,6 +105,7 @@ type ItemRow = Record<string, unknown> & {
   fiber_g: unknown;
   catalog_source: unknown;
   catalog_source_version: unknown;
+  metadata?: unknown;
 };
 
 const EMPTY_TOTALS: MealPlanTotals = { calories: 0, proteinG: 0, carbsG: 0, fatG: 0, fiberG: 0 };
@@ -131,6 +144,16 @@ function addTotals(current: MealPlanTotals, value: MealPlanTotals): MealPlanTota
 }
 
 function parseItem(row: ItemRow): ActiveMealPlanItem & { mealId: string } {
+  const metadata = row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata)
+    ? row.metadata as Record<string, unknown> : {};
+  const optionalString = (field: string) => typeof metadata[field] === "string" && metadata[field].trim()
+    ? metadata[field] as string : null;
+  const presentationDisplayUnit = metadata.presentationDisplayUnit === "g" || metadata.presentationDisplayUnit === "ml"
+    || metadata.presentationDisplayUnit === "count"
+    ? metadata.presentationDisplayUnit : null;
+  const presentationDisplayQuantity = typeof metadata.presentationDisplayQuantity === "number"
+    && Number.isFinite(metadata.presentationDisplayQuantity) && metadata.presentationDisplayQuantity > 0
+    ? metadata.presentationDisplayQuantity : null;
   return {
     id: requiredString(row.id, "item.id"),
     mealId: requiredString(row.meal_id, "item.meal_id"),
@@ -145,6 +168,18 @@ function parseItem(row: ItemRow): ActiveMealPlanItem & { mealId: string } {
     fiberG: numberValue(row.fiber_g, "item.fiber_g"),
     catalogSource: requiredString(row.catalog_source, "item.catalog_source"),
     catalogSourceVersion: requiredString(row.catalog_source_version, "item.catalog_source_version"),
+    recipeId: optionalString("recipeId"),
+    recipeVersion: optionalString("recipeVersion"),
+    recipeFamilyId: optionalString("recipeFamilyId"),
+    recipeVariantId: optionalString("recipeVariantId"),
+    recipeDisplayName: optionalString("recipeDisplayName"),
+    componentId: optionalString("componentId"),
+    mealDisplayType: optionalString("mealDisplayType"),
+    trainingRelation: optionalString("trainingRelation"),
+    preparationState: optionalString("preparationState"),
+    presentationDisplayName: optionalString("presentationDisplayName"),
+    presentationDisplayUnit,
+    presentationDisplayQuantity,
   };
 }
 
@@ -175,6 +210,18 @@ export function buildActiveMealPlan(
           fiberG: item.fiberG,
           catalogSource: item.catalogSource,
           catalogSourceVersion: item.catalogSourceVersion,
+          recipeId: item.recipeId,
+          recipeVersion: item.recipeVersion,
+          recipeFamilyId: item.recipeFamilyId,
+          recipeVariantId: item.recipeVariantId,
+          recipeDisplayName: item.recipeDisplayName,
+          componentId: item.componentId,
+          mealDisplayType: item.mealDisplayType,
+          trainingRelation: item.trainingRelation,
+          preparationState: item.preparationState,
+          presentationDisplayName: item.presentationDisplayName,
+          presentationDisplayUnit: item.presentationDisplayUnit,
+          presentationDisplayQuantity: item.presentationDisplayQuantity,
         }));
       const totals = items.reduce<MealPlanTotals>((sum, item) => addTotals(sum, item), { ...EMPTY_TOTALS });
       return {
@@ -252,7 +299,7 @@ export async function loadActiveMealPlan(client: SupabaseClient, userId: string)
 
   const { data: items, error: itemsError } = await client
     .from("nutrition_meal_plan_items")
-    .select("id,meal_id,position,food_catalog_entry_id,food_name,quantity_grams,calories,protein_g,carbs_g,fat_g,fiber_g,catalog_source,catalog_source_version")
+    .select("id,meal_id,position,food_catalog_entry_id,food_name,quantity_grams,calories,protein_g,carbs_g,fat_g,fiber_g,catalog_source,catalog_source_version,metadata")
     .in("meal_id", mealIds)
     .order("position", { ascending: true });
   if (itemsError) throw itemsError;
@@ -271,6 +318,25 @@ const ROLE_LABELS: Readonly<Record<string, string>> = {
 
 export function formatMealRole(role: string): string {
   return ROLE_LABELS[role] ?? "Refeição";
+}
+
+const DISPLAY_TYPE_LABELS: Readonly<Record<string, string>> = {
+  BREAKFAST: "Café da manhã",
+  MORNING_SNACK: "Lanche da manhã",
+  LUNCH: "Almoço",
+  AFTERNOON_SNACK: "Café da tarde",
+  DINNER: "Jantar",
+  MEAL: "Refeição",
+};
+
+export function formatMealDisplayType(displayType: string | null | undefined, fallbackRole: string): string {
+  return displayType ? DISPLAY_TYPE_LABELS[displayType] ?? formatMealRole(fallbackRole) : formatMealRole(fallbackRole);
+}
+
+export function formatTrainingRelation(relation: string | null | undefined): string | null {
+  if (relation === "PRE_WORKOUT") return "Pré-treino";
+  if (relation === "POST_WORKOUT") return "Pós-treino";
+  return null;
 }
 
 function formatTime(value: string): string {

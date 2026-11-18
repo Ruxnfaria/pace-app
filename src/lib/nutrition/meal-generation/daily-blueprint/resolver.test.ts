@@ -36,3 +36,18 @@ test("five-meal blueprint preserves main meal and training semantics", () => {
   assert.ok(blueprint.mealIntents.some((meal) => meal.intent === "POST_WORKOUT_MAIN"));
   assert.equal(blueprint.mealIntents.at(-1)?.intent, "EVENING_SNACK");
 });
+
+test("explicit Brazilian four-meal routine keeps lunch and dinner while training stays separate", () => {
+  const context = generationContext("hypertrophy", ["BREAKFAST", "MAIN_MEAL", "SNACK", "EVENING_MEAL"]);
+  const displayTypes = ["BREAKFAST", "LUNCH", "AFTERNOON_SNACK", "DINNER"] as const;
+  const relations = [null, null, "PRE_WORKOUT", "POST_WORKOUT"] as const;
+  context.mealMacroTargets = context.mealMacroTargets.map((target, index) => ({
+    ...target, mealDisplayType: displayTypes[index], trainingRelation: relations[index],
+  }));
+  const blueprint = resolveDailyMealBlueprint(context);
+  assert.deepEqual(blueprint.mealIntents.map((meal) => meal.mealDisplayType), displayTypes);
+  assert.deepEqual(blueprint.mealIntents.map((meal) => meal.trainingRelation), relations);
+  assert.deepEqual(blueprint.mealIntents.map((meal) => meal.intent),
+    ["BREAKFAST", "MAIN_MEAL", "PRE_WORKOUT_SNACK", "EVENING_MAIN"]);
+  assert.equal(blueprint.minimumMainMeals, 2);
+});

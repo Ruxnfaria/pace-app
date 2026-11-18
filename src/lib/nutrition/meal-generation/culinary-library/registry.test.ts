@@ -4,7 +4,7 @@ import { allRealMealTemplates } from "../real-meal-templates/registry";
 import { officialTestCatalog } from "../test-helpers";
 import { auditRecipeFeasibility } from "./feasibility";
 import { CULINARY_LIBRARY_VERSION } from "./domain";
-import { buildCulinaryLibrary, PRODUCTION_LIQUID_MEASUREMENT_AUTHORITIES_V1,
+import { buildCulinaryLibrary, PRODUCTION_COUNTABLE_MEASUREMENT_AUTHORITIES_V1, PRODUCTION_LIQUID_MEASUREMENT_AUTHORITIES_V1,
   tacoContainsAuthorizedWhey } from "./registry";
 import { defaultRecipeSelection, recipeSupportsIntent, validateRecipeSelection } from "./validator";
 
@@ -13,7 +13,7 @@ test("golden registry is small, deterministic, TACO-backed, and separate from Re
   const first = buildCulinaryLibrary(catalog.entries);
   const second = buildCulinaryLibrary(catalog.entries);
   assert.equal(first.version, CULINARY_LIBRARY_VERSION);
-  assert.equal(first.recipes.length, 18);
+  assert.equal(first.recipes.length, 20);
   assert.deepEqual(first.recipes, second.recipes);
   assert.ok(first.recipes.every((recipe) => recipe.version === CULINARY_LIBRARY_VERSION
     && recipe.compatibleRealMealTemplateIds.length > 0));
@@ -26,7 +26,7 @@ test("golden registry is small, deterministic, TACO-backed, and separate from Re
 test("all active Golden Recipes are feasible and recognized with their reference portions", () => {
   const library = buildCulinaryLibrary(officialTestCatalog().entries);
   const reports = library.recipes.map((recipe) => auditRecipeFeasibility(library, recipe));
-  assert.equal(reports.filter((report) => report.status === "FEASIBLE").length, 17);
+  assert.equal(reports.filter((report) => report.status === "FEASIBLE").length, 19);
   assert.equal(reports.filter((report) => report.status === "BLOCKED_MISSING_AUTHORITY").length, 1);
   for (const recipe of library.recipes.filter((value) => value.status === "ACTIVE")) {
     const selection = defaultRecipeSelection(library, recipe.id);
@@ -90,6 +90,14 @@ test("reference portions are distinct from solver bounds", () => {
 
 test("production liquid ml registry remains empty until conversion authority exists", () => {
   assert.equal(PRODUCTION_LIQUID_MEASUREMENT_AUTHORITIES_V1.length, 0);
+  assert.equal(PRODUCTION_COUNTABLE_MEASUREMENT_AUTHORITIES_V1.length, 0);
+});
+
+test("official TACO fixture authorizes neither household units nor mozzarella substitution", () => {
+  const catalog = officialTestCatalog();
+  assert.ok(catalog.entries.every((entry) => entry.ediblePortion === null && entry.densityGPerMl === null));
+  assert.equal(catalog.entries.some((entry) => /muçarela|mussarela|mozarela/iu.test(entry.canonicalName)), false);
+  assert.equal(PRODUCTION_COUNTABLE_MEASUREMENT_AUTHORITIES_V1.length, 0);
 });
 
 test("blocked shake keeps its four culinary components", () => {

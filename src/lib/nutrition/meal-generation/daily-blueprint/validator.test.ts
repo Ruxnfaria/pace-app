@@ -48,3 +48,21 @@ test("breakfast, pre-workout snack, post-workout main and evening snack form a v
   assert.ok(report.stapleFamilyCount >= 2);
   assert.ok(report.proteinFamilyCount >= 2);
 });
+
+test("Brazilian four-meal routine requires both lunch and dinner independently of training relation", () => {
+  const value = generationContext("hypertrophy", ["BREAKFAST", "MAIN_MEAL", "SNACK", "EVENING_MEAL"]);
+  const displayTypes = ["BREAKFAST", "LUNCH", "AFTERNOON_SNACK", "DINNER"] as const;
+  const relations = [null, null, "PRE_WORKOUT", "POST_WORKOUT"] as const;
+  value.mealMacroTargets = value.mealMacroTargets.map((target, index) => ({
+    ...target, mealDisplayType: displayTypes[index], trainingRelation: relations[index],
+  }));
+  const candidate: AiMealPlanCandidate = { meals: [
+    meal("BREAKFAST", "BREAKFAST_BREAD_EGGS_COFFEE_FRUIT", "BREAD_EGGS_FRENCH_BANANA"),
+    meal("MAIN_MEAL", "MAIN_RICE_BEANS_CHICKEN_VEGETABLES", "WHITE_CARIOCA_CHICKEN_BROCCOLI"),
+    meal("SNACK", "BREAKFAST_YOGURT_OATS_FRUIT", "YOGURT_OATS_BANANA"),
+    meal("EVENING_MEAL", "MAIN_RICE_BEANS_BEEF_VEGETABLES", "WHITE_CARIOCA_BEEF_CARROT"),
+  ] };
+  const report = validateDailyMealBlueprint(value, candidate);
+  assert.equal(report.valid, true, JSON.stringify(report.issues));
+  assert.equal(report.mainMealCount, 2);
+});

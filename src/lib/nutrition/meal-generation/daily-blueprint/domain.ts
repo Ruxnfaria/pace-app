@@ -1,4 +1,4 @@
-import type { MealRole, TrainingPeriod } from "../../meal-plan/domain";
+import type { MealDisplayType, MealRole, TrainingPeriod, TrainingRelation } from "../../meal-plan/domain";
 
 export const DAILY_MEAL_BLUEPRINT_VERSION = "praxe-daily-meal-blueprint-v1" as const;
 
@@ -15,6 +15,8 @@ export interface DailyMealIntent {
   position: number;
   role: MealRole;
   intent: MealIntent;
+  mealDisplayType: MealDisplayType;
+  trainingRelation: TrainingRelation;
   rationale: string[];
 }
 

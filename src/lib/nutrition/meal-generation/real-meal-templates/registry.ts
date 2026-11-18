@@ -88,6 +88,7 @@ const cassava = component({ id: "CASSAVA", slot: "CARB_ANCHOR", required: true, 
 
 const breadFruitVariants = (prefix: string, proteinId: string, proteinLabel: string, proteinFoods: string[]) => [
   variant(`${prefix}_FRENCH_BANANA`, `Pão francês, ${proteinLabel} e banana`, { BREAD: ["53"], [proteinId]: proteinFoods, FRUIT: ["182"] }, "SCALABLE"),
+  variant(`${prefix}_FRENCH_APPLE`, `Pão francês, ${proteinLabel} e maçã`, { BREAD: ["53"], [proteinId]: proteinFoods, FRUIT: ["221"] }, "SCALABLE"),
   variant(`${prefix}_WHOLE_BANANA`, `Pão integral, ${proteinLabel} e banana`, { BREAD: ["52"], [proteinId]: proteinFoods, FRUIT: ["182"] }, "STANDARD"),
   variant(`${prefix}_FRENCH_PAPAYA`, `Pão francês, ${proteinLabel} e mamão`, { BREAD: ["53"], [proteinId]: proteinFoods, FRUIT: ["225", "226"] }, "SCALABLE"),
   variant(`${prefix}_WHOLE_APPLE`, `Pão integral, ${proteinLabel} e maçã`, { BREAD: ["52"], [proteinId]: proteinFoods, FRUIT: ["221"] }, "LIGHT"),
@@ -104,6 +105,11 @@ export const REAL_MEAL_TEMPLATES_V1: readonly RealMealTemplate[] = [
       variant("CUSCUZ_EGGS_BANANA", "Cuscuz com ovos e banana", { CUSCUZ: ["533"], EGGS: ["488"], FRUIT: ["182"] }, "STANDARD"),
       variant("CUSCUZ_EGGS_PAPAYA", "Cuscuz com ovos e mamão", { CUSCUZ: ["533"], EGGS: ["488"], FRUIT: ["225", "226"] }, "STANDARD"),
     ], preparationDescription: "Servir cuscuz e ovos juntos, com fruta separada." }),
+  template({ id: "BREAKFAST_CUSCUZ_EGGS", displayName: "Cuscuz com ovos", mealType: "BREAKFAST",
+    mealRoles: ["BREAKFAST", "PRE_WORKOUT", "EVENING_MEAL"],
+    components: [{ ...bread, id: "CUSCUZ", presentationGroup: "CUSCUZ_WITH_EGGS" }, eggs],
+    variants: [variant("CUSCUZ_EGGS", "Cuscuz com ovos", { CUSCUZ: ["533"], EGGS: ["488"] }, "STANDARD")],
+    preparationDescription: "Servir o cuscuz cozido com ovos; fruta não faz parte desta receita." }),
   template({ id: "BREAKFAST_YOGURT_OATS_FRUIT", displayName: "Iogurte com aveia e fruta", mealType: "BREAKFAST",
     mealRoles: ["BREAKFAST", "SNACK"], components: [yogurt, oats, fruit], variants: [
       variant("YOGURT_OATS_BANANA", "Iogurte natural com aveia e banana", { YOGURT: ["448"], OATS: ["7"], FRUIT: ["182"] }),
@@ -140,6 +146,11 @@ export const REAL_MEAL_TEMPLATES_V1: readonly RealMealTemplate[] = [
       variant("PRE_FRENCH_BREAD_CHICKEN_BANANA", "Pão francês com frango e banana", { BREAD: ["53"], PROTEIN: ["410"], FRUIT: ["182"] }, "SCALABLE"),
       variant("PRE_WHOLE_BREAD_CHICKEN_PAPAYA", "Pão integral com frango e mamão", { BREAD: ["52"], PROTEIN: ["410"], FRUIT: ["225", "226"] }),
     ], preparationDescription: "Servir o frango no pão, acompanhado de fruta." }),
+  template({ id: "PRE_BREAD_CHICKEN_SANDWICH", displayName: "Sanduíche de frango", mealType: "PRE_WORKOUT_SNACK",
+    mealRoles: ["SNACK", "PRE_WORKOUT", "POST_WORKOUT", "EVENING_MEAL"], components: [bread, protein, spread],
+    variants: [variant("FRENCH_BREAD_CHICKEN_SPREAD", "Pão francês com frango e requeijão",
+      { BREAD: ["53"], PROTEIN: ["410"], SPREAD: ["468"] }, "SCALABLE")],
+    preparationDescription: "Servir o frango grelhado no pão; requeijão é opcional e restrito à receita." }),
   template({ id: "PRE_YOGURT_OATS_BANANA", displayName: "Iogurte com aveia e banana", mealType: "PRE_WORKOUT_SNACK",
     mealRoles: ["PRE_WORKOUT"], components: [yogurt, oats, fruit], variants: [
       variant("PRE_YOGURT_BANANA", "Iogurte natural com aveia e banana", { YOGURT: ["448"], OATS: ["7"], FRUIT: ["182"] }),
@@ -157,6 +168,7 @@ export const REAL_MEAL_TEMPLATES_V1: readonly RealMealTemplate[] = [
   template({ id: "MAIN_RICE_BEANS_CHICKEN_VEGETABLES", displayName: "Arroz, feijão, frango e legumes", mealType: "MAIN_MEAL",
     mealRoles: ["MAIN_MEAL", "POST_WORKOUT", "EVENING_MEAL"], components: [rice, beans, protein, vegetables, addedFat, avocadoSide], variants: [
       variant("WHITE_CARIOCA_CHICKEN_BROCCOLI", "Arroz, feijão carioca, frango e brócolis", { RICE: ["3"], BEANS: ["561"], PROTEIN: ["410"], VEGETABLES: ["100"], COOKING_FAT: ["260"] }, "SCALABLE"),
+      variant("WHITE_CARIOCA_CHICKEN_CARROT", "Arroz, feijão carioca, frango e cenoura", { RICE: ["3"], BEANS: ["561"], PROTEIN: ["410"], VEGETABLES: ["109"], COOKING_FAT: ["260"] }, "SCALABLE"),
       variant("WHITE_BLACK_CHICKEN_CARROT", "Arroz, feijão preto, frango e cenoura", { RICE: ["3"], BEANS: ["567"], PROTEIN: ["410"], VEGETABLES: ["109"], COOKING_FAT: ["260"] }, "SCALABLE"),
       variant("BROWN_CARIOCA_CHICKEN_ZUCCHINI", "Arroz integral, feijão carioca, frango e abobrinha", { RICE: ["1"], BEANS: ["561"], PROTEIN: ["410"], VEGETABLES: ["70"], COOKING_FAT: ["260"] }),
       variant("BROWN_BLACK_CHICKEN_BROCCOLI", "Arroz integral, feijão preto, frango e brócolis", { RICE: ["1"], BEANS: ["567"], PROTEIN: ["410"], VEGETABLES: ["100"], COOKING_FAT: ["260"] }),
@@ -164,15 +176,22 @@ export const REAL_MEAL_TEMPLATES_V1: readonly RealMealTemplate[] = [
   template({ id: "POST_RICE_CHICKEN_VEGETABLES", displayName: "Arroz, frango e legumes", mealType: "POST_WORKOUT_MEAL",
     mealRoles: ["POST_WORKOUT"], components: [rice, protein, vegetables, addedFat, avocadoSide], variants: [
       variant("POST_WHITE_RICE_CHICKEN_BROCCOLI", "Arroz, frango e brócolis", { RICE: ["3"], PROTEIN: ["410"], VEGETABLES: ["100"], COOKING_FAT: ["260"] }, "SCALABLE"),
+      variant("POST_WHITE_RICE_CHICKEN_CARROT", "Arroz, frango e cenoura", { RICE: ["3"], PROTEIN: ["410"], VEGETABLES: ["109"], COOKING_FAT: ["260"] }, "SCALABLE"),
       variant("POST_BROWN_RICE_CHICKEN_CARROT", "Arroz integral, frango e cenoura", { RICE: ["1"], PROTEIN: ["410"], VEGETABLES: ["109"], COOKING_FAT: ["260"] }),
     ], preparationDescription: "Servir arroz, frango e legumes como refeição pós-treino." }),
   template({ id: "MAIN_RICE_BEANS_BEEF_VEGETABLES", displayName: "Arroz, feijão, carne e legumes", mealType: "MAIN_MEAL",
     mealRoles: ["MAIN_MEAL", "POST_WORKOUT", "EVENING_MEAL"], components: [rice, beans, protein, vegetables, addedFat, avocadoSide], variants: [
       variant("WHITE_CARIOCA_BEEF_BROCCOLI", "Arroz, feijão carioca, patinho e brócolis", { RICE: ["3"], BEANS: ["561"], PROTEIN: ["377"], VEGETABLES: ["100"], COOKING_FAT: ["260"] }, "SCALABLE"),
+      variant("WHITE_CARIOCA_BEEF_CARROT", "Arroz, feijão carioca, patinho e cenoura", { RICE: ["3"], BEANS: ["561"], PROTEIN: ["377"], VEGETABLES: ["109"], COOKING_FAT: ["260"] }, "SCALABLE"),
       variant("WHITE_BLACK_BEEF_CARROT", "Arroz, feijão preto, patinho e cenoura", { RICE: ["3"], BEANS: ["567"], PROTEIN: ["377"], VEGETABLES: ["109"], COOKING_FAT: ["260"] }, "SCALABLE"),
       variant("BROWN_CARIOCA_BEEF_ZUCCHINI", "Arroz integral, feijão carioca, patinho e abobrinha", { RICE: ["1"], BEANS: ["561"], PROTEIN: ["377"], VEGETABLES: ["70"], COOKING_FAT: ["260"] }),
       variant("BROWN_BLACK_BEEF_BROCCOLI", "Arroz integral, feijão preto, patinho e brócolis", { RICE: ["1"], BEANS: ["567"], PROTEIN: ["377"], VEGETABLES: ["100"], COOKING_FAT: ["260"] }),
     ], preparationDescription: "Montar prato com arroz, feijão, carne bovina magra e legume." }),
+  template({ id: "MAIN_RICE_BEEF_VEGETABLES", displayName: "Arroz, carne e legumes", mealType: "MAIN_MEAL",
+    mealRoles: ["MAIN_MEAL", "POST_WORKOUT", "EVENING_MEAL"], components: [rice, protein, vegetables, addedFat, avocadoSide],
+    variants: [variant("WHITE_RICE_BEEF_BROCCOLI", "Arroz branco, patinho e brócolis",
+      { RICE: ["3"], PROTEIN: ["377"], VEGETABLES: ["100"], COOKING_FAT: ["260"] }, "SCALABLE")],
+    preparationDescription: "Servir arroz branco, patinho grelhado e brócolis; azeite apenas no preparo." }),
   template({ id: "MAIN_RICE_BEANS_FISH_VEGETABLES", displayName: "Arroz, feijão, peixe e legumes", mealType: "MAIN_MEAL",
     mealRoles: ["MAIN_MEAL", "POST_WORKOUT", "EVENING_MEAL"], components: [rice, beans, protein, vegetables, addedFat, avocadoSide], variants: [
       variant("RICE_BEANS_CORIMBATA_BROCCOLI", "Arroz, feijão, corimbatá e brócolis", { RICE: ["3"], BEANS: ["561"], PROTEIN: ["289", "290"], VEGETABLES: ["100"], COOKING_FAT: ["260"] }),

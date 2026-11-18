@@ -64,6 +64,10 @@ export interface AiMealCandidate {
   role: MealRole;
   templateId: string;
   variantId: string;
+  recipeId?: string;
+  recipeVersion?: string;
+  recipeFamilyId?: string;
+  recipeVariantId?: string;
   label: string;
   items: AiMealPlanItemCandidate[];
 }
@@ -88,6 +92,7 @@ export interface MealPlanCatalogPromptContext {
   candidates: MealPlanCatalogCandidate[];
   dailyBlueprint: import("./daily-blueprint/domain").DailyMealBlueprint;
   templateSlots: import("./real-meal-templates/domain").RealMealTemplateSlot[];
+  recipeSlots: import("./culinary-library/integration").CulinaryRecipeSlot[];
   mealSlots: MealPlanMealSlotPrescription[];
 }
 
@@ -134,6 +139,9 @@ export interface ResolvedMealPlanItem {
   quantityUnit: FoodQuantityUnit;
   quantityGrams: number;
   preparationNote: string | null;
+  preparationState?: import("./culinary-library/domain").RecipePreparationState;
+  presentationDisplayName?: string;
+  presentationDisplayUnit?: import("./culinary-library/domain").RecipeDisplayUnit;
   resolution: "CATALOG_ENTRY_ID";
   nutrients: { calories: number; proteinG: number; carbsG: number; fatG: number; fiberG: number };
 }
@@ -143,6 +151,11 @@ export interface ResolvedMeal {
   role: MealRole;
   templateId: string;
   variantId: string;
+  recipeId?: string;
+  recipeVersion?: string;
+  recipeFamilyId?: string;
+  recipeVariantId?: string;
+  recipeDisplayName?: string;
   label: string;
   window: MealWindow;
   target: MealMacroTarget;
@@ -180,6 +193,9 @@ export const MEAL_PLAN_VALIDATION_CODES = [
   "FOOD_ALLOWED_FOR_COMPONENT", "PAIRING_VALID", "OPTIONAL_COMPONENT_ALLOWED", "MAX_OPTIONAL_COMPONENTS",
   "TEMPLATE_ROLE_MATCH", "TEMPLATE_GOAL_COMPATIBLE", "TEMPLATE_TIMING_COMPATIBLE",
   "COMPONENT_PORTION_RANGE",
+  "VALID_RECIPE_ID", "RECIPE_CONTEXT_MATCH", "RECIPE_INGREDIENT_AUTHORIZED",
+  "RECIPE_PORTION_RANGE", "RECIPE_PREPARATION_STATE",
+  "HUMAN_PORTION_BALANCE",
   "DAILY_MAIN_MEAL_MISSING", "TOO_MANY_SNACK_STYLE_MEALS", "MEAL_INTENT_TEMPLATE_MISMATCH",
   "EXCESSIVE_TEMPLATE_FAMILY_REPETITION", "LOW_STAPLE_DIVERSITY", "POST_WORKOUT_MAIN_EXPECTED",
   "EVENING_SNACK_EXPECTED", "MAIN_MEAL_DISTRIBUTION_INVALID",

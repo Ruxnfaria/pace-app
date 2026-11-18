@@ -5,20 +5,13 @@ import {
   type AuthoritativeNutritionTarget,
   type MealMacroTarget,
   type MealPlanContext,
+  type TrainingRelation,
   type MealRole,
   type MealWindow,
   type NutritionGoalStrategy,
   type RecommendedMealStructure,
 } from "./domain";
-
-const ROLE_LABELS: Record<MealRole, string> = {
-  BREAKFAST: "Primeira refeição",
-  MAIN_MEAL: "Refeição principal",
-  PRE_WORKOUT: "Pré-treino",
-  POST_WORKOUT: "Pós-treino",
-  SNACK: "Refeição prática",
-  EVENING_MEAL: "Última refeição",
-};
+import { mealDisplayTypesForCount } from "./routine";
 
 function validateTarget(target: AuthoritativeNutritionTarget): void {
   if (target.status === "requires_review") {
@@ -67,8 +60,9 @@ function trainingMinute(context: MealPlanContext, wake: number, duration: number
   return wake + duration * fractions[context.preferredTrainingPeriod];
 }
 
-function assignTrainingRoles(roles: MealRole[], centers: number[], training: number | null): MealRole[] {
-  if (training === null || centers.length < 2) return roles;
+function assignTrainingRelations(centers: number[], training: number | null): TrainingRelation[] {
+  const relations: TrainingRelation[] = centers.map(() => null);
+  if (training === null || centers.length < 2) return relations;
   let pre = 0;
   let post = centers.length - 1;
   for (let index = 0; index < centers.length; index += 1) {
@@ -80,10 +74,9 @@ function assignTrainingRoles(roles: MealRole[], centers: number[], training: num
   }
   if (pre === post) post = Math.min(pre + 1, centers.length - 1);
   if (pre === post) pre = Math.max(0, post - 1);
-  const result = [...roles];
-  result[pre] = "PRE_WORKOUT";
-  result[post] = "POST_WORKOUT";
-  return result;
+  relations[pre] = "PRE_WORKOUT";
+  relations[post] = "POST_WORKOUT";
+  return relations;
 }
 
 function makeWindows(context: MealPlanContext, count: number): { windows: MealWindow[]; centers: number[] } {
@@ -120,15 +113,18 @@ function allocateExact(total: number, weights: number[]): number[] {
   return units.map((value) => value / 10);
 }
 
-function roleWeights(roles: MealRole[], strategy: NutritionGoalStrategy) {
-  const protein = roles.map((role) => role === "POST_WORKOUT" ? 1.08 : role === "PRE_WORKOUT" ? 0.96 : 1);
-  const carbs = roles.map((role) => {
-    if (role === "PRE_WORKOUT") return strategy.goal === "conditioning" ? 1.45 : strategy.goal === "hypertrophy" ? 1.35 : 1.15;
-    if (role === "POST_WORKOUT") return strategy.goal === "conditioning" ? 1.55 : strategy.goal === "hypertrophy" ? 1.45 : 1.2;
+function roleWeights(roles: MealRole[], relations: TrainingRelation[], strategy: NutritionGoalStrategy) {
+  const protein = roles.map((_, index) => relations[index] === "POST_WORKOUT" ? 1.08
+    : relations[index] === "PRE_WORKOUT" ? 0.96 : 1);
+  const carbs = roles.map((_, index) => {
+    if (relations[index] === "PRE_WORKOUT") return strategy.goal === "conditioning" ? 1.45 : strategy.goal === "hypertrophy" ? 1.35 : 1.15;
+    if (relations[index] === "POST_WORKOUT") return strategy.goal === "conditioning" ? 1.55 : strategy.goal === "hypertrophy" ? 1.45 : 1.2;
     return 1;
   });
-  const fat = roles.map((role) => role === "PRE_WORKOUT" ? 0.65 : role === "POST_WORKOUT" ? 0.82 : 1.08);
-  const fiber = roles.map((role) => role === "PRE_WORKOUT" ? 0.5 : role === "POST_WORKOUT" ? 0.82 : strategy.goal === "fat_loss" ? 1.12 : 1);
+  const fat = roles.map((_, index) => relations[index] === "PRE_WORKOUT" ? 0.65
+    : relations[index] === "POST_WORKOUT" ? 0.82 : 1.08);
+  const fiber = roles.map((_, index) => relations[index] === "PRE_WORKOUT" ? 0.5
+    : relations[index] === "POST_WORKOUT" ? 0.82 : strategy.goal === "fat_loss" ? 1.12 : 1);
   const calories = roles.map((_, index) => protein[index] * 0.25 + carbs[index] * 0.45 + fat[index] * 0.3);
   return { calories, protein, carbs, fat, fiber };
 }
@@ -151,8 +147,10 @@ export function resolveRecommendedMealStructure(
   const { windows, centers } = makeWindows(context, count);
   const awake = normalizeAwakeWindow(context.wakeTime, context.sleepTime);
   const training = trainingMinute(context, awake.wakeMinute, awake.durationMinutes);
-  const roles = assignTrainingRoles(baseRoles(count), centers, training);
-  const weights = roleWeights(roles, strategy);
+  const roles = baseRoles(count);
+  const mealDisplayTypes = mealDisplayTypesForCount(count);
+  const trainingRelations = assignTrainingRelations(centers, training);
+  const weights = roleWeights(roles, trainingRelations, strategy);
   const calories = allocateExact(target.calories, weights.calories);
   const protein = allocateExact(target.proteinG, weights.protein);
   const carbs = allocateExact(target.carbsG, weights.carbs);
@@ -166,12 +164,14 @@ export function resolveRecommendedMealStructure(
     carbsG: carbs[index],
     fatG: fat[index],
     fiberG: fiber[index],
+    mealDisplayType: mealDisplayTypes[index],
+    trainingRelation: trainingRelations[index],
   }));
   const rationale = [
     `${count} eating occasions fit the declared meal-break availability and target distribution demand.`,
     context.preferredTrainingPeriod === "variable"
       ? "Variable training timing keeps meal roles flexible instead of inventing fixed pre/post-workout times."
-      : `${ROLE_LABELS.PRE_WORKOUT} and ${ROLE_LABELS.POST_WORKOUT} are placed around the declared training period.`,
+      : "Training relation is attached to recognizable meals without replacing their display identity.",
     "Every macro uses controlled 0.1-unit rounding and reconciles to the authoritative target.",
   ];
   return {
@@ -180,6 +180,8 @@ export function resolveRecommendedMealStructure(
     recommendedMealsPerDay: count,
     mealWindows: windows,
     mealRoles: roles,
+    mealDisplayTypes,
+    trainingRelations,
     macroDistribution,
     reconciliation: {
       caloriesDelta: delta(target.calories, calories),

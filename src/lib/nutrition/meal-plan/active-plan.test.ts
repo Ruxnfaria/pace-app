@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { buildActiveMealPlan, formatMealRole, formatMealWindow, loadActiveMealPlan } from "./active-plan.ts";
+import { buildActiveMealPlan, formatMealDisplayType, formatMealRole, formatMealWindow,
+  formatTrainingRelation, loadActiveMealPlan } from "./active-plan.ts";
 
 const planRow = {
   id: "plan-1",
@@ -48,6 +49,20 @@ function itemRow(mealId: string, position: number, overrides: Record<string, unk
     fiber_g: 2,
     catalog_source: "TACO",
     catalog_source_version: "taco-4ed-ampliada-2011",
+    metadata: {
+      recipeId: "RICE_BEANS_CHICKEN_BROCCOLI",
+      recipeVersion: "praxe-culinary-library-v1",
+      recipeFamilyId: "RICE_BEANS_PROTEIN_VEGETABLES",
+      recipeVariantId: "RICE_BEANS_CHICKEN_BROCCOLI_V1",
+      recipeDisplayName: "Arroz, feijão, frango e brócolis",
+      preparationState: "COOKED",
+      presentationDisplayName: "Arroz branco cozido",
+      presentationDisplayUnit: "g",
+      presentationDisplayQuantity: null,
+      componentId: "RICE",
+      mealDisplayType: "LUNCH",
+      trainingRelation: "POST_WORKOUT",
+    },
     ...overrides,
   };
 }
@@ -80,6 +95,12 @@ test("read model orders meals/items and calculates actual meal and daily totals 
   assert.deepEqual(plan.actualTotals, { calories: 1600, proteinG: 160, carbsG: 320, fatG: 80, fiberG: 32 });
   assert.equal(plan.meals[0].targetCalories, 625);
   assert.notEqual(plan.meals[0].actualCalories, plan.meals[0].targetCalories);
+  assert.equal(plan.meals[0].items[0].recipeVersion, "praxe-culinary-library-v1");
+  assert.equal(plan.meals[0].items[0].presentationDisplayName, "Arroz branco cozido");
+  assert.equal(plan.meals[0].items[0].presentationDisplayUnit, "g");
+  assert.equal(plan.meals[0].items[0].componentId, "RICE");
+  assert.equal(plan.meals[0].items[0].mealDisplayType, "LUNCH");
+  assert.equal(plan.meals[0].items[0].trainingRelation, "POST_WORKOUT");
 });
 
 test("role formatter translates known roles and fails safe for a future role", () => {
@@ -88,6 +109,12 @@ test("role formatter translates known roles and fails safe for a future role", (
   assert.equal(formatMealRole("POST_WORKOUT"), "Pós-treino");
   assert.equal(formatMealRole("EVENING_MEAL"), "Refeição noturna");
   assert.equal(formatMealRole("FUTURE_ROLE"), "Refeição");
+});
+
+test("display type and training relation are formatted independently", () => {
+  assert.equal(formatMealDisplayType("AFTERNOON_SNACK", "SNACK"), "Café da tarde");
+  assert.equal(formatTrainingRelation("PRE_WORKOUT"), "Pré-treino");
+  assert.equal(formatTrainingRelation(null), null);
 });
 
 test("cross-midnight formatter preserves the next-day meaning", () => {

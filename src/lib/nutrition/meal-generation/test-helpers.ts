@@ -125,17 +125,26 @@ export function balancedCandidate(roles: MealPlanGenerationContext["mealRoles"])
       { componentId: "COOKING_FAT", catalogEntryId: id("Azeite, de oliva, extra virgem"), slot: "FAT_ANCHOR" as const, quantityGrams: 10, preparationNote: "usar no preparo" },
     ];
   };
+  const recipeIdentity = (recipeId: string, familyId: string) => ({
+    recipeId,
+    recipeVersion: "praxe-culinary-library-v1",
+    recipeFamilyId: familyId,
+    recipeVariantId: `${recipeId}_V1`,
+  });
   return { meals: roles.map((role) => {
     if (role === "BREAKFAST" || role === "SNACK") return { role, templateId: "BREAKFAST_BREAD_EGGS_COFFEE_FRUIT",
-      variantId: "BREAD_EGGS_FRENCH_BANANA", label: "Pão francês, ovos e banana", items: itemsFor(role) };
+      variantId: "BREAD_EGGS_FRENCH_BANANA", label: "Pão francês, ovos cozidos e banana",
+      ...recipeIdentity("FRENCH_BREAD_BOILED_EGGS_BANANA", "BREAD_EGGS_FRUIT"), items: itemsFor(role) };
     if (role === "PRE_WORKOUT") return { role, templateId: "PRE_BREAD_CHICKEN_FRUIT",
       variantId: "PRE_FRENCH_BREAD_CHICKEN_BANANA", label: "Pão francês com frango e banana", items: itemsFor(role) };
     if (role === "EVENING_MEAL" && roles.length > 3) return { role, templateId: "EVENING_BREAD_EGGS_FRUIT",
       variantId: "EVENING_WHOLE_BREAD_EGGS", label: "Pão integral com ovos e mamão", items: itemsFor(role) };
     if (role === "POST_WORKOUT") return { role, templateId: "POST_RICE_CHICKEN_VEGETABLES",
-      variantId: "POST_WHITE_RICE_CHICKEN_BROCCOLI", label: "Arroz, frango e brócolis", items: itemsFor(role) };
+      variantId: "POST_WHITE_RICE_CHICKEN_BROCCOLI", label: "Arroz, frango e brócolis",
+      ...recipeIdentity("RICE_CHICKEN_BROCCOLI", "RICE_CHICKEN_VEGETABLES"), items: itemsFor(role) };
     return { role, templateId: "MAIN_RICE_BEANS_CHICKEN_VEGETABLES",
-      variantId: "WHITE_CARIOCA_CHICKEN_BROCCOLI", label: "Arroz, feijão carioca, frango e brócolis", items: itemsFor(role) };
+      variantId: "WHITE_CARIOCA_CHICKEN_BROCCOLI", label: "Arroz, feijão, frango e brócolis",
+      ...recipeIdentity("RICE_BEANS_CHICKEN_BROCCOLI", "RICE_BEANS_PROTEIN_VEGETABLES"), items: itemsFor(role) };
   }) };
 }
 

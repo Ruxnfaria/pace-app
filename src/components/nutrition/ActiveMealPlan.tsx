@@ -1,6 +1,8 @@
 import { Apple, CalendarDays } from "lucide-react";
 
-import { formatMealRole, formatMealWindow, type ActiveMealPlan as ActiveMealPlanModel } from "@/lib/nutrition/meal-plan/active-plan";
+import { formatMealDisplayType, formatMealWindow, formatTrainingRelation,
+  type ActiveMealPlan as ActiveMealPlanModel } from "@/lib/nutrition/meal-plan/active-plan";
+import { buildNaturalRecipeLines } from "@/lib/nutrition/meal-generation/culinary-library/natural-language";
 
 function formatNumber(value: number, maximumFractionDigits = 1): string {
   return new Intl.NumberFormat("pt-BR", { maximumFractionDigits }).format(value);
@@ -37,11 +39,24 @@ export default function ActiveMealPlan({ plan }: { plan: ActiveMealPlanModel }) 
         <p className="mt-4 text-[8.5px] leading-4 text-zinc-700">Valores do plano gerado. O consumo diário é registrado separadamente.</p>
       </div>
 
-      {plan.meals.map((meal) => (
+      {plan.meals.map((meal) => {
+        const mealDisplayType = meal.items.find((item) => item.mealDisplayType)?.mealDisplayType;
+        const trainingRelation = formatTrainingRelation(meal.items.find((item) => item.trainingRelation)?.trainingRelation);
+        const presentationLines = buildNaturalRecipeLines(meal.items.map((item) => ({
+          componentId: item.componentId ?? `ITEM_${item.position}`,
+          displayName: item.presentationDisplayName ?? item.foodName,
+          nutritionQuantityGrams: item.quantityGrams,
+          displayQuantity: item.presentationDisplayQuantity ?? item.quantityGrams,
+          displayUnit: item.presentationDisplayQuantity === null ? "g" : item.presentationDisplayUnit ?? "g",
+          preparationState: "NOT_APPLICABLE",
+          presentationOrder: item.position,
+        })));
+        return (
         <article key={meal.id} className="rounded-[22px] border border-white/[0.055] bg-white/[0.018] p-4">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h3 className="text-[13px] font-semibold tracking-[-.015em] text-zinc-100">{formatMealRole(meal.role)}</h3>
+              <h3 className="text-[13px] font-semibold tracking-[-.015em] text-zinc-100">{formatMealDisplayType(mealDisplayType, meal.role)}</h3>
+              {trainingRelation ? <p className="mt-0.5 text-[8px] font-semibold uppercase tracking-[.12em] text-orange-400/70">{trainingRelation}</p> : null}
               <p className="mt-1 flex items-center gap-1.5 text-[9px] text-zinc-600">
                 <CalendarDays className="h-3 w-3 text-zinc-700" />
                 {formatMealWindow(meal.windowStart, meal.windowEnd, meal.windowStartDayOffset, meal.windowEndDayOffset)}
@@ -53,15 +68,15 @@ export default function ActiveMealPlan({ plan }: { plan: ActiveMealPlanModel }) 
             </p>
           </div>
           <ul className="mt-3 divide-y divide-white/[0.045] border-t border-white/[0.05]">
-            {meal.items.map((item) => (
-              <li key={item.id} className="flex items-center justify-between gap-4 py-2.5 text-[10px]">
-                <span className="min-w-0 truncate text-zinc-400">{item.foodName}</span>
-                <span className="shrink-0 tabular-nums text-zinc-600">{formatNumber(item.quantityGrams)} g</span>
+            {presentationLines.map((line) => (
+              <li key={line.componentIds.join("+")} className="py-2.5 text-[10px]">
+                <span className="text-zinc-400">{line.text}</span>
               </li>
             ))}
           </ul>
         </article>
-      ))}
+        );
+      })}
     </div>
   );
 }

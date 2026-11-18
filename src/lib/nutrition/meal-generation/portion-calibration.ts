@@ -16,6 +16,9 @@ import type {
 } from "./domain";
 import { MEAL_VALIDATION_POLICY as POLICY } from "./policy";
 import { realMealTemplateById } from "./real-meal-templates/registry";
+import { findCulinaryRecipeOption, type CulinaryRecipeSlot } from "./culinary-library/integration";
+import { assessHumanPortionBalance } from "./culinary-library/human-portion-balance";
+import type { CountableMeasurementAuthority } from "./culinary-library/domain";
 
 export const MAX_CALIBRATION_ITERATIONS = 12;
 export const MIN_PORTION_GRAMS = 10;
@@ -46,10 +49,25 @@ interface AdjustableItem {
   maximumGrams: number;
   minimumGrams: number;
   incrementGrams: number;
+  discreteGramsPerCount: number | null;
   portionProfile: FoodPortionProfile;
   food: NutritionFoodCatalogEntry;
   perGram: Totals;
   pool: MealPlanFoodPool;
+}
+
+function snapItemQuantity(item: Pick<AdjustableItem,
+  "minimumGrams" | "maximumGrams" | "incrementGrams" | "discreteGramsPerCount">, value: number): number {
+  if (item.discreteGramsPerCount === null) {
+    return snapToRangeIncrement(value, item.minimumGrams, item.maximumGrams, item.incrementGrams);
+  }
+  const minimumCount = Math.ceil(item.minimumGrams / item.discreteGramsPerCount);
+  const maximumCount = Math.floor(item.maximumGrams / item.discreteGramsPerCount);
+  if (minimumCount > maximumCount) {
+    return snapToRangeIncrement(value, item.minimumGrams, item.maximumGrams, item.incrementGrams);
+  }
+  const count = Math.max(minimumCount, Math.min(maximumCount, Math.round(value / item.discreteGramsPerCount)));
+  return round(count * item.discreteGramsPerCount);
 }
 
 const NUTRIENT_KEYS: NutrientKey[] = ["calories", "proteinG", "carbsG", "fatG", "fiberG"];
@@ -80,6 +98,23 @@ function templateComponentRange(candidate: AiMealPlanCandidate, mealIndex: numbe
   const item = meal.items[itemIndex];
   const component = realMealTemplateById(meal.templateId)?.components.find((value) => value.id === item.componentId);
   return component ? { minimum: component.minimumGrams, maximum: component.maximumGrams } : null;
+}
+
+function recipeComponentRange(candidate: AiMealPlanCandidate, mealIndex: number, itemIndex: number,
+  recipeSlots?: CulinaryRecipeSlot[]) {
+  if (!recipeSlots) return null;
+  const meal = candidate.meals[mealIndex];
+  const item = meal.items[itemIndex];
+  const component = findCulinaryRecipeOption(recipeSlots, mealIndex, meal)?.components
+    .find((value) => value.componentId === item.componentId && value.catalogEntryIds.includes(item.catalogEntryId));
+  return component ? { minimum: component.minimumGrams, maximum: component.maximumGrams,
+    increment: component.incrementGrams } : null;
+}
+
+function snapToRangeIncrement(value: number, minimum: number, maximum: number, increment: number): number {
+  const bounded = Math.max(minimum, Math.min(maximum, value));
+  return Math.max(minimum, Math.min(maximum,
+    Number((minimum + Math.round((bounded - minimum) / increment) * increment).toFixed(2))));
 }
 
 export function snapToPlausiblePortions(
@@ -149,7 +184,8 @@ function calculateState(candidate: AiMealPlanCandidate, items: AdjustableItem[])
     if (fruitCalories <= carbAnchorCalories || fruitCalories <= 0) return 0;
     return (fruitCalories - carbAnchorCalories) / Math.max(carbAnchorCalories, 1);
   });
-  return { daily, meals, supportingDominance, fruitMacroPatch };
+  const humanBalance = assessHumanPortionBalance(candidate);
+  return { daily, meals, supportingDominance, fruitMacroPatch, humanBalance };
 }
 
 function toNumericDiagnostics(
@@ -243,6 +279,16 @@ function objective(context: MealPlanGenerationContext, state: ReturnType<typeof 
     violations.push(preWorkoutFatDensity);
     if (preWorkoutFatDensity > 0) targetDistance += 30 * preWorkoutFatDensity ** 2;
   }
+  const humanBalanceViolations = state.humanBalance.issues.filter((issue) => issue.severity === "HARD_FAILURE")
+    .map(() => 1);
+  violations.push(...humanBalanceViolations);
+  targetDistance += state.humanBalance.penalty;
+  // Culinary proportion preference is a tie-breaker only after every safety,
+  // macro and portion constraint is satisfied. It must never obstruct finding
+  // a valid plan or weaken the authoritative validation ranges.
+  if (violations.every((value) => value <= 1e-9)) {
+    targetDistance += state.humanBalance.preferencePenalty;
+  }
   return {
     violationCount: violations.filter((value) => value > 1e-9).length,
     violationMagnitude: violations.reduce((total, value) => total + value ** 2, 0),
@@ -303,6 +349,8 @@ function calibrationFeedback(
         }
         return values;
       }),
+      ...state.humanBalance.issues.filter((issue) => issue.severity === "HARD_FAILURE")
+        .map((issue) => `meal_${issue.mealPosition}_${issue.code.toLowerCase()}`),
     ],
     before: { ...beforeState.daily },
     after: { ...state.daily },
@@ -344,10 +392,11 @@ function possibleQuantities(
     values.add(current + (mealTarget.proteinG - state.meals[item.mealIndex].proteinG) / item.perGram.proteinG);
   }
   const roundedValues = [...values]
-    .map((value) => snapGramsToPortionProfile(value, item.portionProfile));
+    .map((value) => snapItemQuantity(item, value));
+  const neighborStep = item.discreteGramsPerCount ?? item.incrementGrams;
   return roundedValues
-    .flatMap((value) => [value - item.incrementGrams, value, value + item.incrementGrams])
-    .map((value) => snapGramsToPortionProfile(value, item.portionProfile))
+    .flatMap((value) => [value - neighborStep, value, value + neighborStep])
+    .map((value) => snapItemQuantity(item, value))
     .filter((value) => value >= item.minimumGrams && value <= item.maximumGrams)
     .filter((value, index, all) => all.indexOf(value) === index)
     .sort((left, right) => left - right);
@@ -404,7 +453,7 @@ function buildRoleScaledCandidate(
     const scale = desiredPoolContribution / poolContribution;
     for (const item of poolItems) {
       const value = scaled.meals[item.mealIndex].items[item.itemIndex];
-      value.quantityGrams = snapGramsToPortionProfile(value.quantityGrams * scale, item.portionProfile);
+      value.quantityGrams = snapItemQuantity(item, value.quantityGrams * scale);
     }
   }
   return scaled;
@@ -474,10 +523,13 @@ export function calibrateMealPlanPortions(
   input: AiMealPlanCandidate,
   catalog: CatalogSnapshot,
   allowedCandidates: MealPlanCatalogCandidate[],
+  recipeSlots?: CulinaryRecipeSlot[],
+  countableAuthorities: readonly CountableMeasurementAuthority[] = [],
 ): MealPortionCalibrationResult {
   const candidate = cloneCandidate(input);
   const catalogById = new Map(catalog.entries.map((entry) => [entry.id, entry]));
   const allowedIds = new Set(allowedCandidates.map((entry) => entry.catalogEntryId));
+  const countableByCatalogId = new Map(countableAuthorities.map((authority) => [authority.catalogEntryId, authority]));
   const items: AdjustableItem[] = [];
   for (let mealIndex = 0; mealIndex < candidate.meals.length; mealIndex += 1) {
     for (let itemIndex = 0; itemIndex < candidate.meals[mealIndex].items.length; itemIndex += 1) {
@@ -491,14 +543,23 @@ export function calibrateMealPlanPortions(
       const per100g = calculateFoodNutrients(food, 100);
       const portionProfile = foodPortionProfile(food, candidateItem.slot, candidate.meals[mealIndex].role);
       const templateRange = templateComponentRange(candidate, mealIndex, itemIndex);
-      const minimumGrams = Math.max(portionProfile.minimumGrams, templateRange?.minimum ?? Number.NEGATIVE_INFINITY);
+      const recipeRange = recipeComponentRange(candidate, mealIndex, itemIndex, recipeSlots);
+      if (recipeSlots && !recipeRange) {
+        return { candidate: input, diagnostics: { iterations: 0, adjustedItemCount: 0, jointAdjustmentUsed: false,
+          fiberProximityOptimized: false, before: null, after: null, feedback: null } };
+      }
+      const minimumGrams = Math.max(portionProfile.minimumGrams, templateRange?.minimum ?? Number.NEGATIVE_INFINITY,
+        recipeRange?.minimum ?? Number.NEGATIVE_INFINITY);
       const maximumGrams = Math.min(portionProfile.maximumAutogenerationGrams,
-        templateRange?.maximum ?? Number.POSITIVE_INFINITY);
+        templateRange?.maximum ?? Number.POSITIVE_INFINITY, recipeRange?.maximum ?? Number.POSITIVE_INFINITY);
+      const incrementGrams = recipeRange?.increment ?? portionProfile.incrementGrams;
+      const discreteAuthority = countableByCatalogId.get(candidateItem.catalogEntryId);
       items.push({
         mealIndex, itemIndex, originalGrams: candidateItem.quantityGrams,
         maximumGrams,
         minimumGrams,
-        incrementGrams: portionProfile.incrementGrams,
+        incrementGrams,
+        discreteGramsPerCount: discreteAuthority?.gramsPerCount ?? null,
         portionProfile,
         food,
         perGram: {
@@ -507,8 +568,8 @@ export function calibrateMealPlanPortions(
         },
         pool: candidateItem.slot,
       });
-      candidateItem.quantityGrams = Math.max(minimumGrams,
-        Math.min(maximumGrams, snapGramsToPortionProfile(candidateItem.quantityGrams, portionProfile)));
+      candidateItem.quantityGrams = snapItemQuantity(items.at(-1)!,
+        snapGramsToPortionProfile(candidateItem.quantityGrams, portionProfile));
     }
   }
   if (items.length === 0 || candidate.meals.length !== context.mealCount) {
@@ -522,7 +583,7 @@ export function calibrateMealPlanPortions(
   for (const item of items) {
     if (item.portionProfile.refinementPriority === "LOCKED") continue;
     const value = scaled.meals[item.mealIndex].items[item.itemIndex];
-    value.quantityGrams = snapGramsToPortionProfile(value.quantityGrams * energyScale, item.portionProfile);
+    value.quantityGrams = snapItemQuantity(item, value.quantityGrams * energyScale);
   }
   const roleScaled = buildRoleScaledCandidate(context, candidate, items);
   for (const seed of [scaled, roleScaled]) {

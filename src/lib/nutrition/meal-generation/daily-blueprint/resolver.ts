@@ -1,5 +1,7 @@
 import type { MealPlanGenerationContext } from "../domain";
 import { DAILY_MEAL_BLUEPRINT_VERSION, type DailyMealBlueprint, type MealIntent } from "./domain";
+import { mealDisplayTypesForCount } from "../../meal-plan/routine";
+import type { MealDisplayType, TrainingRelation } from "../../meal-plan/domain";
 
 function clockMinutes(value: string, dayOffset: 0 | 1): number {
   const [hours, minutes] = value.split(":").map(Number);
@@ -36,6 +38,18 @@ function initialIntent(context: MealPlanGenerationContext, index: number, mainCo
   return "LIGHT_MEAL";
 }
 
+function routineIntent(displayType: MealDisplayType, relation: TrainingRelation): MealIntent {
+  if (displayType === "BREAKFAST") return "BREAKFAST";
+  if (displayType === "LUNCH") return "MAIN_MEAL";
+  if (displayType === "DINNER") return "EVENING_MAIN";
+  if (displayType === "AFTERNOON_SNACK" || displayType === "MORNING_SNACK") {
+    if (relation === "PRE_WORKOUT") return "PRE_WORKOUT_SNACK";
+    if (relation === "POST_WORKOUT") return "POST_WORKOUT_SNACK";
+    return "SNACK";
+  }
+  return "LIGHT_MEAL";
+}
+
 function isMainIntent(intent: MealIntent): boolean {
   return intent === "MAIN_MEAL" || intent === "PRE_WORKOUT_MEAL" || intent === "POST_WORKOUT_MAIN"
     || intent === "EVENING_MAIN";
@@ -43,12 +57,18 @@ function isMainIntent(intent: MealIntent): boolean {
 
 export function resolveDailyMealBlueprint(context: MealPlanGenerationContext): DailyMealBlueprint {
   let mainCount = 0;
+  const explicitRoutine = context.mealMacroTargets.length === context.mealCount
+    && context.mealMacroTargets.every((target) => target.mealDisplayType !== undefined);
+  const fallbackDisplayTypes = mealDisplayTypesForCount(context.mealCount);
   const mealIntents = context.mealRoles.map((role, index) => {
-    const intent = initialIntent(context, index, mainCount);
+    const mealDisplayType = context.mealMacroTargets[index]?.mealDisplayType ?? fallbackDisplayTypes[index] ?? "MEAL";
+    const trainingRelation = context.mealMacroTargets[index]?.trainingRelation ?? null;
+    const intent = explicitRoutine ? routineIntent(mealDisplayType, trainingRelation) : initialIntent(context, index, mainCount);
     if (isMainIntent(intent)) mainCount += 1;
-    return { position: index + 1, role, intent, rationale: [`role:${role}`, `training:${context.trainingPeriod}`] };
+    return { position: index + 1, role, intent, mealDisplayType, trainingRelation,
+      rationale: [`role:${role}`, `display:${mealDisplayType}`, `training:${trainingRelation ?? "NONE"}`] };
   });
-  const minimumMainMeals = context.mealCount >= 3 ? 1 : 0;
+  const minimumMainMeals = explicitRoutine && context.mealCount === 4 ? 2 : context.mealCount >= 3 ? 1 : 0;
   if (mainCount < minimumMainMeals) {
     const fallback = [...mealIntents].reverse().find((meal) => meal.role !== "BREAKFAST");
     if (fallback) {

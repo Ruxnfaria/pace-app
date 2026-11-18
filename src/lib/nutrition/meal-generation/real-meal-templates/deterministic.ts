@@ -1,5 +1,7 @@
 import type { AiMealPlanCandidate, MealPlanGenerationContext, MealPlanCatalogPromptContext } from "../domain";
 import type { RealMealTemplateOption, RealMealTemplateSlot } from "./domain";
+import type { CulinaryRecipeOption } from "../culinary-library/integration";
+import { emptyDailyVarietyState, recordDailyVarietySelection, scoreDailyVarietyOption } from "../culinary-library/daily-variety";
 
 function hash(value: string): number {
   let result = 2166136261;
@@ -12,44 +14,50 @@ export function buildDeterministicRealMealCandidate(
   prompt: MealPlanCatalogPromptContext,
   seed = context.targetSnapshotId,
 ): AiMealPlanCandidate {
-  const selectedFamilies: string[] = [];
-  const selectedStaples: string[] = [];
-  const selectedProteins: string[] = [];
+  const varietyState = emptyDailyVarietyState();
   return {
-    meals: prompt.templateSlots.map((slot, index) => {
-      if (slot.options.length === 0) throw new Error("REAL_MEAL_TEMPLATE_UNAVAILABLE");
+    meals: prompt.recipeSlots.map((slot, index) => {
+      if (slot.options.length === 0) throw new Error("CULINARY_RECIPE_UNAVAILABLE");
       const desiredProfile = context.goal === "hypertrophy" ? "SCALABLE"
         : context.goal === "fat_loss" ? "LIGHT" : "STANDARD";
       const ordered = [...slot.options].sort((left, right) => {
-        const score = (option: RealMealTemplateOption) => Number(option.energyProfile === desiredProfile) * 6
-          + Number(!selectedFamilies.includes(option.familyId)) * 4
-          + Number(!selectedStaples.includes(option.stapleFamily)) * 2
-          + Number(!selectedProteins.includes(option.proteinFamily));
-        return score(right) - score(left) || left.variantId.localeCompare(right.variantId);
+        const score = (option: CulinaryRecipeOption) => {
+          const template = prompt.templateSlots[index].options.find((value) => value.templateId === option.templateId
+            && value.variantId === option.templateVariantId)!;
+          return Number(template.energyProfile === desiredProfile) * 6
+            + scoreDailyVarietyOption(option, template, varietyState);
+        };
+        return score(right) - score(left) || left.recipeVariantId.localeCompare(right.recipeVariantId);
       });
       const bestScore = (() => {
         const option = ordered[0];
-        return Number(option.energyProfile === desiredProfile) * 6 + Number(!selectedFamilies.includes(option.familyId)) * 4
-          + Number(!selectedStaples.includes(option.stapleFamily)) * 2
-          + Number(!selectedProteins.includes(option.proteinFamily));
+        const template = prompt.templateSlots[index].options.find((value) => value.templateId === option.templateId
+          && value.variantId === option.templateVariantId)!;
+        return Number(template.energyProfile === desiredProfile) * 6
+          + scoreDailyVarietyOption(option, template, varietyState);
       })();
-      const best = ordered.filter((option) => Number(option.energyProfile === desiredProfile) * 6
-        + Number(!selectedFamilies.includes(option.familyId)) * 4
-        + Number(!selectedStaples.includes(option.stapleFamily)) * 2
-        + Number(!selectedProteins.includes(option.proteinFamily)) === bestScore);
+      const best = ordered.filter((option) => {
+        const template = prompt.templateSlots[index].options.find((value) => value.templateId === option.templateId
+          && value.variantId === option.templateVariantId)!;
+        return Number(template.energyProfile === desiredProfile) * 6
+          + scoreDailyVarietyOption(option, template, varietyState) === bestScore;
+      });
       const option = best[hash(`${seed}:${context.goal}:${slot.position}`) % best.length];
-      selectedFamilies.push(option.familyId);
-      selectedStaples.push(option.stapleFamily);
-      selectedProteins.push(option.proteinFamily);
+      const template = prompt.templateSlots[index].options.find((value) => value.templateId === option.templateId
+        && value.variantId === option.templateVariantId)!;
       const components = option.components.filter((value) => value.required);
+      const items = components.map((component) => ({
+        componentId: component.componentId, slot: component.slot,
+        catalogEntryId: component.catalogEntryIds[hash(`${seed}:${index}:${component.componentId}`) % component.catalogEntryIds.length],
+        quantityGrams: component.referenceGrams,
+        ...(component.preparationNote ? { preparationNote: component.preparationNote } : {}),
+      }));
+      recordDailyVarietySelection(varietyState, option, template, items.map((item) => item.catalogEntryId));
       return {
-        role: slot.role, templateId: option.templateId, variantId: option.variantId, label: option.displayName,
-        items: components.map((component) => ({
-          componentId: component.componentId, slot: component.slot,
-          catalogEntryId: component.catalogEntryIds[hash(`${seed}:${index}:${component.componentId}`) % component.catalogEntryIds.length],
-          quantityGrams: Math.round((component.minimumGrams + component.maximumGrams) / 2 / 5) * 5,
-          ...(component.preparationNote ? { preparationNote: component.preparationNote } : {}),
-        })),
+        role: slot.role, templateId: option.templateId, variantId: option.templateVariantId,
+        recipeId: option.recipeId, recipeVersion: option.recipeVersion, recipeFamilyId: option.recipeFamilyId,
+        recipeVariantId: option.recipeVariantId, label: option.recipeDisplayName,
+        items,
       };
     }),
   };

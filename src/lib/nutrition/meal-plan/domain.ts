@@ -11,6 +11,8 @@ export type MealRole =
   | "EVENING_MEAL";
 
 export type TrainingPeriod = "morning" | "afternoon" | "evening" | "variable";
+export type MealDisplayType = "BREAKFAST" | "MORNING_SNACK" | "LUNCH" | "AFTERNOON_SNACK" | "DINNER" | "MEAL";
+export type TrainingRelation = "PRE_WORKOUT" | "POST_WORKOUT" | null;
 export type MealBreakAvailability = "flexible" | "limited" | "difficult";
 export type RoutinePredictability = "predictable" | "variable";
 export type FoodPreparationStyle = "very_quick" | "cook_some" | "meal_prep" | "flexible";
@@ -72,6 +74,8 @@ export interface MealMacroTarget {
   carbsG: number;
   fatG: number;
   fiberG: number;
+  mealDisplayType?: MealDisplayType;
+  trainingRelation?: TrainingRelation;
 }
 
 export interface MacroReconciliation {
@@ -88,6 +92,8 @@ export interface RecommendedMealStructure {
   recommendedMealsPerDay: number;
   mealWindows: MealWindow[];
   mealRoles: MealRole[];
+  mealDisplayTypes: MealDisplayType[];
+  trainingRelations: TrainingRelation[];
   macroDistribution: MealMacroTarget[];
   reconciliation: MacroReconciliation;
   rationale: string[];

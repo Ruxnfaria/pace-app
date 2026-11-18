@@ -21,6 +21,8 @@ import { validateMealPlanCandidate } from "./validator";
 import { buildRealMealTemplateSlots, buildTemplateConstrainedCandidates } from "./real-meal-templates/catalog";
 import { validateRealMealTemplates } from "./real-meal-templates/validator";
 import { resolveDailyMealBlueprint } from "./daily-blueprint/resolver";
+import { buildCulinaryRecipeSlots, findCulinaryRecipeOption } from "./culinary-library/integration";
+import { PRODUCTION_COUNTABLE_MEASUREMENT_AUTHORITIES_V1 } from "./culinary-library/registry";
 
 export interface MealPlanCandidateGenerator {
   generate(context: MealPlanGenerationContext, catalog: MealPlanCatalogPromptContext): Promise<AiMealPlanCandidate>;
@@ -81,26 +83,31 @@ function tryCatalogConstrainedFatAnchorRepair(
     const meal = candidate.meals[mealIndex];
     const option = prompt.templateSlots[mealIndex]?.options.find((value) =>
       value.templateId === meal.templateId && value.variantId === meal.variantId);
-    if (!option) continue;
+    const recipe = findCulinaryRecipeOption(prompt.recipeSlots, mealIndex, meal);
+    if (!option || !recipe) continue;
     const optionalIds = new Set(option.components.filter((value) => !value.required).map((value) => value.componentId));
     const selectedOptionalCount = meal.items.filter((item) => optionalIds.has(item.componentId)).length;
-    if (selectedOptionalCount >= option.maximumOptionalComponents) continue;
+    if (selectedOptionalCount >= recipe.maximumOptionalComponents) continue;
     const missingFatComponents = option.components.filter((component) => !component.required
       && component.slot === "FAT_ANCHOR"
-      && !meal.items.some((item) => item.componentId === component.componentId));
+      && !meal.items.some((item) => item.componentId === component.componentId)
+      && recipe.components.some((value) => !value.required && value.componentId === component.componentId));
     for (const component of missingFatComponents) {
-      for (const catalogEntryId of component.catalogEntryIds.filter((id) => offeredIds.has(id))) {
+      const recipeComponent = recipe.components.find((value) => value.componentId === component.componentId)!;
+      for (const catalogEntryId of component.catalogEntryIds.filter((id) => offeredIds.has(id)
+        && recipeComponent.catalogEntryIds.includes(id))) {
         const repaired = cloneCandidate(candidate);
         repaired.meals[mealIndex].items.push({
           componentId: component.componentId,
           slot: component.slot,
           catalogEntryId,
-          quantityGrams: Math.round((component.minimumGrams + component.maximumGrams) / 2),
+          quantityGrams: recipeComponent.referenceGrams,
           ...(component.preparationNote ? { preparationNote: component.preparationNote } : {}),
         });
-        const calibration = calibrateMealPlanPortions(context, repaired, catalog, prompt.candidates);
+        const calibration = calibrateMealPlanPortions(context, repaired, catalog, prompt.candidates, prompt.recipeSlots,
+          PRODUCTION_COUNTABLE_MEASUREMENT_AUTHORITIES_V1);
         let repairedReport = validateMealPlanCandidate(
-          context, calibration.candidate, catalog, prompt.candidates, prompt.templateSlots,
+          context, calibration.candidate, catalog, prompt.candidates, prompt.templateSlots, prompt.recipeSlots,
         );
         if (repairedReport.diagnostics && calibration.diagnostics.feedback) {
           repairedReport = { ...repairedReport, diagnostics: {
@@ -124,13 +131,26 @@ function hasValidRepairStructure(
   const byId = new Map(catalog.candidates.map((candidate) => [candidate.catalogEntryId, candidate]));
   return repaired.meals.length === previous.meals.length
     && validateRealMealTemplates(context, repaired, catalog.templateSlots).valid
-    && repaired.meals.every((meal, mealIndex) => meal.role === context.mealRoles[mealIndex]
-      && meal.items.every((item) => byId.get(item.catalogEntryId)?.pools.includes(item.slot) ?? false));
+    && repaired.meals.every((meal, mealIndex) => {
+      const recipe = findCulinaryRecipeOption(catalog.recipeSlots, mealIndex, meal);
+      if (!recipe || meal.role !== context.mealRoles[mealIndex]) return false;
+      const optionalCount = meal.items.filter((item) => recipe.components.some((component) =>
+        component.componentId === item.componentId && !component.required)).length;
+      return optionalCount <= recipe.maximumOptionalComponents
+        && recipe.components.filter((component) => component.required)
+          .every((component) => meal.items.some((item) => item.componentId === component.componentId))
+        && meal.items.every((item) => {
+          const component = recipe.components.find((value) => value.componentId === item.componentId);
+          return Boolean(component?.catalogEntryIds.includes(item.catalogEntryId))
+            && (byId.get(item.catalogEntryId)?.pools.includes(item.slot) ?? false);
+        });
+    });
 }
 
 export function buildMealPlanPromptContext(context: MealPlanGenerationContext, catalog: CatalogSnapshot): MealPlanCatalogPromptContext {
   const status = assessTrustedNutritionCatalog(catalog.entries);
   const templateSlots = buildRealMealTemplateSlots(context, catalog);
+  const recipeSlots = buildCulinaryRecipeSlots(context, catalog, templateSlots);
   const candidates = buildTemplateConstrainedCandidates(context, catalog, templateSlots);
   const candidateById = new Map(candidates.map((candidate) => [candidate.catalogEntryId, candidate]));
   return {
@@ -145,9 +165,10 @@ export function buildMealPlanPromptContext(context: MealPlanGenerationContext, c
     },
     candidates,
     templateSlots,
-    mealSlots: templateSlots.map((slot) => ({
+    recipeSlots,
+    mealSlots: recipeSlots.map((slot) => ({
       position: slot.position, role: slot.role,
-      archetypeId: slot.options.map((option) => option.templateId).join("|"),
+      archetypeId: slot.options.map((option) => option.recipeId).join("|"),
       fuelLevel: "MODERATE",
       slots: [...new Map(slot.options.flatMap((option) => option.components).map((component) => [component.slot, component])).values()]
         .map((component) => ({
@@ -185,18 +206,19 @@ export async function generateValidatedMealPlan(args: {
   const idempotencyKey = buildMealPlanGenerationIdempotencyKey(args.context);
   const generationContext = { ...args.context, catalogReadiness: catalog.readiness };
   const constrainedCatalog = buildMealPlanPromptContext(generationContext, catalog);
-  if (constrainedCatalog.templateSlots.some((meal) => meal.options.length === 0)) {
-    return { status: "CATALOG_NOT_READY", repaired: false, report: rejected("CATALOG_NOT_READY", "No complete real-meal template is available for a prescribed meal role") };
+  if (constrainedCatalog.recipeSlots.some((meal) => meal.options.length === 0)) {
+    return { status: "CATALOG_NOT_READY", repaired: false, report: rejected("CATALOG_NOT_READY", "No feasible culinary recipe is available for a prescribed meal intent") };
   }
   await args.jobRepository?.begin(args.context, idempotencyKey);
   try {
     const candidate = await args.candidateGenerator.generate(generationContext, constrainedCatalog);
     const initialCalibration = calibrateMealPlanPortions(
       generationContext, candidate, catalog, constrainedCatalog.candidates,
+      constrainedCatalog.recipeSlots, PRODUCTION_COUNTABLE_MEASUREMENT_AUTHORITIES_V1,
     );
     let calibratedCandidate = initialCalibration.candidate;
     let report = validateMealPlanCandidate(generationContext, calibratedCandidate, catalog, constrainedCatalog.candidates,
-      constrainedCatalog.templateSlots);
+      constrainedCatalog.templateSlots, constrainedCatalog.recipeSlots);
     if (report.diagnostics && initialCalibration.diagnostics.feedback) {
       report = { ...report, diagnostics: { ...report.diagnostics, portionCalibration: initialCalibration.diagnostics.feedback } };
     }
@@ -222,10 +244,11 @@ export async function generateValidatedMealPlan(args: {
         : calibratedCandidate;
       const repairedCalibration = calibrateMealPlanPortions(
         generationContext, repairedCandidate, catalog, constrainedRepairCatalog.candidates,
+        constrainedRepairCatalog.recipeSlots, PRODUCTION_COUNTABLE_MEASUREMENT_AUTHORITIES_V1,
       );
       calibratedCandidate = repairedCalibration.candidate;
       report = validateMealPlanCandidate(generationContext, calibratedCandidate, catalog, constrainedRepairCatalog.candidates,
-        constrainedRepairCatalog.templateSlots);
+        constrainedRepairCatalog.templateSlots, constrainedRepairCatalog.recipeSlots);
       if (report.diagnostics && repairedCalibration.diagnostics.feedback) {
         report = { ...report, diagnostics: { ...report.diagnostics, portionCalibration: repairedCalibration.diagnostics.feedback } };
       }

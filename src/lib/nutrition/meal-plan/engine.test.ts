@@ -39,8 +39,9 @@ test("fat loss com pausas limitadas distribui proteína, pré/pós e reconcilia 
   const t = target();
   const result = resolve(context(), t);
   assert.equal(result.recommendedMealsPerDay, 3);
-  assert.ok(result.mealRoles.includes("PRE_WORKOUT"));
-  assert.ok(result.mealRoles.includes("POST_WORKOUT"));
+  assert.deepEqual(result.mealRoles, ["BREAKFAST", "MAIN_MEAL", "EVENING_MEAL"]);
+  assert.ok(result.trainingRelations.includes("PRE_WORKOUT"));
+  assert.ok(result.trainingRelations.includes("POST_WORKOUT"));
   const proteins = result.macroDistribution.map((meal) => meal.proteinG);
   assert.ok(Math.max(...proteins) - Math.min(...proteins) < 10);
   assertReconciled(result, t);
@@ -51,18 +52,37 @@ test("hypertrophy com 2500+ kcal usa 4–5 ocasiões e concentra mais carbo em t
   const t = target({ calories: 2850, proteinG: 180, carbsG: 380, fatG: 68, fiberG: 40 });
   const result = resolve(c, t);
   assert.ok(result.recommendedMealsPerDay >= 4 && result.recommendedMealsPerDay <= 5);
-  const workoutCarbs = result.macroDistribution.filter((meal) => meal.role === "PRE_WORKOUT" || meal.role === "POST_WORKOUT").map((meal) => meal.carbsG);
-  const otherCarbs = result.macroDistribution.filter((meal) => meal.role !== "PRE_WORKOUT" && meal.role !== "POST_WORKOUT").map((meal) => meal.carbsG);
+  const workoutCarbs = result.macroDistribution.filter((meal) => meal.trainingRelation !== null).map((meal) => meal.carbsG);
+  const otherCarbs = result.macroDistribution.filter((meal) => meal.trainingRelation === null).map((meal) => meal.carbsG);
   assert.ok(Math.min(...workoutCarbs) > Math.max(...otherCarbs));
   assertReconciled(result, t);
+});
+
+test("four-meal structure preserves Brazilian display routine while training remains an attribute", () => {
+  const c = context({ goal: "hypertrophy", mealBreakAvailability: "flexible", preferredTrainingPeriod: "evening" });
+  const t = target({ calories: 2500, proteinG: 110, carbsG: 359.75, fatG: 69, fiberG: 35 });
+  const result = resolve(c, t);
+  assert.equal(result.recommendedMealsPerDay, 4);
+  assert.deepEqual(result.mealRoles, ["BREAKFAST", "MAIN_MEAL", "SNACK", "EVENING_MEAL"]);
+  assert.deepEqual(result.mealDisplayTypes, ["BREAKFAST", "LUNCH", "AFTERNOON_SNACK", "DINNER"]);
+  assert.equal(result.trainingRelations.filter((relation) => relation === "PRE_WORKOUT").length, 1);
+  assert.equal(result.trainingRelations.filter((relation) => relation === "POST_WORKOUT").length, 1);
+  assert.ok(result.macroDistribution.every((meal, index) => meal.mealDisplayType === result.mealDisplayTypes[index]
+    && meal.trainingRelation === result.trainingRelations[index]));
+  assert.equal(sum(result.macroDistribution.map((meal) => meal.calories)), t.calories);
+  assert.equal(sum(result.macroDistribution.map((meal) => meal.proteinG)), t.proteinG);
+  assert.ok(Math.abs(sum(result.macroDistribution.map((meal) => meal.carbsG)) - t.carbsG) <= 0.051);
+  assert.equal(sum(result.macroDistribution.map((meal) => meal.fatG)), t.fatG);
+  assert.equal(sum(result.macroDistribution.map((meal) => meal.fiberG)), t.fiberG);
+  assert.ok(Math.abs(result.reconciliation.carbsGDelta) <= 0.051);
 });
 
 test("conditioning matinal prioriza pré/pós digeríveis sem inventar déficit", () => {
   const c = context({ goal: "conditioning", mealBreakAvailability: "flexible", preferredTrainingPeriod: "morning" });
   const t = target({ calories: 2600, proteinG: 150, carbsG: 360, fatG: 62, fiberG: 36 });
   const result = resolve(c, t);
-  const pre = result.macroDistribution.find((meal) => meal.role === "PRE_WORKOUT");
-  const post = result.macroDistribution.find((meal) => meal.role === "POST_WORKOUT");
+  const pre = result.macroDistribution.find((meal) => meal.trainingRelation === "PRE_WORKOUT");
+  const post = result.macroDistribution.find((meal) => meal.trainingRelation === "POST_WORKOUT");
   assert.ok(pre && post);
   assert.ok(pre.fiberG < Math.max(...result.macroDistribution.map((meal) => meal.fiberG)));
   assert.ok(post.carbsG > 0);
@@ -86,8 +106,7 @@ test("pausas difíceis nunca geram cinco refeições inviáveis", () => {
 
 test("treino variável não inventa horários fixos de pré/pós", () => {
   const result = resolve(context({ preferredTrainingPeriod: "variable" }), target());
-  assert.equal(result.mealRoles.includes("PRE_WORKOUT"), false);
-  assert.equal(result.mealRoles.includes("POST_WORKOUT"), false);
+  assert.ok(result.trainingRelations.every((relation) => relation === null));
 });
 
 test("target requires_review não produz distribuição ativa", () => {

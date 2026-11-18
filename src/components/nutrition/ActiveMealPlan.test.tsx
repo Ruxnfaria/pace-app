@@ -49,6 +49,18 @@ function activePlanFixture(): ActiveMealPlanModel {
         fiberG: 2,
         catalogSource: "TACO",
         catalogSourceVersion: "taco-4ed-ampliada-2011",
+        recipeId: null,
+        recipeVersion: null,
+        recipeFamilyId: null,
+        recipeVariantId: null,
+        recipeDisplayName: null,
+        componentId: ["PROTEIN", "CASSAVA", "NUTS", "FRUIT"][itemIndex],
+        mealDisplayType: ["BREAKFAST", "LUNCH", "AFTERNOON_SNACK", "DINNER"][mealIndex],
+        trainingRelation: mealIndex === 2 ? "PRE_WORKOUT" : mealIndex === 3 ? "POST_WORKOUT" : null,
+        preparationState: null,
+        presentationDisplayName: null,
+        presentationDisplayUnit: null,
+        presentationDisplayQuantity: null,
       })),
     })),
   };
@@ -56,8 +68,12 @@ function activePlanFixture(): ActiveMealPlanModel {
 
 test("renders the persisted four-meal TACO fixture with actual daily totals", () => {
   const html = renderToStaticMarkup(<ActiveMealPlan plan={activePlanFixture()} />);
-  for (const label of ["Café da manhã", "Pré-treino", "Pós-treino", "Refeição noturna"]) assert.match(html, new RegExp(label));
-  for (const food of ["Frango grelhado", "Farinha de mandioca", "Castanha-do-Brasil", "Goiaba"]) assert.match(html, new RegExp(food));
+  for (const label of ["Café da manhã", "Almoço", "Café da tarde", "Jantar"]) assert.match(html, new RegExp(label));
+  assert.match(html, /Pré-treino/);
+  assert.match(html, /Pós-treino/);
+  for (const food of ["49 g de frango grelhado", "48 g de farinha de mandioca", "12 g de castanha-do-Brasil", "29 g de goiaba"]) {
+    assert.match(html, new RegExp(food));
+  }
   assert.equal(html.match(/<li /g)?.length, 16);
   assert.match(html, /1\.600/);
   assert.match(html, /160 g/);
